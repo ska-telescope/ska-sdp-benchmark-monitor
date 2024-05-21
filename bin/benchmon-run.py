@@ -12,7 +12,7 @@ sys.path.insert(0, parent_dir)
 
 try:
     import benchmon
-    import benchmon.run as run_context
+    import benchmon.run as rc
 except ImportError as e:
     print("Could not import benchmon!")
     print(sys.executable, sys.version)
@@ -80,4 +80,5 @@ if __name__ == '__main__':
     print(f'benchmon-run version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))
     print("Beginning gathering of run context.")
     args = parse_args()
-    run_context.gather_run_context(args)
+    rm = rc.RunMonitor(args)
+    rm.run()

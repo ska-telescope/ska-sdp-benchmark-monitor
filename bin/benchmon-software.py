@@ -13,7 +13,7 @@ sys.path.insert(0, parent_dir)
 
 try:
     import benchmon
-    import benchmon.software as software_context
+    import benchmon.software as swc
 except ImportError as e:
     print("Could not import benchmon!")
     print(sys.executable, sys.version)
@@ -64,4 +64,5 @@ if __name__ == '__main__':
     print(f'benchmon-software version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))
     print("Beginning gathering of software context.")
     args = parse_args()
-    software_context.gather_software_context(args)
+    sw = swc.SoftwareMonitor(args)
+    sw.run()

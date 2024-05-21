@@ -13,7 +13,7 @@ sys.path.insert(0, parent_dir)
 
 try:
     import benchmon
-    import benchmon.hardware as hardware_context
+    import benchmon.hardware as hwc
 except ImportError as e:
     print("Could not import benchmon!")
     print(sys.executable, sys.version)
@@ -64,4 +64,5 @@ if __name__ == '__main__':
     print(f'benchmon-hardware version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))
     print("Beginning gathering of hardware context.")
     args = parse_args()
-    hardware_context.gather_hardware_context(args)
+    hw = hwc.HardwareMonitor(args)
+    hw.run()
