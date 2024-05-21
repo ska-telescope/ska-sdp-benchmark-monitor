@@ -33,9 +33,9 @@ def parse_args():
         default=os.getcwd(),
         nargs='?',
         help='''
-            Base directory where metrics will be saved. This directory should 
-            be available from all compute nodes. Default is $PWD
-        ''',
+                Base directory where software context will be saved. This directory should 
+                be available from all compute nodes. Default is $PWD
+            ''',
     )
 
     parser.add_argument(
@@ -44,26 +44,9 @@ def parse_args():
         default=None,
         nargs='?',
         help='''
-                Name of the directory to be created to save metric data. If provided, 
-                metrics will be located at $SAVE_DIR/$PREFIX.
-            ''',
-    )
-
-    parser.add_argument(
-        '-i',
-        '--sampling-freq',
-        type=int,
-        default=30,
-        help="Sampling interval to collect metrics. Default value is 30 seconds",
-    )
-
-    parser.add_argument(
-        '-c',
-        '--checkpoint',
-        nargs='?',
-        type=int,
-        default=900,
-        help="Checking point time interval. Default value is 900 seconds",
+                    Name of the directory to be created to save software context data. If provided, 
+                    software information will be located at $SAVE_DIR/$PREFIX.
+                ''',
     )
 
     parser.add_argument(
@@ -75,6 +58,7 @@ def parse_args():
     )
 
     return parser.parse_args(sys.argv[1:])
+
 
 if __name__ == '__main__':
     print(f'benchmon-software version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))

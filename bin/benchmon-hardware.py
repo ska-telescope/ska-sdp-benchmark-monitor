@@ -59,6 +59,7 @@ def parse_args():
 
     return parser.parse_args(sys.argv[1:])
 
+
 if __name__ == '__main__':
     print(f'benchmon-hardware version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))
     print("Beginning gathering of hardware context.")
