@@ -73,7 +73,7 @@ def parse_args():
         help="Enable verbose mode. Display debug messages",
     )
 
-    return parser.parse_args(sys.argv[1:])
+    return parser.parse_args()
 
 
 if __name__ == '__main__':
