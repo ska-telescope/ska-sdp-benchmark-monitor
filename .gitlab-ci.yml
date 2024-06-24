@@ -1,0 +1,63 @@
+image: registry.gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor:ci
+
+stages:
+  - pretest
+  - test
+  - pages
+
+lint-test:
+  stage: pretest
+  tags:
+    - k8srunner
+  script:
+    - mkdir -p build
+    - pylint --exit-zero bin/ benchmon/ > build/linting.xml
+  artifacts:
+    paths:
+      - build/
+    expire_in: 1 day
+
+#unit-test:
+#  stage: test
+#  tags:
+#    - k8srunner
+#  script:
+#    - #todo: call pytest to run future unit tests
+
+# Reproduce steps from RTD
+#docs-test:
+#  stage: test
+#  tags:
+#    - k8srunner
+#  before_script:
+#    - conda create -n docs python=$PYVER -y
+#    - conda activate docs
+#    - python -m pip install --upgrade --no-cache-dir pip 'setuptools<58.3.0'
+#    - python -m pip install --exists-action=w --no-cache-dir mock==1.0.1 pillow==5.4.1 'alabaster>=0.7,<0.8,!=0.7.5' commonmark==0.8.1 recommonmark==0.5.0
+#    - python -m pip install --exists-action=w --no-cache-dir -r docs/requirements.txt
+#    - python -m pip install --exists-action=w --no-cache-dir -r requirements.txt
+#  script:
+#    - cd docs
+#    - python -m sphinx -T -b html -d build/doctrees -D language=en src/ build/html
+#  artifacts:
+#    paths:
+#      - build/
+#    expire_in: 1 day
+
+pages-pages:
+  stage: pages
+  tags:
+    - k8srunner
+  script:
+    - mkdir -p public/reports
+    - mv build/linting.xml public/reports/linting.xml
+    #- mv build/tests.xml public/reports/unit-tests.xml
+  artifacts:
+    paths:
+      - public
+
+# Create Gitlab CI badges from CI metrics
+# https://developer.skatelescope.org/en/latest/tools/continuousintegration.html#automated-collection-of-ci-health-metrics-as-part-of-the-ci-pipeline
+include:
+  - project: 'ska-telescope/templates-repository'
+    file: 'gitlab-ci/includes/finaliser.gitlab-ci.yml'
