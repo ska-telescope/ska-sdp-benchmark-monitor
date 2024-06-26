@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+import time
+import argparse
+
+def write_mono_to_real(filename: str) -> float:
+    """
+    Convert monotonic time to real
+    """
+    monotonic = time.clock_gettime(time.CLOCK_MONOTONIC)
+    real = time.clock_gettime(time.CLOCK_REALTIME)
+    mono_to_real = real - monotonic
+    with open(filename, "w") as file:
+        file.write(f"{mono_to_real}\n")
+
+    return mono_to_real
+
+def main() -> int:
+    """
+    Main function
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", "-o", type=str, default="./mono-to-real_clock.txt")
+    args = parser.parse_args()
+
+    write_mono_to_real(filename= args.output)
+
+    return 0
+
+if __name__ == "__main__":
+    main()
