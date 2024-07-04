@@ -80,7 +80,7 @@ def main():
 
     if args.cpu_all:
         plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_per_core(with_color_bar=True, fig=fig, nsbp=nsbp, sbp=sbp-1)#with_legend=True)
+        sys_trace.plot_cpu_per_core(with_color_bar=True, fig=fig, nsbp=nsbp, sbp=sbp-1) #, with_legend=True)
 
     if args.mem:
         plt.subplot(nsbp, 1, sbp); sbp += 1
@@ -108,13 +108,13 @@ def main():
     if args.interactive:
         plt.show()
 
-    figpath = f"{args.traces_repo}" if args.fig_path is None else args.fig_path
-    figname = f"{figpath}/benchmon_fig.{args.fig_fmt}"
-
     dpi = {"low": 200, "medium": 600, "high": 1200}
-    fig.savefig(figname, format=args.fig_fmt, dpi=dpi[args.dpi])
+    figpath = f"{args.traces_repo}" if args.fig_path is None else args.fig_path
 
-    print(f"Figure saved: {figname}")
+    for fmt in args.fig_fmt.split(","):
+        figname = f"{figpath}/benchmon_fig.{fmt}"
+        fig.savefig(figname, format=fmt, dpi=dpi[args.dpi])
+        print(f"Figure saved: {figname}")
 
     return 0
 

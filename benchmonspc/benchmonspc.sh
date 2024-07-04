@@ -11,11 +11,13 @@
 # [-cf|--cf|--call-freq]
 # [-ws|--ws|--wait]
 # [--sudo-perf]
+# [--sudo-perf-command]
 
 # echo '$#=' "$#"
 # echo '$*=' "$*"
 # echo '$1' "$1"
-trace_repo=./benchmonspc_traces_${OAR_JOB_ID}${SLURM_JOB_ID}/$(hostname | cut -d '.' -f 1)_$(date "+%s")
+_HOSTNAME=$(hostname | cut -d '.' -f 1)
+trace_repo=./benchmonspc_traces_${OAR_JOB_ID}${SLURM_JOB_ID} #_$(date "+%s")
 
 # Init system tracing
 is_sys=0
@@ -24,6 +26,7 @@ sys_delay=1
 
 # Perf requires sudo?
 is_sudo_perf=""
+sudo_perf_cmd=""
 
 # Init power profiling
 is_pow=0
@@ -84,6 +87,10 @@ while [[ $# -gt 0 ]]; do
         --sudo-perf)
             is_sudo_perf="sudo"
             shift
+            ;;
+        --sudo-perf-cmd)
+            sudo_perf_cmd=$2
+            shift 2
             ;;
         -p|--pow)
             is_pow=1
@@ -156,13 +163,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Reports
+trace_repo=$trace_repo/${_HOSTNAME}
 mkdir -p ${trace_repo}
 trace_repo=$(realpath ${trace_repo})
 sys_report=${trace_repo}/sys_report.csv
 pow_report=${trace_repo}/pow_report.csv
 call_report=${trace_repo}/call_report.txt
 mono_to_real_file=${trace_repo}/mono_to_real_file.txt
-
 
 # Print traces repo if app is not given
 if [[ -z $app ]]
@@ -197,7 +204,7 @@ if [[ $is_pow = 1 ]]
 then
     mkdir -p $(dirname $pow_report)
     echo -n "" > $pow_report
-    $is_sudo_perf perf stat -A -a $_perf_events_flag -I $pow_delay -x , -o $pow_report &
+    $sudo_perf_cmd perf stat -A -a $_perf_events_flag -I $pow_delay -x , -o $pow_report &
     _POW_PID=$!
 fi
 
@@ -213,7 +220,7 @@ then
     fi
     _temp_perf_date_file=${trace_repo}/_temp_perf.data
     ./mono_to_real -o ${mono_to_real_file}
-    $is_sudo_perf perf record --running-time -T -a -F $call_freq --call-graph=$call_mode -o $_temp_perf_date_file $app
+    $sudo_perf_cmd perf record --running-time -T -a -F $call_freq --call-graph=$call_mode -o $_temp_perf_date_file $app
 else
     eval $app
 fi
@@ -223,7 +230,7 @@ sleep $wait_seconds
 # Stop power profiling
 if [[ $is_pow = 1 && -n $app ]]
 then
-    $is_sudo_perf kill -15 $(ps -o pid= --ppid $_POW_PID) $_POW_PID
+    $sudo_perf_cmd kill -15 $(ps -o pid= --ppid $_POW_PID) $_POW_PID
 fi &> /dev/null
 
 # Stop system resources tracing
@@ -242,8 +249,15 @@ fi
 # Output
 if [[ -z $app ]]
 then
-    echo $_SYS_PID > ./.benchmonspc_sys_pid
-    echo $_POW_PID > ./.benchmonspc_pow_pid
+    if [[ $is_sys = 1 ]]
+    then
+        echo $_SYS_PID >> ./.benchmonspc_sys_pid_${_HOSTNAME}
+    fi
+
+    if [[ $is_pow = 1 ]]
+    then
+        echo $_POW_PID >> ./.benchmonspc_pow_pid_${_HOSTNAME}
+    fi
 else
     echo "BENCHMARK MONITOR (sys+pow+call) -----------------"
     echo -e "\tApplication: $app"
