@@ -35,7 +35,9 @@ def parsing():
     parser.add_argument("--interactive", action="store_true", help="Interactive visualization")
     parser.add_argument("--fig-path", type=str, help="Figure format")
     parser.add_argument("--fig-fmt", type=str, default="svg", help="Figure format")
-    parser.add_argument("--dpi", type=str, default="medium", help="Quality of figure: low, medium, high")
+    parser.add_argument("--fig-name", type=str, default="benchmon_fig", help="Figure name")
+    parser.add_argument("--fig-dpi", type=str, default="medium", help="Quality of figure: low, medium, high")
+    parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
 
     return parser.parse_args()
 
@@ -100,7 +102,7 @@ def main():
 
     if args.call:
         plt.subplot(nsbp, 1, (sbp,sbp+1))
-        call_trace.plot(call_depths, xticks=sys_trace._xticks, xlim=sys_trace._xlim)
+        call_trace.plot(call_depths, xticks=sys_trace._xticks, xlim=sys_trace._xlim, legend_ncol=args.fig_call_legend_ncol)
 
     plt.subplots_adjust(hspace=.5)
     plt.tight_layout()
@@ -112,8 +114,8 @@ def main():
     figpath = f"{args.traces_repo}" if args.fig_path is None else args.fig_path
 
     for fmt in args.fig_fmt.split(","):
-        figname = f"{figpath}/benchmon_fig.{fmt}"
-        fig.savefig(figname, format=fmt, dpi=dpi[args.dpi])
+        figname = f"{figpath}/{args.fig_name}.{fmt}"
+        fig.savefig(figname, format=fmt, dpi=dpi[args.fig_dpi])
         print(f"Figure saved: {figname}")
 
     return 0

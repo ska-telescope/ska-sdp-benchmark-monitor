@@ -219,7 +219,7 @@ then
         exit 1
     fi
     _temp_perf_date_file=${trace_repo}/_temp_perf.data
-    ./mono_to_real -o ${mono_to_real_file}
+    $(dirname $0)/mono_to_real -o ${mono_to_real_file}
     $sudo_perf_cmd perf record --running-time -T -a -F $call_freq --call-graph=$call_mode -o $_temp_perf_date_file $app
 else
     eval $app
