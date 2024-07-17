@@ -196,10 +196,10 @@ class DoolData():
         plt.xticks(self._xticks[0], self._xticks[1])
         _yrange = 10
         plt.yticks(100 * 1/_yrange * np.arange(_yrange + 1))
+        plt.xlim(self._xlim)
         plt.ylabel(f" CPU Cores (x{self.ncpu}) (%)")
         plt.grid()
         plt.xlabel("Timestamp")
-
 
         if with_legend:
             plt.legend(loc=1, ncol=3)
