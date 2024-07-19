@@ -3,7 +3,8 @@
 import time
 import matplotlib.pyplot as plt
 
-cmaps = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 10 # @hc
+CMAPS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 10 # @hc
+DEBUG = False
 
 class PerfCallRawData:
     """
@@ -23,11 +24,13 @@ class PerfCallRawData:
         """
         Load raw data
         """
-        print("Load file...")
+        if DEBUG: print("Load file...")
+
         t0 = time.time()
         with open(self.filename, "r") as file:
             content = file.readlines()
-        print(f"...{round(time.time() - t0, 3)} s\n")
+
+        if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
 
         return content
 
@@ -37,7 +40,9 @@ class PerfCallRawData:
         Read data blocks from raw data
         """
         content = self.load_data()
-        print("Read blocks...")
+
+        if DEBUG: print("Read blocks...")
+
         t0 = time.time()
         blocks = []
         _block_lines = []
@@ -47,7 +52,8 @@ class PerfCallRawData:
                 _block_lines = []
                 continue
             _block_lines.append(line)
-        print(f"...{round(time.time() - t0, 3)} s\n")
+
+        if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
 
         return blocks
 
@@ -57,7 +63,9 @@ class PerfCallRawData:
         Create data samples
         """
         blocks = self.read_blocks()
-        print("Create samples...")
+
+        if DEBUG: print("Create samples...")
+
         t0 = time.time()
         samples = []
         for block in blocks:
@@ -80,8 +88,8 @@ class PerfCallRawData:
                 sample["tid"] = int(sample_info[1])
 
             samples.append(sample)
-        nsamples = len(samples)
-        print(f"...{round(time.time() - t0, 3)} s\n")
+
+        if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
 
         return samples
 
@@ -91,7 +99,9 @@ class PerfCallRawData:
         Get samples and commands
         """
         samples = self.create_samples()
-        print("List commands...")
+
+        if DEBUG: print("List commands...")
+
         t0 = time.time()
         cmds = {}
         for sample in samples:
@@ -101,7 +111,13 @@ class PerfCallRawData:
             except KeyError:
                 cmds[cmd] = 1
         cmds = {ky: val for ky, val in sorted(cmds.items(), key = lambda item: -item[1])}
-        print(f"...{round(time.time() - t0, 3)} s\n")
+
+        print("Recorded commands with perf " + 22 * "-")
+        for cmd in cmds.keys():
+            print(f"{cmd}: {cmds[cmd]} samples")
+        print(50 * "-")
+
+        if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
 
         return samples, cmds
 
@@ -167,7 +183,8 @@ class PerfCallData():
         Args:
             depth (int): Depth value
         """
-        print("\tCount calls...")
+        if DEBUG: print("\tCount calls...")
+
         t0 = time.time()
         calls = {}
         for sample in self.samples:
@@ -177,7 +194,8 @@ class PerfCallData():
                     calls[name] += 1
                 except KeyError:
                     calls[name] = 1
-        print(f"\t...{round(time.time() - t0, 3)} s\n")
+
+        if DEBUG: print(f"\t...{round(time.time() - t0, 3)} s\n")
 
         return calls
 
@@ -193,10 +211,19 @@ class PerfCallData():
             legend_ncol (int): Number of columns for call legend
         """
         for depth in depths:
-            print(f"Plot {depth} of {depths}...")
+            if DEBUG: print(f"Plot {depth} of {depths}...")
             t0 = time.time()
+
             calls = self._depth_data(depth)
-            colors = {call: cmaps[color % len(cmaps)] for color, call in enumerate(calls)}
+            colors = {call: CMAPS[color % len(CMAPS)] for color, call in enumerate(calls)}
+
+            # Initialize call_line
+            call_line = {}
+            for sample in self.samples:
+                if sample["ncalls"] > depth:
+                    call = sample["callstack"][depth]["call"].split("+")[0]
+                    call_line[call] = {"stamps": [], "sample_vals": [], "color": ""}
+
             for sample in self.samples:
                 if sample["ncalls"] > depth:
                     call = sample["callstack"][depth]["call"].split("+")[0]
@@ -204,16 +231,22 @@ class PerfCallData():
                     tid = self.tids[sample["tid"]]
                     stamp = sample["timestamp"] + self.mono_to_real_time
 
-                    plot, = plt.plot(
-                        stamp,
-                        depth + self._plt_depth_size / self.nt * tid, #@hc
-                        marker = "|",
-                        color = color
-                        )
+                    call_line[call]["stamps"] += [stamp]
+                    call_line[call]["sample_vals"] += [depth + self._plt_depth_size / self.nt * tid]
+                    call_line[call]["color"] = color
 
-                    if calls[call] / self.nsamples > self._plt_legend_threshold:
-                        plot.set_label(f"{depth}: {call}")
-            print(f"...{round(time.time() - t0, 3)} s\n")
+            for call in call_line.keys():
+                plot, = plt.plot(
+                    call_line[call]["stamps"],
+                    call_line[call]["sample_vals"],
+                    linestyle = "",
+                    marker = "|",
+                    color = call_line[call]["color"]
+                    )
+                if calls[call] / self.nsamples > self._plt_legend_threshold:
+                    plot.set_label(f"{depth}: {call}")
+
+            if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
 
         # Y axis options
         plt.ylim([min(depths) - 1/4 - 1/8 * len(depths), max(depths) + 1 + 1/4 * len(depths)])
@@ -226,9 +259,12 @@ class PerfCallData():
                 ylabels += [""] #[f"{tid}"]
                 if tid == 0: ylabels[-1] = f"CallStack {depth}" #+ ylabels[-1]
                 yvals += [depth + self._plt_depth_size / self.nt * tid]
-        # # Without threads ticks
-        # ylabels = [f"CallStack {depth}" for depth in depths]
-        # yvals = [depth for depth in depths]
+
+        # Without threads ticks
+        if False:
+            ylabels = [f"CallStack {depth}" for depth in depths]
+            yvals = [depth for depth in depths]
+
         plt.yticks(yvals, ylabels)
         plt.xlabel("Time (s)")
 
@@ -243,11 +279,9 @@ class PerfCallData():
         handles, labels = plt.gca().get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
         plt.legend(by_label.values(), by_label.keys(), loc="upper center", ncol=legend_ncol, fontsize="6")
-        # plt.tight_layout()
 
         # Global plot
         plt.grid()
-        # plt.tight_layout()
-        # plt.title(self.cmd)
+        plt.title(self.cmd)
 
         return 0

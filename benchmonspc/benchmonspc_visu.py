@@ -14,7 +14,7 @@ def parsing():
     parser = argparse.ArgumentParser()
 
     # Traces repo
-    parser.add_argument("--traces-repo", "-r", type=str, help="Report path")
+    parser.add_argument("--traces-repo", "-r", type=str, default="./", help="Report path")
 
     # System metrics
     parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
@@ -30,6 +30,7 @@ def parsing():
     parser.add_argument("--call", action="store_true", help="Visualize callstack")
     parser.add_argument("--call-depth", type=int, default=1, help="Callstack depth level")
     parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
+    parser.add_argument('--call-cmd', type=str, default="", help="Command to visualize")
 
     # Figures
     parser.add_argument("--interactive", action="store_true", help="Interactive visualization")
@@ -68,7 +69,12 @@ def main():
             mono_to_real_val = float(file.readline())
         call_raw = PerfCallRawData(filename=f"{args.traces_repo}/call_report.txt")
         samples, cmds = call_raw.cmds_list()
-        cmd = list(cmds.keys())[0]
+
+        if args.call_cmd:
+            cmd = args.call_cmd
+        else:
+            cmd = list(cmds.keys())[0]
+
         call_trace = PerfCallData(cmd=cmd, samples=samples, m2r=mono_to_real_val)
         if args.call_depth:
             call_depths = [depth for depth in range(args.call_depth)]
