@@ -16,14 +16,14 @@ def parsing():
     # Traces repo
     parser.add_argument("--traces-repo", "-r", type=str, help="Report path")
 
-    # System metrics
+    # System metrics
     parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
     parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
     parser.add_argument("--mem", action="store_true", help="Visualize memory")
     parser.add_argument("--net", action="store_true", help="Visualize network")
     parser.add_argument("--io", action="store_true", help="Visualize io")
 
-    # Power profile
+    # Power profile
     parser.add_argument("--pow", action="store_true", help="Visualize power")
 
     # Callstack
@@ -40,6 +40,7 @@ def parsing():
     parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
 
     return parser.parse_args()
+
 
 def main():
     """
@@ -80,30 +81,37 @@ def main():
     wid, hei = 19.2, nsbp * 3 #10.8
     fig = plt.figure(figsize=(wid,hei))
 
+    # CPU plot
     if args.cpu:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_average()
 
+    # CPU per core plot
     if args.cpu_all:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_per_core(with_color_bar=True, fig=fig, nsbp=nsbp, sbp=sbp-1) #, with_legend=True)
 
+    # Memory plot
     if args.mem:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_memory_usage()
 
+    # Network plot
     if args.net:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_network()
 
+    # IO plot
     if args.io and sys_trace.with_io:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_io()
 
+    # Power plot
     if args.pow:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         power_trace.plot_events(xticks=_xticks, xlim=_xlim)
 
+    # Calltrace plot
     if args.call:
         plt.subplot(nsbp, 1, (sbp,sbp+1))
         call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
@@ -111,18 +119,20 @@ def main():
     plt.subplots_adjust(hspace=.5)
     plt.tight_layout()
 
+    # Enable interactive plot
     if args.interactive:
         plt.show()
 
+    # Figure saving parameters
     dpi = {"low": 200, "medium": 600, "high": 1200}
     figpath = f"{args.traces_repo}" if args.fig_path is None else args.fig_path
-
     for fmt in args.fig_fmt.split(","):
         figname = f"{figpath}/{args.fig_name}.{fmt}"
         fig.savefig(figname, format=fmt, dpi=dpi[args.fig_dpi])
         print(f"Figure saved: {figname}")
 
     return 0
+
 
 if __name__ == "__main__":
     main()

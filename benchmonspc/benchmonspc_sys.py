@@ -34,7 +34,7 @@ class DoolData():
         self.create_plt_params()
 
 
-    def read_csv_report(self):
+    def read_csv_report(self) -> int:
         """
         Parse the csv report
         """
@@ -56,8 +56,10 @@ class DoolData():
         print(f"Username: {host[-1]}")
         print(f"Commandline: {command[1]}")
 
+        return 0
 
-    def create_profile(self):
+
+    def create_profile(self) -> int:
         """
         Create profiling dictionary
         """
@@ -130,8 +132,10 @@ class DoolData():
         for key in self.prof_keys:
             self.prof[key] = np.array(self.prof[key])
 
+        return 0
 
-    def create_plt_params(self):
+
+    def create_plt_params(self) -> int:
         """
         Create plot parameters
         """
@@ -153,8 +157,10 @@ class DoolData():
         dx = (valf - val0) * self._plt_xlim_coef
         self._xlim = [val0 - dx, valf + dx]
 
+        return 0
 
-    def plot_cpu_average(self):
+
+    def plot_cpu_average(self) -> int:
         """
         Plot average cpu usage
         """
@@ -179,10 +185,20 @@ class DoolData():
         plt.grid()
         plt.legend(loc=1)
 
+        return 0
 
-    def plot_cpu_per_core(self, with_legend=False, with_color_bar=False, fig=None, nsbp=None, sbp=None):
+
+    def plot_cpu_per_core(self, with_legend: bool = False, with_color_bar: bool = False,
+                          fig=None, nsbp: int = None, sbp: int = None) -> int:
         """
         Plot cpu per core
+
+        Args:
+            with_legend (bool): Plot cores usage with legend
+            with_color_bar (bool): Plot cores usage with colobar (color gardient)
+            fig (obj): Figure object (matplotlib)
+            nsbp (int): Total number of subplots
+            sbp (int): Number of current subplots
         """
         alpha = 0.8
         cm = plt.cm.jet(np.linspace(0, 1, self.ncpu+1))
@@ -208,8 +224,10 @@ class DoolData():
             plt.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(vmin=1, vmax=self.ncpu), cmap=plt.cm.jet), \
                          ticks=np.linspace(1, self.ncpu, min(self.ncpu, 5), dtype="i"), cax=cax)
 
+        return 0
 
-    def plot_memory_usage(self):
+
+    def plot_memory_usage(self) -> int:
         """
         Plot memory usage
         """
@@ -236,8 +254,10 @@ class DoolData():
         plt.grid()
         plt.xlabel("Time (s)")
 
+        return 0
 
-    def plot_network(self):
+
+    def plot_network(self) -> int:
         """
         Plot network activity
         """
@@ -261,8 +281,10 @@ class DoolData():
         pltt.set_ylabel("Network (MB/s)")
         pltt.legend(loc=1)
 
+        return 0
 
-    def plot_io(self):
+
+    def plot_io(self) -> int:
         """
         Plot IO stats
         """
@@ -288,3 +310,5 @@ class DoolData():
             pltt.set_ylabel("IO (MB)")
             pltt.legend(loc=1)
             plt.grid()
+
+        return 0

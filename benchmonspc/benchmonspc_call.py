@@ -6,18 +6,36 @@ import matplotlib.pyplot as plt
 cmaps = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 10 # @hc
 
 class PerfCallRawData:
-    def __init__(self, filename):
+    """
+    Perf callsatck raw data
+    """
+    def __init__(self, filename: str):
+        """
+        Constructor of RawData
+
+        Args:
+            filename (str): Data filename
+        """
         self.filename = filename
 
-    def load_data(self):
+
+    def load_data(self) -> list:
+        """
+        Load raw data
+        """
         print("Load file...")
         t0 = time.time()
         with open(self.filename, "r") as file:
             content = file.readlines()
         print(f"...{round(time.time() - t0, 3)} s\n")
+
         return content
 
-    def read_blocks(self):
+
+    def read_blocks(self) -> list:
+        """
+        Read data blocks from raw data
+        """
         content = self.load_data()
         print("Read blocks...")
         t0 = time.time()
@@ -30,10 +48,14 @@ class PerfCallRawData:
                 continue
             _block_lines.append(line)
         print(f"...{round(time.time() - t0, 3)} s\n")
+
         return blocks
 
 
-    def create_samples(self):
+    def create_samples(self) -> list:
+        """
+        Create data samples
+        """
         blocks = self.read_blocks()
         print("Create samples...")
         t0 = time.time()
@@ -60,11 +82,14 @@ class PerfCallRawData:
             samples.append(sample)
         nsamples = len(samples)
         print(f"...{round(time.time() - t0, 3)} s\n")
+
         return samples
 
 
-    def cmds_list(self):
-        #%% List commands
+    def cmds_list(self) -> tuple:
+        """
+        Get samples and commands
+        """
         samples = self.create_samples()
         print("List commands...")
         t0 = time.time()
@@ -77,10 +102,23 @@ class PerfCallRawData:
                 cmds[cmd] = 1
         cmds = {ky: val for ky, val in sorted(cmds.items(), key = lambda item: -item[1])}
         print(f"...{round(time.time() - t0, 3)} s\n")
+
         return samples, cmds
 
+
 class PerfCallData():
-    def __init__(self, cmd: str, samples: str, m2r: float) -> None:
+    """
+    Per callstack data with cmd
+    """
+    def __init__(self, cmd: str, samples: list, m2r: float):
+        """
+        Constructor
+
+        Args:
+            cmd (str): Recorded command
+            samples (list): Samples of recorded command
+            m2r (int): Delta monotonic time to real
+        """
         self.cmd = cmd
         self.mono_to_real_time = m2r
         self._plt_legend_threshold = 0.01 # @pars
@@ -88,7 +126,14 @@ class PerfCallData():
 
         self._construct(samples)
 
-    def _construct(self, samples: list) -> None:
+
+    def _construct(self, samples: list) -> int:
+        """
+        Constrcut samples for command
+
+        Args:
+            samples (list): Samples
+        """
         self.samples = []
         pids = []
         tids = []
@@ -107,12 +152,21 @@ class PerfCallData():
                 tids += [sample["tid"]]
                 timestamps += [sample["timestamp"]]
 
-        # self.pids = {pid: rel_pid for rel_pid, pid in enumerate(set(pids))}
+        # self.pids = {pid: rel_pid for rel_pid, pid in enumerate(set(pids))} # @hc
         self.tids = {tid: rel_tid for rel_tid, tid in enumerate(set(tids))}
         self.nt = len(self.tids)
         self.nsamples = len(self.samples)
 
+        return 0
+
+
     def _depth_data(self, depth: int) -> dict:
+        """
+        Get callstack data from given depth
+
+        Args:
+            depth (int): Depth value
+        """
         print("\tCount calls...")
         t0 = time.time()
         calls = {}
@@ -124,12 +178,20 @@ class PerfCallData():
                 except KeyError:
                     calls[name] = 1
         print(f"\t...{round(time.time() - t0, 3)} s\n")
+
         return calls
 
 
-    def plot(self, depths: list, xticks: list = [], xlim: list = [], legend_ncol: int = 8) -> None:
-        # # fig = plt.figure(figsize=(20, len(depths) * 2))
-        # fig = plt.figure(figsize=(19.2, len(depths) * 2))
+    def plot(self, depths: list, xticks: list = [], xlim: list = [], legend_ncol: int = 8) -> int:
+        """
+        Plot callstack
+
+        Args:
+            depths (list): List of given depths
+            xticks (list): x-axis ticks
+            xlim (list): x-axis limits
+            legend_ncol (int): Number of columns for call legend
+        """
         for depth in depths:
             print(f"Plot {depth} of {depths}...")
             t0 = time.time()
@@ -157,6 +219,7 @@ class PerfCallData():
         plt.ylim([min(depths) - 1/4 - 1/8 * len(depths), max(depths) + 1 + 1/4 * len(depths)])
         yvals = []
         ylabels = []
+
         # Threads ticks
         for depth in depths:
             for tid in range(self.nt):
@@ -169,7 +232,6 @@ class PerfCallData():
         plt.yticks(yvals, ylabels)
         plt.xlabel("Time (s)")
 
-        # @db
         # X axis options
         if xticks:
             plt.xticks(xticks[0], xticks[1])
@@ -188,3 +250,4 @@ class PerfCallData():
         # plt.tight_layout()
         # plt.title(self.cmd)
 
+        return 0

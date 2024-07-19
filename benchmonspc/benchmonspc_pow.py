@@ -6,7 +6,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class PerfPowerData:
-    def __init__(self, csv_filename: str) -> None:
+    """
+    Perf power database
+    """
+    def __init__(self, csv_filename: str):
+        """
+        Constructor
+
+        Args:
+            csv_filename (str): csv filename
+        """
         self.csv_filename = csv_filename
         self.csv_list = []
 
@@ -21,16 +30,22 @@ class PerfPowerData:
         self.create_plt_params()
 
 
-    def read_csv_list(self) -> None:
-        # Read the csv list
+    def read_csv_list(self) -> int:
+        """
+        Read csv list
+        """
         with open(self.csv_filename, newline="", encoding='utf-8') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
             next(reader)
             for row in reader:
                 self.csv_list.append(row)
+        return 0
 
 
-    def create_profile(self) -> None:
+    def create_profile(self) -> int:
+        """
+        Create power profiles
+        """
         EVENT_INDEX = 4
         self.events = list(set([item[EVENT_INDEX] for item in self.csv_list[1:]]))
         nevents = len(self.events)
@@ -65,8 +80,13 @@ class PerfPowerData:
             for event in self.events:
                 self.prof[cpu][event] = np.array(self.prof[cpu][event])
 
+        return 0
 
-    def create_plt_params(self):
+
+    def create_plt_params(self) -> int:
+        """
+        Create plot parameters
+        """
         header_date = os.popen(f"head -n 1 {self.csv_filename}").read()[13:-1]
         header_date_obj = datetime.strptime(header_date, "%a %b %d %H:%M:%S %Y")
         epoch0 = float(header_date_obj.strftime("%s"))
@@ -76,22 +96,14 @@ class PerfPowerData:
             self._stamps[i] = epoch0 + self.prof["time"][i]
 
         self._plt_xrange = 5
-        # xstride = self.nstamps // self._plt_xrange
 
-        # val0 = self._stamps[0]
-        # vallst = self._stamps[xstride: self.nstamps-xstride+1: xstride]
-        # valf = self._stamps[-1]
-        # xticks_val = [val0] + vallst.tolist() + [valf]
-
-        # t0 = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self._stamps[0]))
-        # tlst = np.round(self._stamps[xstride: self.nstamps-xstride+1: xstride] - self._stamps[0], 2)
-        # tf = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self._stamps[-1]))
-        # xticks_label = [t0] + tlst.tolist() + [tf]
-
-        # self._xticks = (xticks_val, xticks_label)
+        return 0
 
 
-    def plot_events_per_cpu(self):
+    def plot_events_per_cpu(self) -> int:
+        """
+        Plot power events per cpu
+        """
         for event in self.events:
             for cpu in self.cpus:
                 plt.plot(self._stamps, self.prof[cpu][event], label=f"{cpu}/{self.events_table[event]}")
@@ -101,7 +113,17 @@ class PerfPowerData:
         plt.legend(loc=1)
         plt.grid()
 
-    def plot_events(self, xticks: list = [], xlim: list = []):
+        return 0
+
+
+    def plot_events(self, xticks: list = [], xlim: list = []) -> int:
+        """
+        Plots total power events
+
+        Args:
+            xticks (list): x-axis ticks of current plot
+            xlim (list): x-axis limit of current plot
+        """
         pow_total = {event: 0 for event in self.events}
         for cpu in self.cpus:
             for event in self.events:
@@ -136,3 +158,5 @@ class PerfPowerData:
         plt.ylabel("Power (W)")
         plt.legend(loc=1)
         plt.grid()
+
+        return 0
