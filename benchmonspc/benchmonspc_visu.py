@@ -48,8 +48,12 @@ def main():
     args = parsing()
 
     # Load dool data
+    _xticks = []
+    _xlim = []
     if args.cpu or args.cpu_all or args.mem or args.net or args.io:
         sys_trace = DoolData(csv_filename=f"{args.traces_repo}/sys_report.csv")
+        _xticks = sys_trace._xticks
+        _xlim = sys_trace._xlim
     n_sys = args.cpu + args.cpu_all + args.mem + args.net + (args.io and sys_trace.with_io)
 
     # Load power data
@@ -98,11 +102,11 @@ def main():
 
     if args.pow:
         plt.subplot(nsbp, 1, sbp); sbp += 1
-        power_trace.plot_events(xticks=sys_trace._xticks, xlim=sys_trace._xlim)
+        power_trace.plot_events(xticks=_xticks, xlim=_xlim)
 
     if args.call:
         plt.subplot(nsbp, 1, (sbp,sbp+1))
-        call_trace.plot(call_depths, xticks=sys_trace._xticks, xlim=sys_trace._xlim, legend_ncol=args.fig_call_legend_ncol)
+        call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
 
     plt.subplots_adjust(hspace=.5)
     plt.tight_layout()

@@ -127,7 +127,7 @@ class PerfCallData():
         return calls
 
 
-    def plot(self, depths: list, xticks: list, xlim: list, legend_ncol: int = 8) -> None:
+    def plot(self, depths: list, xticks: list = [], xlim: list = [], legend_ncol: int = 8) -> None:
         # # fig = plt.figure(figsize=(20, len(depths) * 2))
         # fig = plt.figure(figsize=(19.2, len(depths) * 2))
         for depth in depths:
@@ -171,16 +171,20 @@ class PerfCallData():
 
         # @db
         # X axis options
-        plt.xticks(xticks[0], xticks[1])
-        plt.xlim(xlim)
+        if xticks:
+            plt.xticks(xticks[0], xticks[1])
+
+        if xlim:
+            plt.xlim(xlim)
 
         # Legend
         handles, labels = plt.gca().get_legend_handles_labels()
         by_label = dict(zip(labels, handles))
         plt.legend(by_label.values(), by_label.keys(), loc="upper center", ncol=legend_ncol, fontsize="6")
-        plt.tight_layout()
+        # plt.tight_layout()
 
         # Global plot
         plt.grid()
-        plt.tight_layout()
+        # plt.tight_layout()
         # plt.title(self.cmd)
+

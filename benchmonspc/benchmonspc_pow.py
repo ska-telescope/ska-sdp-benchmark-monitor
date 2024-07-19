@@ -101,7 +101,7 @@ class PerfPowerData:
         plt.legend(loc=1)
         plt.grid()
 
-    def plot_events(self, xticks, xlim):
+    def plot_events(self, xticks: list = [], xlim: list = []):
         pow_total = {event: 0 for event in self.events}
         for cpu in self.cpus:
             for event in self.events:
@@ -127,8 +127,12 @@ class PerfPowerData:
             plt.plot(self._stamps, pow_total[event], label=self.events_table[event], color="b")
 
         plt.xlabel("Time (s)")
-        plt.xticks(xticks[0], xticks[1])
-        plt.xlim(xlim)
+
+        if xticks:
+            plt.xticks(xticks[0], xticks[1])
+        if xlim:
+            plt.xlim(xlim)
+
         plt.ylabel("Power (W)")
         plt.legend(loc=1)
         plt.grid()

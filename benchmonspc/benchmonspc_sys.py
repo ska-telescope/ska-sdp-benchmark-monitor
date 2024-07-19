@@ -26,7 +26,7 @@ class DoolData():
         self._xticks = ()
         self._xlim = []
 
-        self._plt_xrange = 30
+        self._plt_xrange = 20
         self._plt_xlim_coef = 0.025
 
         self.read_csv_report()
@@ -137,8 +137,7 @@ class DoolData():
         """
         self._stamps = self.prof["time"].astype(np.float64)
         nstamps = len(self._stamps)
-
-        xstride = max(self._plt_xrange, nstamps // self._plt_xrange)
+        xstride = max(1, nstamps // self._plt_xrange)
         val0 = self._stamps[0]
         vallst = self._stamps[xstride: nstamps-xstride+1: xstride]
         valf = self._stamps[-1]
@@ -147,7 +146,7 @@ class DoolData():
         t0 = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self._stamps[0]))
         tlst = np.round(self._stamps[xstride: nstamps-xstride+1: xstride] - self._stamps[0], 2)
         tf = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self._stamps[-1]))
-        xticks_label = [t0] + tlst.tolist() + [tf]
+        xticks_label = [t0] + tlst.astype("int").tolist() + [tf]
 
         self._xticks = (xticks_val, xticks_label)
 
@@ -199,7 +198,7 @@ class DoolData():
         plt.xlim(self._xlim)
         plt.ylabel(f" CPU Cores (x{self.ncpu}) (%)")
         plt.grid()
-        plt.xlabel("Timestamp")
+        plt.xlabel("Time (s)")
 
         if with_legend:
             plt.legend(loc=1, ncol=3)
