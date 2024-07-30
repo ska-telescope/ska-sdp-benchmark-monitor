@@ -41,10 +41,10 @@ This mode allows background monitoring of resource usage and recording of energy
 # Benchmonpsc repository
 BENCHMONSPC=$HOME/ska-sdp-benchmark-monitor/benchmonspc
 
-# Target application
+# Target application
 APP=$HOME/NPB3.4-OMP/bin/ft.B.x
 
-# Traces repository
+# Traces repository
 TRACES_REPO=./demo_mon
 
 # Run benchmonspc (this will only record system usage) (to record power consumption, add --pow)
@@ -56,9 +56,9 @@ exec $APP
 sleep 5
 
 # Kill benchmonspc
-../benchmonspc_kill.sh
+$BENCHMONSPC_BIN/benchmonspc_kill.sh
 ```
-This collects system resource usage while `ft.B.x` is running. The traces repository is located in `./demo_mon/$HOSTNAME`.
+This collects system resource usage while `ft.B.x` is running. The traces are located in `./demo_mon`.
 ## Call tracing mode
 To activate the execution call tracing mode:
 - Add the `--call` flag to `benchmonspc.sh`.
@@ -75,16 +75,16 @@ This generates new traces that can be visualized using the `benchmonspc_visu` de
 # Benchmonpsc repository
 BENCHMONSPC=$HOME/ska-sdp-benchmark-monitor/benchmonspc
 
-# Target application
+# Target application
 APP=$HOME/NPB3.4-OMP/bin/ft.B.x
 
-# Traces repository
+# Traces repository
 TRACES_REPO=./demo_call
 
 # Run benchmonspc
-../benchmonspc.sh --call --traces-repo $TRACES_REPO $APP
+$BENCHMONSPC_BIN/benchmonspc.sh --call --traces-repo $TRACES_REPO $APP
 ```
-This collects the callstack of `ft.B.x`.  The traces repository is located in `./demo_call/$HOSTNAME`.
+This collects the callstack of `ft.B.x`.  The traces are located in `./demo_call`.
 ## Visualization
 The visualization tool `benchmonspc_visu.py` allows for partial or complete display of monitoring and/or call tracing data. This tool accepts flags for the trace directory and information related to the desired metrics. Here is the list of flags and options:
 - `--traces-repo`: Set traces repository.
@@ -106,23 +106,21 @@ The visualization tool `benchmonspc_visu.py` allows for partial or complete disp
 - `--fig-call-legend-ncol` Set the number of columns of call traces legend (default: `8`).
 #### Visualization example of _DemoMon_
 ```bash
-SUB_TRACES_REPO=$TRACES_REPO/$(hostname | cut -d "." -f 1)
-$BENCHMONSPC/benchmonspc_visu.py --cpu --cpu-all --mem --io --net --fig-fmt svg,png --traces-repo $SSUB_TRACES_REPO
+$BENCHMONSPC/benchmonspc_visu.py --cpu --cpu-all --mem --io --net --fig-fmt svg,png --traces-repo $TRACES_REPO
 ```
 #### Visualization example of _DemoCall_
 ```bash
-SUB_TRACES_REPO=$TRACES_REPO/$(hostname | cut -d "." -f 1)
-$BENCHMONSPC/$benchmonspc_visu.py --call --call-depth 3 --fig-fmt svg,png --traces-repo $SUB_TRACES_REPO
+$BENCHMONSPC/$benchmonspc_visu.py --call --call-depth 3 --fig-fmt svg,png --traces-repo $TRACES_REP
 ```
 ## More Complete example
 ```bash
 # Benchmonpsc repository
 BENCHMONSPC=$HOME/ska-sdp-benchmark-monitor/benchmonspc
 
-# Target application
+# Target application
 APP=$HOME/NPB3.4-OMP/bin/ft.B.x
 
-# Traces repository
+# Traces repository
 TRACES_REPO=./demo_call
 
 # Run benchmonspc
@@ -132,10 +130,9 @@ $BENCHMONSPC/$benchmonspc.sh --traces-repo $TRACES_REPO \
 	$APP
 
 # Visualization
-SUB_TRACES_REPO=$TRACES_REPO/$(hostname | cut -d "." -f 1)
 $BENCHMONSPC/$benchmonspc_visu.py \
 	--cpu --cpu-all --mem --io --net --pow \
 	--call --call-depth 4 \
 	--fig-fmt svg,png --fig-name myfig --fig-dpi high \
-	--traces-repo $SUB_TRACES_REPO
+	--traces-repo $TRACES_REPO
 ```

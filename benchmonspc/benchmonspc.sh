@@ -16,7 +16,7 @@
 # echo '$#=' "$#"
 # echo '$*=' "$*"
 # echo '$1' "$1"
-_HOSTNAME=$(hostname | cut -d '.' -f 1)
+HOSTNAME=$(hostname | cut -d '.' -f 1)
 trace_repo=./benchmonspc_traces_${OAR_JOB_ID}${SLURM_JOB_ID} #_$(date "+%s")
 
 # Init system tracing
@@ -40,6 +40,9 @@ call_freq=10
 
 # Init wait seconds
 wait_seconds=0
+
+# Multinode
+is_multi_node=0
 
 # Application
 app=""
@@ -155,6 +158,10 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        -mn|--multi-node)
+            is_multi_node=1
+            shift
+            ;;
         *)
             app=$@
             break
@@ -163,7 +170,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Reports
-trace_repo=$trace_repo/${_HOSTNAME}
+if [[ $is_multi_node = 1 ]]
+then
+    trace_repo=$trace_repo/${HOSTNAME}
+fi
 mkdir -p ${trace_repo}
 trace_repo=$(realpath ${trace_repo})
 sys_report=${trace_repo}/sys_report.csv
@@ -251,12 +261,12 @@ if [[ -z $app ]]
 then
     if [[ $is_sys = 1 ]]
     then
-        echo $_SYS_PID >> ./.benchmonspc_sys_pid_${_HOSTNAME}
+        echo $_SYS_PID >> ./.benchmonspc_sys_pid_${HOSTNAME}
     fi
 
     if [[ $is_pow = 1 ]]
     then
-        echo $_POW_PID >> ./.benchmonspc_pow_pid_${_HOSTNAME}
+        echo $_POW_PID >> ./.benchmonspc_pow_pid_${HOSTNAME}
     fi
 else
     echo "BENCHMARK MONITOR (sys+pow+call) -----------------"
