@@ -4,6 +4,7 @@ import csv
 import time
 import numpy as np
 import matplotlib.pyplot as plt
+from math import ceil
 
 class DoolData():
     """
@@ -192,6 +193,47 @@ class DoolData():
                           fig=None, nsbp: int = None, sbp: int = None) -> int:
         """
         Plot cpu per core
+
+        Args:
+            with_legend (bool): Plot cores usage with legend
+            with_color_bar (bool): Plot cores usage with colobar (color gardient)
+            fig (obj): Figure object (matplotlib)
+            nsbp (int): Total number of subplots
+            sbp (int): Number of current subplots
+        """
+        alpha = 0.8
+        cm = plt.cm.jet(np.linspace(0, 1, self.ncpu+1))
+        cpu_n = 0
+        for cpu in range(self.ncpu):
+            if cpu > 0:
+                cpu_n = cpu_nn
+            cpu_nn = self.prof[f"cpu-{cpu}"] / self.ncpu + cpu_n
+            # plt.fill_between(self._stamps, cpu_n, cpu_nn, color=cm[cpu], alpha=alpha, label=f"cpu-{cpu}")
+            plt.plot(self._stamps, self.prof[f"cpu-{cpu}"], color=cm[cpu], label=f"cpu-{cpu}")
+        plt.xticks(self._xticks[0], self._xticks[1])
+        _yrange = 10
+        plt.yticks(100 * 1/_yrange * np.arange(_yrange + 1))
+        plt.xlim(self._xlim)
+        plt.ylabel(f" CPU Cores (x{self.ncpu}) (%)")
+        plt.grid()
+        plt.xlabel("Time (s)")
+
+        if with_legend:
+
+            plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/24) , fontsize="6")
+
+        if with_color_bar:
+            cax = fig.add_axes([0.955, 1 - (sbp-.2)/nsbp, fig.get_figwidth()/1e4, .7/nsbp]) # [left, bottom, width, height]
+            plt.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(vmin=1, vmax=self.ncpu), cmap=plt.cm.jet), \
+                         ticks=np.linspace(1, self.ncpu, min(self.ncpu, 5), dtype="i"), cax=cax)
+
+        return 0
+
+
+    def plot_cpu_per_core_acc(self, with_legend: bool = False, with_color_bar: bool = False,
+                          fig=None, nsbp: int = None, sbp: int = None) -> int:
+        """
+        Plot cpu per core in an accumulated way
 
         Args:
             with_legend (bool): Plot cores usage with legend

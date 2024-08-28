@@ -19,9 +19,11 @@ def parsing():
     # System metrics
     parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
     parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
+    parser.add_argument("--cpu-all-acc", action="store_true", help="Visualize all CPU cores accumulated")
     parser.add_argument("--mem", action="store_true", help="Visualize memory")
     parser.add_argument("--net", action="store_true", help="Visualize network")
     parser.add_argument("--io", action="store_true", help="Visualize io")
+    parser.add_argument("--sys", action="store_true", help="Visualize all system data")
 
     # Power profile
     parser.add_argument("--pow", action="store_true", help="Visualize power")
@@ -50,13 +52,21 @@ def main():
     args = parsing()
 
     # Load dool data
+    is_sys = args.sys
+    is_cpu = args.cpu or is_sys
+    is_cpu_all = args.cpu_all or is_sys
+    is_cpu_all_acc = args.cpu_all_acc
+    is_mem = args.mem or is_sys
+    is_net = args.net or is_sys
+    is_io = args.io or is_sys
+
     _xticks = []
     _xlim = []
-    if args.cpu or args.cpu_all or args.mem or args.net or args.io:
+    if is_cpu or is_cpu_all or is_cpu_all_acc or is_mem or is_net or is_io:
         sys_trace = DoolData(csv_filename=f"{args.traces_repo}/sys_report.csv")
         _xticks = sys_trace._xticks
         _xlim = sys_trace._xlim
-    n_sys = args.cpu + args.cpu_all + args.mem + args.net + (args.io and sys_trace.with_io)
+    n_sys = is_cpu + is_cpu_all + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
 
     # Load power data
     if args.pow:
@@ -88,27 +98,32 @@ def main():
     fig = plt.figure(figsize=(wid,hei))
 
     # CPU plot
-    if args.cpu:
+    if is_cpu:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_average()
 
     # CPU per core plot
-    if args.cpu_all:
+    if is_cpu_all:
         plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_per_core(with_color_bar=True, fig=fig, nsbp=nsbp, sbp=sbp-1) #, with_legend=True)
+        sys_trace.plot_cpu_per_core(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1)
+
+    # CPU per core (accumulated) plot
+    if is_cpu_all_acc:
+        plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_cpu_per_core_acc(with_color_bar=True, with_legend=False, fig=fig, nsbp=nsbp, sbp=sbp-1)
 
     # Memory plot
-    if args.mem:
+    if is_mem:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_memory_usage()
 
     # Network plot
-    if args.net:
+    if is_net:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_network()
 
     # IO plot
-    if args.io and sys_trace.with_io:
+    if is_io and sys_trace.with_io:
         plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_io()
 
