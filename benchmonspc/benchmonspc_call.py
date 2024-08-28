@@ -4,6 +4,7 @@ import time
 import matplotlib.pyplot as plt
 
 CMAPS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 10 # @hc
+MARKERS = ["|", "s", ".", ">", "+", ",", "x", "*", "v", "^", "o", "<"] * 10 # @hc
 DEBUG = False
 
 class PerfCallRawData:
@@ -200,7 +201,7 @@ class PerfCallData():
         return calls
 
 
-    def plot(self, depths: list, xticks: list = [], xlim: list = [], legend_ncol: int = 8) -> int:
+    def plot(self, depths: list, xticks: list = [], xlim: list = [], legend_ncol: int = 4) -> int:
         """
         Plot callstack
 
@@ -240,7 +241,7 @@ class PerfCallData():
                     call_line[call]["stamps"],
                     call_line[call]["sample_vals"],
                     linestyle = "",
-                    marker = "|",
+                    marker = MARKERS[depth],
                     color = call_line[call]["color"]
                     )
                 if calls[call] / self.nsamples > self._plt_legend_threshold:
