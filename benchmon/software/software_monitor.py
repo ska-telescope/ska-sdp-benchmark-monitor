@@ -5,7 +5,7 @@ import os
 from .gatherers import spack
 from ..common.utils import execute_cmd
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class SoftwareMonitor:
     def __init__(self, args):
@@ -16,14 +16,21 @@ class SoftwareMonitor:
         os.makedirs(self.save_path, exist_ok=True)
 
     def run(self):
+        logger.info("Starting Software Monitor")
         hostname = execute_cmd('hostname')
 
-        # get spack dependencies
-        spack_dependencies = spack.SpackReader().read()
+        data = {}
 
-        if spack_dependencies is None:
-            log.warning("Spack is not available. Skipping gathering of spack dependency tree")
+        # get spack dependencies
+        logger.info("Loading Spack Dependencies")
+        data["spack_dependencies"] = spack.SpackReader().read()
+
+        if data["spack_dependencies"] is None:
+            logger.warning("Spack is not available. Skipping gathering of spack dependency tree")
 
         # Dump to json
-        json.dump(spack_dependencies, open(f"{self.save_path}/swmon-{hostname}.json", "w"))
+        logger.info("Save Data to file")
+        json.dump(data, open(f"{self.save_path}/swmon-{hostname}.json", "w"))
+
+        logger.info("Exiting...")
 

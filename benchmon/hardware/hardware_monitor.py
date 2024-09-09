@@ -22,12 +22,14 @@ class HardwareMonitor:
         data = {}
 
         # CPU
+        logger.info("Gatherinc CPU Data")
         data['cpu'] = cpu.CpuReader().read()
 
         # Memory
+        logger.info("Gathering Memory Data")
         data['memory'] = memory.MemoryReader().read()
 
-        print(data)
+        #print(data)
         # Disk
 
         # Network
@@ -45,6 +47,8 @@ class HardwareMonitor:
         # Physical stuff
 
         # Serialize to json
+        logger.info("Save Data to file")
         json.dump(data, open(f"{self.save_dir}/{f'{self.prefix}-' if self.prefix is not None else ''}hwmon-{hostname}.json", "w"))
 
+        logger.info("Exiting...")
         return
