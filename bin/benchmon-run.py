@@ -38,13 +38,17 @@ def parse_args():
     )
 
     parser.add_argument(
-        '-p',
-        '--prefix',
-        default=None,
+        '-n',
+        '--filename',
+        default="dool-%j-%n",
         nargs='?',
         help='''
                 Name of the directory to be created to save metric data. If provided, 
-                metrics will be located at $SAVE_DIR/$PREFIX.
+                metrics will be located at $SAVE_DIR/$FILENAME.csv.
+                Supported variables are:
+                  %j - Slurm Job ID
+                  %n - Host Name
+                Default value is "dool-%j-%n".
             ''',
     )
 
@@ -57,20 +61,18 @@ def parse_args():
     )
 
     parser.add_argument(
-        '-c',
-        '--checkpoint',
-        nargs='?',
-        type=int,
-        default=900,
-        help="Checking point time interval. Default value is 900 seconds",
-    )
-
-    parser.add_argument(
         '-v',
         '--verbose',
         action='store_true',
         default=False,
         help="Enable verbose mode. Display debug messages",
+    )
+
+    parser.add_argument(
+        '--dool',
+        action='store_true',
+        default="",
+        help="Path to the dool executable. If unset, a dool executable is searched in the PATH"
     )
 
     return parser.parse_args()
