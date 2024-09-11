@@ -22,7 +22,7 @@ class HardwareMonitor:
         data = {}
 
         # CPU
-        logger.info("Gatherinc CPU Data")
+        logger.info("Gathering CPU Data")
         data['cpu'] = cpu.CpuReader().read()
 
         # Memory
