@@ -1,6 +1,7 @@
 import subprocess
 import logging
 import re
+from typing import Type
 
 from benchmon.exceptions import CommandExecutionFailed
 
@@ -81,3 +82,11 @@ def get_parser(cmd_output, reg="lscpu"):
             return None
 
     return parser
+
+
+def safe_parse(t: Type, data: str) -> str:
+    try:
+        return t(data)
+    except Exception:
+        log.info(f"Could not parse \"{data}\" to type \"{t}\". Setting value to N/A")
+        return "N/A"

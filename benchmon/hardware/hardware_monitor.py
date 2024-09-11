@@ -2,7 +2,7 @@ import json
 import logging
 import sys
 
-from .gatherers import cpu, memory
+from .gatherers import cpu, memory, mounts, interface, accelerator, system, topology, pci
 from ..common.utils import execute_cmd
 
 logger = logging.getLogger(__name__)
@@ -29,22 +29,26 @@ class HardwareMonitor:
         logger.info("Gathering Memory Data")
         data['memory'] = memory.MemoryReader().read()
 
-        #print(data)
         # Disk
+        logger.info("Gathering Disk Data")
+        data['mounts'] = mounts.MountpointsReader().read()
 
         # Network
-
-        # Interconnect
+        logger.info("Gathering Network Interfaces")
+        data['interfaces'] = interface.InterfacesReader().read()
 
         # Accelerator
+        logger.info("Gathering Accelerator Data")
+        data['accelerators'] = accelerator.AcceleratorReader().read()
 
-        # Mainboard
+        # Topology & PCI Data raw
+        logger.info("Gathering Topology Data")
+        data['topology_raw'] = topology.TopologyReader().read()
+        data['pci_raw'] = pci.PciReader().read()
 
-        # OS
-
-        # PSU
-
-        # Physical stuff
+        # System
+        logger.info("Gathering OS Data")
+        data['system'] = system.SystemReader().read()
 
         # Serialize to json
         logger.info("Save Data to file")
