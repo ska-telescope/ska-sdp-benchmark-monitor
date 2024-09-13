@@ -95,46 +95,49 @@ def main():
     nsbp = n_sys + args.pow + args.call * (2 if len(call_depths) > 2 else 1)
     sbp = 1
     wid, hei = 19.2, nsbp * 3 #10.8
-    fig = plt.figure(figsize=(wid,hei))
+    # fig = plt.figure(figsize=(wid,hei))
+
+    fig, axs = plt.subplots(nsbp, sharex=True)
+    fig.set_size_inches(wid, hei)
 
     # CPU plot
     if is_cpu:
-        plt.subplot(nsbp, 1, sbp); sbp += 1
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_average()
 
     # CPU per core plot
     if is_cpu_all:
-        plt.subplot(nsbp, 1, sbp); sbp += 1
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_per_core(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1)
 
     # CPU per core (accumulated) plot
     if is_cpu_all_acc:
-        plt.subplot(nsbp, 1, sbp); sbp += 1
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_per_core_acc(with_color_bar=True, with_legend=False, fig=fig, nsbp=nsbp, sbp=sbp-1)
 
     # Memory plot
     if is_mem:
-        plt.subplot(nsbp, 1, sbp); sbp += 1
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_memory_usage()
 
     # Network plot
     if is_net:
-        plt.subplot(nsbp, 1, sbp); sbp += 1
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_network()
 
     # IO plot
     if is_io and sys_trace.with_io:
-        plt.subplot(nsbp, 1, sbp); sbp += 1
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_io()
 
     # Power plot
     if args.pow:
-        plt.subplot(nsbp, 1, sbp); sbp += 1
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         power_trace.plot_events(xticks=_xticks, xlim=_xlim)
 
     # Calltrace plot
     if args.call:
-        plt.subplot(nsbp, 1, (sbp,sbp+1))
+        plt.subplot(nsbp, 1, (sbp,sbp+1), sharex=ax)
         call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
 
     plt.subplots_adjust(hspace=.5)
