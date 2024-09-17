@@ -2,7 +2,7 @@ import json
 import logging
 import os
 
-from .gatherers import spack
+from .gatherers import spack, pyenv, environment, modules
 from ..common.utils import execute_cmd
 
 logger = logging.getLogger(__name__)
@@ -21,16 +21,25 @@ class SoftwareMonitor:
 
         data = {}
 
+        # get env variables
+        logger.info("Reading Environment Variables")
+        data["env"] = environment.EnvGatherer().read()
+
         # get spack dependencies
-        logger.info("Loading Spack Dependencies")
+        logger.info("Reading Spack Dependencies")
         data["spack_dependencies"] = spack.SpackReader().read()
 
-        if data["spack_dependencies"] is None:
-            logger.warning("Spack is not available. Skipping gathering of spack dependency tree")
+        # Get python environment
+        logger.info("Reading Python Environment")
+        data['pyenv'] = pyenv.PythonEnv().read()
+
+        # Get Loaded Modules
+        logger.info("Reading Loaded Modules")
+        data['modules'] = modules.ModuleReader().read()
 
         # Dump to json
         logger.info("Save Data to file")
         json.dump(data, open(f"{self.save_path}/swmon-{hostname}.json", "w"))
 
         logger.info("Exiting...")
-
+        return
