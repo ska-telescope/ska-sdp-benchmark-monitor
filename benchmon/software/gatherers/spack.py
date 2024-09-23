@@ -8,7 +8,10 @@ log = logging.getLogger(__name__)
 class SpackReader:
 
     def read(self):
-        return self.get_spack_dependency_tree()
+        data = self.get_spack_dependency_tree()
+        if data is None:
+            log.warning("Spack is not available. Skipping gathering of spack dependency tree")
+        return data
 
     def get_spack_dependency_tree(self):
         """
