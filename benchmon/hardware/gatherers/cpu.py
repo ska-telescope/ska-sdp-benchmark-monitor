@@ -1,4 +1,4 @@
-from benchmon.common.utils import execute_cmd, get_parser
+from benchmon.common.utils import execute_cmd, get_parser, safe_parse
 import logging
 import re
 log = logging.getLogger(__name__)
@@ -23,21 +23,21 @@ class CpuReader:
             'Architecture': parse_lscpu('Architecture'),
             'CPU_Model': parse_lscpu('Model name'),
             'CPU_Family': parse_lscpu('CPU family'),
-            'CPU_num': int(parse_lscpu(r'CPU\(s\)')),
+            'CPU_num': safe_parse(int, parse_lscpu(r'CPU\(s\)')),
             'Online_CPUs_list': parse_lscpu(r'On-line CPU\(s\) list'),
-            'Threads_per_core': int(parse_lscpu(r'Thread\(s\) per core')),
-            'Cores_per_socket': int(parse_lscpu(r'Core\(s\) per socket')),
-            'Sockets': int(parse_lscpu(r'Socket\(s\)')),
+            'Threads_per_core': safe_parse(int, parse_lscpu(r'Thread\(s\) per core')),
+            'Cores_per_socket': safe_parse(int, parse_lscpu(r'Core\(s\) per socket')),
+            'Sockets': safe_parse(int, parse_lscpu(r'Socket\(s\)')),
             'Vendor_ID': parse_lscpu('Vendor ID'),
-            'Stepping': int(parse_lscpu('Stepping')),
-            'CPU_Max_Speed_MHz': float(parse_lscpu('CPU max MHz')),
-            'CPU_Min_Speed_MHz': float(parse_lscpu('CPU min MHz')),
-            'BogoMIPS': float(parse_lscpu('BogoMIPS')),
+            'Stepping': safe_parse(int, parse_lscpu('Stepping')),
+            'CPU_Max_Speed_MHz': safe_parse(float, parse_lscpu('CPU max MHz')),
+            'CPU_Min_Speed_MHz': safe_parse(float, parse_lscpu('CPU min MHz')),
+            'BogoMIPS': safe_parse(float, parse_lscpu('BogoMIPS')),
             'L1d_cache': parse_lscpu('L1d cache'),
             'L1i_cache': parse_lscpu('L1i cache'),
             'L2_cache': parse_lscpu('L2 cache'),
             'L3_cache': parse_lscpu('L3 cache'),
-            'NUMA_nodes': int(parse_lscpu(r'NUMA node\(s\)')),
+            'NUMA_nodes': safe_parse(int, parse_lscpu(r'NUMA node\(s\)')),
         }
 
         # Populate NUMA nodes
@@ -59,7 +59,7 @@ class CpuReader:
                 'Microcode': execute_cmd(
                     'grep microcode /proc/cpuinfo | uniq | awk ' '\'NR==1{print $3}\''
                 ),
-                'SMT_Enabled?': bool(execute_cmd('cat /sys/devices/system/cpu/smt/active')),
+                'SMT_Enabled?': safe_parse(bool, execute_cmd('cat /sys/devices/system/cpu/smt/active')),
             }
         )
 
