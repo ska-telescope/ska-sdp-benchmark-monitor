@@ -172,10 +172,10 @@ class DoolData():
         cpu_wai = self.prof["cpu-wai"]
         cpu_stl = self.prof["cpu-stl"]
         plt.fill_between(self._stamps, 0, 100, color="C7", alpha=alpha/3, label="idle")
-        plt.fill_between(self._stamps, 0, cpu_usr, color="C0", alpha=alpha, label="usr")
-        plt.fill_between(self._stamps, cpu_usr, cpu_usr+cpu_sys, color="C4", alpha=alpha, label="sys")
-        plt.fill_between(self._stamps, cpu_usr+cpu_sys, cpu_usr+cpu_sys+cpu_wai, color="C8", alpha=alpha, label="wait")
-        plt.fill_between(self._stamps, cpu_usr+cpu_sys+cpu_wai, cpu_usr+cpu_sys+cpu_wai+cpu_stl, color="C5", alpha=alpha, label="stl")
+        plt.fill_between(self._stamps, 0, cpu_stl, color="C5", alpha=alpha, label="stl")
+        plt.fill_between(self._stamps, cpu_stl, cpu_stl+cpu_wai, color="C8", alpha=alpha, label="wait")
+        plt.fill_between(self._stamps, cpu_stl+cpu_wai, cpu_stl+cpu_wai+cpu_sys, color="C4", alpha=alpha, label="sys")
+        plt.fill_between(self._stamps, cpu_stl+cpu_wai+cpu_sys, cpu_stl+cpu_wai+cpu_sys+cpu_usr, color="C0", alpha=alpha, label="usr")
 
         plt.xticks(self._xticks[0], self._xticks[1])
         plt.xlim(self._xlim)
@@ -184,7 +184,11 @@ class DoolData():
         plt.ylabel("CPU usage (%)")
         plt.xlabel("Time (s)")
         plt.grid()
-        plt.legend(loc=1)
+
+        # Order legend
+        _order = [0, 4, 3, 2, 1]
+        _handles, _labels = plt.gca().get_legend_handles_labels()
+        plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
 
         return 0
 
