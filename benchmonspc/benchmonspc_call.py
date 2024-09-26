@@ -267,7 +267,6 @@ class PerfCallData():
             yvals = [depth for depth in depths]
 
         plt.yticks(yvals, ylabels)
-        plt.xlabel("Time (s)")
 
         # X axis options
         if xticks:

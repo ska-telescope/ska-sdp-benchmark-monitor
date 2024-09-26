@@ -194,7 +194,12 @@ if [[ $is_sys = 1 ]]
 then
     mkdir -p $(dirname $sys_report)
     echo -n "" > $sys_report
-    $sys_bin --epoch --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --output $sys_report $sys_delay &
+
+    # @hc
+    echo "cpu_freq_min: $(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq)" > ${trace_repo}/sys_info.txt
+    echo "cpu_freq_max: $(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)" >> ${trace_repo}/sys_info.txt
+
+    $sys_bin --epoch --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --cpufreq --output $sys_report $sys_delay &
     _SYS_PID=$!
 fi
 

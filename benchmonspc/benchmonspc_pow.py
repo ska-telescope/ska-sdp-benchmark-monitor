@@ -107,7 +107,6 @@ class PerfPowerData:
         for event in self.events:
             for cpu in self.cpus:
                 plt.plot(self._stamps, self.prof[cpu][event], label=f"{cpu}/{self.events_table[event]}")
-        plt.xlabel("Time (s)")
         plt.xticks(self._xticks[0], self._xticks[1])
         plt.ylabel("Power (W)")
         plt.legend(loc=1)
@@ -147,8 +146,6 @@ class PerfPowerData:
         event = "power/energy-psys/"
         if event in self.events:
             plt.plot(self._stamps, pow_total[event], label=self.events_table[event], color="b")
-
-        plt.xlabel("Time (s)")
 
         if xticks:
             plt.xticks(xticks[0], xticks[1])

@@ -19,6 +19,7 @@ def parsing():
     # System metrics
     parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
     parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
+    parser.add_argument("--cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")
     parser.add_argument("--cpu-all-acc", action="store_true", help="Visualize all CPU cores accumulated")
     parser.add_argument("--mem", action="store_true", help="Visualize memory")
     parser.add_argument("--net", action="store_true", help="Visualize network")
@@ -55,6 +56,7 @@ def main():
     is_sys = args.sys
     is_cpu = args.cpu or is_sys
     is_cpu_all = args.cpu_all or is_sys
+    is_cpu_freq = args.cpu_freq
     is_cpu_all_acc = args.cpu_all_acc
     is_mem = args.mem or is_sys
     is_net = args.net or is_sys
@@ -62,11 +64,11 @@ def main():
 
     _xticks = []
     _xlim = []
-    if is_cpu or is_cpu_all or is_cpu_all_acc or is_mem or is_net or is_io:
+    if is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io:
         sys_trace = DoolData(csv_filename=f"{args.traces_repo}/sys_report.csv")
         _xticks = sys_trace._xticks
         _xlim = sys_trace._xlim
-    n_sys = is_cpu + is_cpu_all + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
+    n_sys = is_cpu + is_cpu_all + is_cpu_freq + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
 
     # Load power data
     if args.pow:
@@ -99,6 +101,7 @@ def main():
 
     fig, axs = plt.subplots(nsbp, sharex=True)
     fig.set_size_inches(wid, hei)
+    fig.add_gridspec(nsbp, hspace=0)
 
     # CPU plot
     if is_cpu:
@@ -114,6 +117,10 @@ def main():
     if is_cpu_all_acc:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_per_core_acc(with_color_bar=True, with_legend=False, fig=fig, nsbp=nsbp, sbp=sbp-1)
+
+    if is_cpu_freq:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_cpu_freq(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1)
 
     # Memory plot
     if is_mem:
@@ -140,6 +147,7 @@ def main():
         plt.subplot(nsbp, 1, (sbp,sbp+1), sharex=ax)
         call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
 
+    plt.xlabel("Time (s)")
     plt.subplots_adjust(hspace=.5)
     plt.tight_layout()
 

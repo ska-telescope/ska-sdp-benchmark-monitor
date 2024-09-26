@@ -31,6 +31,7 @@ class DoolData():
         self._plt_xlim_coef = 0.025
 
         self.read_csv_report()
+        self.read_sys_info()
         self.create_profile()
         self.create_plt_params()
 
@@ -59,13 +60,30 @@ class DoolData():
 
         return 0
 
+    # $hc
+    def read_sys_info(self) -> int:
+        """
+        Parse and read sys_info.txt file
+        """
+        import os
+        sys_info_txtfile = os.path.dirname(self.csv_filename) + "/sys_info.txt"
+        self.sys_info = {}
+        with open(sys_info_txtfile, "r") as file:
+            for line in file:
+                _key, _val = line.strip().split(": ")
+                self.sys_info[_key] = float(_val)
+
 
     def create_profile(self) -> int:
         """
         Create profiling dictionary
         """
-        # Get total number of cpus
-        self.ncpu = int(self.csv_report[5][-1]) + 1
+        # Get total number of cpus (by looking for max number near frequency)
+        _cx = []
+        for item in self.csv_report[5]:
+            if "cpu" in item:
+                _cx += [int(item[3:])]
+        self.ncpu = max(_cx) + 1
 
         # Init dictionaries containing indices
         sys_idx = {}
@@ -96,7 +114,8 @@ class DoolData():
         # Corresponding indices to CPU: "--cpu --cpu-use"
         ci0 = len(sys_idx) + len(mem_idx) + len(io_idx) + len(net_idx)
         cpu_labels = ["cpu-usr", "cpu-sys", "cpu-idl", "cpu-wai", "cpu-stl"] \
-                        + [f"cpu-{i}" for i in range(self.ncpu)]
+                        + [f"cpu-{i}" for i in range(self.ncpu)] \
+                        + [f"freq-{i}" for i in range(self.ncpu)]
         cpu_idx = {label: ci0 + idx for idx, label in enumerate(cpu_labels)}
 
         # Full indices correspondance
@@ -182,7 +201,6 @@ class DoolData():
         _yrange = 10
         plt.yticks(100 / _yrange * np.arange(_yrange + 1))
         plt.ylabel("CPU usage (%)")
-        plt.xlabel("Time (s)")
         plt.grid()
 
         # Order legend
@@ -213,17 +231,15 @@ class DoolData():
                 cpu_n = cpu_nn
             cpu_nn = self.prof[f"cpu-{cpu}"] / self.ncpu + cpu_n
             # plt.fill_between(self._stamps, cpu_n, cpu_nn, color=cm[cpu], alpha=alpha, label=f"cpu-{cpu}")
-            plt.plot(self._stamps, self.prof[f"cpu-{cpu}"], color=cm[cpu], label=f"cpu-{cpu}")
+            plt.plot(self._stamps, self.prof[f"cpu-{cpu}"], color=cm[cpu], label=f"core-{cpu}")
         plt.xticks(self._xticks[0], self._xticks[1])
         _yrange = 10
         plt.yticks(100 * 1/_yrange * np.arange(_yrange + 1))
         plt.xlim(self._xlim)
         plt.ylabel(f" CPU Cores (x{self.ncpu}) (%)")
         plt.grid()
-        plt.xlabel("Time (s)")
 
         if with_legend:
-
             plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/24) , fontsize="6")
 
         if with_color_bar:
@@ -260,10 +276,55 @@ class DoolData():
         plt.xlim(self._xlim)
         plt.ylabel(f" CPU Cores (x{self.ncpu}) (%)")
         plt.grid()
-        plt.xlabel("Time (s)")
 
         if with_legend:
             plt.legend(loc=1, ncol=3)
+
+        if with_color_bar:
+            cax = fig.add_axes([0.955, 1 - (sbp-.2)/nsbp, fig.get_figwidth()/1e4, .7/nsbp]) # [left, bottom, width, height]
+            plt.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(vmin=1, vmax=self.ncpu), cmap=plt.cm.jet), \
+                         ticks=np.linspace(1, self.ncpu, min(self.ncpu, 5), dtype="i"), cax=cax)
+
+        return 0
+
+
+    def plot_cpu_freq(self, with_legend: bool = False, with_color_bar: bool = False,
+                          fig=None, nsbp: int = None, sbp: int = None) -> int:
+        """
+        Plot cpu per core
+
+        Args:
+            with_legend (bool): Plot cores usage with legend
+            with_color_bar (bool): Plot cores usage with colobar (color gardient)
+            fig (obj): Figure object (matplotlib)
+            nsbp (int): Total number of subplots
+            sbp (int): Number of current subplots
+        """
+        cpu_freq_min = self.sys_info["cpu_freq_min"] / 1e6 # GHz
+        cpu_freq_max = self.sys_info["cpu_freq_max"] / 1e6 # GHz
+
+        cm = plt.cm.jet(np.linspace(0, 1, self.ncpu+1))
+
+        _nstamps = len(self._stamps)
+
+        freq_mean = np.zeros(_nstamps)
+        for cpu in range(self.ncpu):
+            plt.plot(self._stamps, self.prof[f"freq-{cpu}"] * (cpu_freq_max / 100), color=cm[cpu], label=f"core-{cpu}")
+            freq_mean += self.prof[f"freq-{cpu}"] / self.ncpu * (cpu_freq_max / 100)
+        plt.plot(self._stamps, freq_mean, "k.-", label=f"mean")
+
+        plt.plot(self._stamps, cpu_freq_max * np.ones(_nstamps), "gray", linestyle="--", label=f"hw max/min")
+        plt.plot(self._stamps, cpu_freq_min * np.ones(_nstamps), "gray", linestyle="--")
+
+        plt.xticks(self._xticks[0], self._xticks[1])
+        _yrange = 10
+        plt.yticks(cpu_freq_max * 1/_yrange * np.arange(_yrange + 1))
+        plt.xlim(self._xlim)
+        plt.ylabel(f" CPU frequencies (GHz)")
+        plt.grid()
+
+        if with_legend:
+            plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/24) , fontsize="6")
 
         if with_color_bar:
             cax = fig.add_axes([0.955, 1 - (sbp-.2)/nsbp, fig.get_figwidth()/1e4, .7/nsbp]) # [left, bottom, width, height]
@@ -298,7 +359,6 @@ class DoolData():
         plt.ylabel("Memory (GB)")
         plt.legend(loc=1)
         plt.grid()
-        plt.xlabel("Time (s)")
 
         return 0
 
@@ -311,7 +371,6 @@ class DoolData():
         plt.plot(self._stamps, self.prof["fs-file"], "g-", label="# Open file")
         plt.plot(self._stamps, self.prof["fs-inod"], "y-", label="# inodes")
         plt.ylabel("Total number")
-        plt.xlabel("Time (s)")
         plt.xticks(self._xticks[0], self._xticks[1])
         plt.xlim(self._xlim)
         plt.legend(loc=2)
@@ -346,7 +405,6 @@ class DoolData():
             plt.xticks(self._xticks[0], self._xticks[1])
             plt.xlim(self._xlim)
             plt.legend(loc=2)
-            plt.xlabel("Time (s)")
             plt.grid()
 
             # YYplot: disk-read; disk-write
