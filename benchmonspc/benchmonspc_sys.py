@@ -71,19 +71,25 @@ class DoolData():
         with open(sys_info_txtfile, "r") as file:
             for line in file:
                 _key, _val = line.strip().split(": ")
-                self.sys_info[_key] = float(_val)
+                self.sys_info[_key] = _val
 
+        for _key in ["cpu_freq_max", "cpu_freq_min"]:
+            self.sys_info[_key] = float(self.sys_info[_key])
+
+        for _key in ["online_cores", "offline_cores"]:
+            self.sys_info[_key] = [int(lcore) for lcore in self.sys_info[_key].split(" ")][1:]
 
     def create_profile(self) -> int:
         """
         Create profiling dictionary
         """
-        # Get total number of cpus (by looking for max number near frequency)
-        _cx = []
-        for item in self.csv_report[5]:
-            if "cpu" in item:
-                _cx += [int(item[3:])]
-        self.ncpu = max(_cx) + 1
+        # Get total number of active cpus (by looking for number just before freq column)
+        self.ncpu = len(self.sys_info["online_cores"])
+        self.ncpu_all = self.ncpu + len(self.sys_info["offline_cores"])
+
+        self.is_mono_threaded = False
+        if self.ncpu < self.ncpu_all:
+            self.is_mono_threaded = True
 
         # Init dictionaries containing indices
         sys_idx = {}
@@ -115,8 +121,13 @@ class DoolData():
         ci0 = len(sys_idx) + len(mem_idx) + len(io_idx) + len(net_idx)
         cpu_labels = ["cpu-usr", "cpu-sys", "cpu-idl", "cpu-wai", "cpu-stl"] \
                         + [f"cpu-{i}" for i in range(self.ncpu)] \
-                        + [f"freq-{i}" for i in range(self.ncpu)]
+                        + [f"freq-{i}" for i in range(self.ncpu_all)]
         cpu_idx = {label: ci0 + idx for idx, label in enumerate(cpu_labels)}
+
+        # Omit logical core freq when monothreaded
+        if self.is_mono_threaded:
+            for lcore in self.sys_info["offline_cores"]:
+                cpu_idx.pop(f"freq-{lcore}")
 
         # Full indices correspondance
         prof_idx = {**sys_idx, **mem_idx, **io_idx, **net_idx, **cpu_idx}
