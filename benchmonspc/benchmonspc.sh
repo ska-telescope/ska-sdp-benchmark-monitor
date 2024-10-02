@@ -223,8 +223,8 @@ fi
 if [[ $is_pow = 1 ]]
 then
     mkdir -p $(dirname $pow_report)
-    echo -n "" > $pow_report
-    $sudo_perf_cmd perf stat -A -a $_perf_events_flag -I $pow_delay -x , -o $pow_report &
+    echo "# $(date +'%s.%N')" > $pow_report
+    $sudo_perf_cmd perf stat -A -a $_perf_events_flag -I $pow_delay -x , --append -o $pow_report &
     _POW_PID=$!
 fi
 

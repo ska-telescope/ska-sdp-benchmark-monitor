@@ -46,12 +46,14 @@ class PerfPowerData:
         """
         Create power profiles
         """
+        LINES_START_INDEX = 2
+
         EVENT_INDEX = 4
-        self.events = list(set([item[EVENT_INDEX] for item in self.csv_list[1:]]))
+        self.events = list(set([item[EVENT_INDEX] for item in self.csv_list[LINES_START_INDEX:]]))
         nevents = len(self.events)
 
         CPU_INDEX = 1
-        self.cpus = list(set([item[CPU_INDEX] for item in self.csv_list[1:]]))
+        self.cpus = list(set([item[CPU_INDEX] for item in self.csv_list[LINES_START_INDEX:]]))
         ncpu = len(self.cpus)
 
         self.events_table = {
@@ -63,14 +65,14 @@ class PerfPowerData:
             }
 
         stride = ncpu * nevents
-        self.prof["time"] = [float(self.csv_list[i][0]) for i in range(1, len(self.csv_list), stride)]
+        self.prof["time"] = [float(self.csv_list[i][0]) for i in range(LINES_START_INDEX, len(self.csv_list), stride)]
         self.nstamps = len(self.prof["time"])
 
         for cpu in self.cpus:
             for event in self.events:
                 self.prof[cpu] = {event: [] for event in self.events}
 
-        for _list in self.csv_list[1:]:
+        for _list in self.csv_list[LINES_START_INDEX:]:
             cpu = _list[1]
             event = _list[4]
             value = float(_list[2]) / (float(_list[5]) * 1e-9) # J = W/S
@@ -87,13 +89,13 @@ class PerfPowerData:
         """
         Create plot parameters
         """
-        header_date = os.popen(f"head -n 1 {self.csv_filename}").read()[13:-1]
-        header_date_obj = datetime.strptime(header_date, "%a %b %d %H:%M:%S %Y")
-        epoch0 = float(header_date_obj.strftime("%s"))
+        with open(self.csv_filename) as file:
+            epoch0 = float(file.readline()[2:-1])
 
         self._stamps = np.zeros(self.nstamps)
-        for i in range(self.nstamps):
-            self._stamps[i] = epoch0 + self.prof["time"][i]
+        self._stamps[0] = epoch0
+        for i in range(1, self.nstamps):
+            self._stamps[i] = epoch0 + self.prof["time"][i-1]
 
         self._plt_xrange = 5
 
