@@ -212,7 +212,7 @@ class DoolData():
 
 
     def plot_cpu_per_core(self, with_legend: bool = False, with_color_bar: bool = False,
-                          fig=None, nsbp: int = None, sbp: int = None) -> int:
+                          fig=None, nsbp: int = None, sbp: int = None, cores_in: str = "", cores_out: str = "") -> int:
         """
         Plot cpu per core
 
@@ -223,29 +223,26 @@ class DoolData():
             nsbp (int): Total number of subplots
             sbp (int): Number of current subplots
         """
-        alpha = 0.8
-        cm = plt.cm.jet(np.linspace(0, 1, self.ncpu+1))
-        cpu_n = 0
-        for cpu in range(self.ncpu):
-            if cpu > 0:
-                cpu_n = cpu_nn
-            cpu_nn = self.prof[f"cpu-{cpu}"] / self.ncpu + cpu_n
-            # plt.fill_between(self._stamps, cpu_n, cpu_nn, color=cm[cpu], alpha=alpha, label=f"cpu-{cpu}")
-            plt.plot(self._stamps, self.prof[f"cpu-{cpu}"], color=cm[cpu], label=f"core-{cpu}")
+        cores = [core for core in range(self.ncpu)]
+        if len(cores_in) > 0:
+            cores = [int(core) for core in cores_in.split(",")]
+        elif len(cores_in) == 0 and len(cores_out) > 0:
+            for core_ex in cores_out.split(","):
+                cores.remove(int(core_ex))
+        _ncpu = len(cores)
+
+        cm = plt.cm.jet(np.linspace(0, 1, _ncpu+1))
+        for idx, core in enumerate(cores):
+            plt.plot(self._stamps, self.prof[f"cpu-{core}"], color=cm[idx], label=f"core-{core}")
         plt.xticks(self._xticks[0], self._xticks[1])
         _yrange = 10
         plt.yticks(100 * 1/_yrange * np.arange(_yrange + 1))
         plt.xlim(self._xlim)
-        plt.ylabel(f" CPU Cores (x{self.ncpu}) (%)")
+        plt.ylabel(f" CPU Cores (%)")
         plt.grid()
 
         if with_legend:
-            plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/24) , fontsize="6")
-
-        if with_color_bar:
-            cax = fig.add_axes([0.955, 1 - (sbp-.2)/nsbp, fig.get_figwidth()/1e4, .7/nsbp]) # [left, bottom, width, height]
-            plt.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(vmin=1, vmax=self.ncpu), cmap=plt.cm.jet), \
-                         ticks=np.linspace(1, self.ncpu, min(self.ncpu, 5), dtype="i"), cax=cax)
+            plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/24) , fontsize="6")
 
         return 0
 
@@ -289,7 +286,7 @@ class DoolData():
 
 
     def plot_cpu_freq(self, with_legend: bool = False, with_color_bar: bool = False,
-                          fig=None, nsbp: int = None, sbp: int = None) -> int:
+                          fig=None, nsbp: int = None, sbp: int = None, cores_in: str = "", cores_out: str = "") -> int:
         """
         Plot cpu per core
 
@@ -303,13 +300,24 @@ class DoolData():
         cpu_freq_min = self.sys_info["cpu_freq_min"] / 1e6 # GHz
         cpu_freq_max = self.sys_info["cpu_freq_max"] / 1e6 # GHz
 
-        cm = plt.cm.jet(np.linspace(0, 1, self.ncpu+1))
+        cores = [core for core in range(self.ncpu)]
+        if len(cores_in) > 0:
+            cores = [int(core) for core in cores_in.split(",")]
+        elif len(cores_in) == 0 and len(cores_out) > 0:
+            for core_ex in cores_out.split(","):
+                cores.remove(int(core_ex))
+        _ncpu = len(cores)
+
+
+        cm = plt.cm.jet(np.linspace(0, 1, _ncpu+1))
 
         _nstamps = len(self._stamps)
-
         freq_mean = np.zeros(_nstamps)
+
+        for idx, core in enumerate(cores):
+            plt.plot(self._stamps, self.prof[f"freq-{core}"] * (cpu_freq_max / 100), color=cm[idx], label=f"core-{core}")
+
         for cpu in range(self.ncpu):
-            plt.plot(self._stamps, self.prof[f"freq-{cpu}"] * (cpu_freq_max / 100), color=cm[cpu], label=f"core-{cpu}")
             freq_mean += self.prof[f"freq-{cpu}"] / self.ncpu * (cpu_freq_max / 100)
         plt.plot(self._stamps, freq_mean, "k.-", label=f"mean")
 

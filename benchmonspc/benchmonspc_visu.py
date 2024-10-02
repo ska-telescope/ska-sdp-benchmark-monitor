@@ -21,6 +21,8 @@ def parsing():
     parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
     parser.add_argument("--cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")
     parser.add_argument("--cpu-all-acc", action="store_true", help="Visualize all CPU cores accumulated")
+    parser.add_argument("--cpu-cores-in", type=str, default="", help="CPU cores to display")
+    parser.add_argument("--cpu-cores-out", type=str, default="", help="CPU cores to exclude")
     parser.add_argument("--mem", action="store_true", help="Visualize memory")
     parser.add_argument("--net", action="store_true", help="Visualize network")
     parser.add_argument("--io", action="store_true", help="Visualize io")
@@ -111,7 +113,8 @@ def main():
     # CPU per core plot
     if is_cpu_all:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_per_core(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1)
+        sys_trace.plot_cpu_per_core(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1,
+                                    cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out)
 
     # CPU per core (accumulated) plot
     if is_cpu_all_acc:
@@ -120,7 +123,8 @@ def main():
 
     if is_cpu_freq:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_freq(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1)
+        sys_trace.plot_cpu_freq(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1,
+                                cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out)
 
     # Memory plot
     if is_mem:
