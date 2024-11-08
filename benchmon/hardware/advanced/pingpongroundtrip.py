@@ -7,7 +7,6 @@ import time
 import benchmon.common.slurm.slurm_utils as slurm_utils
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
 
 class PingPongMeasure:
     num_ping: int = 10
