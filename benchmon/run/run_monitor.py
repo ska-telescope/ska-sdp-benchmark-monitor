@@ -5,8 +5,6 @@ import socket
 import subprocess
 import sys
 
-from benchmon.common.utils import execute_cmd
-
 
 class RunMonitor:
     def __init__(self, args):

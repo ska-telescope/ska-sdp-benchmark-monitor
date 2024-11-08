@@ -1,8 +1,10 @@
 import json
 import logging
+import os
 import sys
 
-from .gatherers import cpu, memory, mounts, interface, accelerator, system, topology, pci
+from .gatherers import cpu, memory, mounts, interface, accelerator, system, topology, pci, ping
+from .advanced import pingpongroundtrip as ppr
 from ..common.utils import execute_cmd
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,15 @@ class HardwareMonitor:
         # System
         logger.info("Gathering OS Data")
         data['system'] = system.SystemReader().read()
+
+        # Ping to other nodes in reservation
+        nnodes = os.environ.get("SLURM_NNODES")
+        if nnodes is not None and int(nnodes) > 1:
+            logger.info("Gathering Ping Data to other nodes in the reservation")
+            data['ping'] = ping.PingReader().read()
+
+            logger.info("Gathering RoundTrip Time to other nodes in the reservation")
+            data['pingpong'] = ppr.PingPongMeasure().measure()
 
         # Serialize to json
         logger.info("Save Data to file")
