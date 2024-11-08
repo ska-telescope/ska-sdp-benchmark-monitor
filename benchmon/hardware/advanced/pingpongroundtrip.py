@@ -3,6 +3,7 @@ import os
 import logging
 import socket
 import time
+from time import sleep
 
 import benchmon.common.slurm.slurm_utils as slurm_utils
 
@@ -83,6 +84,7 @@ class PingPongMeasure:
             except Exception as e:
                 log.error(f"[{self.current_node}] Error during pingpong-test: {e}")
             port += 1
+            sleep(0.1)
         return data
 
     # Function for server-side of ping-pong test
