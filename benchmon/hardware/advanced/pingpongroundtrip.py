@@ -64,8 +64,8 @@ class PingPongMeasure:
 
         data = {self.current_node: []}
 
-        # Generate all possible unique pairs (combinations) of nodes and order them in a way with the least amount of overlap
-        pairs = arrange_pairs_min_overlap(list(itertools.combinations(nodes, 2)))
+        # Generate all possible directed unique pairs (permutations) of nodes and order them in a way with the least amount of overlap
+        pairs = arrange_pairs_min_overlap(list(itertools.permutations(nodes, 2)))
 
         # Test between all pairs of nodes
         for client, server in pairs:
@@ -120,7 +120,7 @@ class PingPongMeasure:
                 log.debug(f"[{self.current_node}][S] Done sending data.")
 
     # Function for client-side of ping-pong test
-    def client_ping_pong(self, server_ip, port, data_size=1024*1024*1000):
+    def client_ping_pong(self, server_ip, port, data_size=1024*1024*10):
         test_data = get_random_data(data_size)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
