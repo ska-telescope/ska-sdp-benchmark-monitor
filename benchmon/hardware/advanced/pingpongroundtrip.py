@@ -8,16 +8,47 @@ import benchmon.common.slurm.slurm_utils as slurm_utils
 
 log = logging.getLogger(__name__)
 
+
+def arrange_pairs_min_overlap(pairs):
+    """
+        Take a list of pairs and order it in a way that creates as few overlap as possible.
+        This enables most efficient usage of the nodes
+    """
+    result = []
+    while pairs:
+        # Create a new group of non-overlapping pairs
+        non_overlapping = []
+        used_nodes = set()
+
+        # Loop over the pairs and add non-overlapping pairs to the group
+        remaining_pairs = []
+        for pair in pairs:
+            if not (pair[0] in used_nodes or pair[1] in used_nodes):
+                non_overlapping.append(pair)
+                used_nodes.update(pair)
+            else:
+                remaining_pairs.append(pair)  # Leave for next round
+
+        # Add this group to the result
+        result.extend(non_overlapping)
+
+        # Update pairs with remaining pairs for the next iteration
+        pairs = remaining_pairs
+
+    return result
+
+
+def get_random_data(size):
+    with open('/dev/urandom', 'rb') as f:
+        return f.read(size)
+
+
 class PingPongMeasure:
     num_ping: int = 10
     ping_payload: bytes = b"Ping"
     end_payload: bytes = b"BENCHMON_END"
 
     current_node: str = None
-
-    def get_random_data(self, size):
-        with open('/dev/urandom', 'rb') as f:
-            return f.read(size)
 
     def measure(self, port=51437):
         self.current_node = os.environ.get("SLURMD_NODENAME")
@@ -33,8 +64,8 @@ class PingPongMeasure:
 
         data = {self.current_node: []}
 
-        # Generate all possible unique pairs (combinations) of nodes
-        pairs = list(itertools.combinations(nodes, 2))
+        # Generate all possible unique pairs (combinations) of nodes and order them in a way with the least amount of overlap
+        pairs = arrange_pairs_min_overlap(list(itertools.combinations(nodes, 2)))
 
         # Test between all pairs of nodes
         for client, server in pairs:
@@ -79,7 +110,7 @@ class PingPongMeasure:
 
                 log.debug(f"[{self.current_node}][S] Done receiving data! Returning {num_bits_rcvd} bits.")
                 # Generate new response with the same size to return to the client
-                data = self.get_random_data(num_bits_rcvd)
+                data = get_random_data(num_bits_rcvd)
                 bytes_sent = 0
                 while bytes_sent < num_bits_rcvd:
                     chunk = data[bytes_sent:bytes_sent + 1024]
@@ -90,7 +121,7 @@ class PingPongMeasure:
 
     # Function for client-side of ping-pong test
     def client_ping_pong(self, server_ip, port, data_size=1024*1024*1000):
-        test_data = self.get_random_data(data_size)
+        test_data = get_random_data(data_size)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
             connected = False
