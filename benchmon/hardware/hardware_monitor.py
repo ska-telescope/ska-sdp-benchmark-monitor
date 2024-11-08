@@ -15,6 +15,7 @@ class HardwareMonitor:
         self.save_dir = args.save_dir
         self.prefix = args.prefix
         self.verbose = args.verbose
+        self.run_long_tasks = not args.no_long_checks
 
     def run(self):
         logger.info("Starting Hardware Monitor")
@@ -58,8 +59,11 @@ class HardwareMonitor:
             logger.info("Gathering Ping Data to other nodes in the reservation")
             data['ping'] = ping.PingReader().read()
 
-            logger.info("Gathering RoundTrip Time to other nodes in the reservation")
-            data['pingpong'] = ppr.PingPongMeasure().measure()
+            if self.run_long_tasks:
+                logger.info("Gathering RoundTrip Time to other nodes in the reservation")
+                data['pingpong'] = ppr.PingPongMeasure().measure()
+            else:
+                logger.info("Skipping RoundTrip test because -n / --no-long-checks is set.")
 
         # Serialize to json
         logger.info("Save Data to file")

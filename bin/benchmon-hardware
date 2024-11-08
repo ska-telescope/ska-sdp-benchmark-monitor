@@ -61,6 +61,14 @@ def parse_args():
         help="Enable verbose mode. Display debug messages",
     )
 
+    parser.add_argument(
+        '-n',
+        '--no-long-checks',
+        action='store_true',
+        default=False,
+        help="Disable checks that take much time, like the pingpong-bandwidth-check between all nodes.",
+    )
+
     return parser.parse_args()
 
 

@@ -50,6 +50,8 @@ class PingPongMeasure:
 
     current_node: str = None
 
+    socket_timeout = 30
+
     def measure(self, port=51437):
         self.current_node = os.environ.get("SLURMD_NODENAME")
         nodes = slurm_utils.get_node_list()
@@ -103,7 +105,7 @@ class PingPongMeasure:
                 log.debug(f"[{self.current_node}][S] Standing by for large data.")
                 while True:
                     data = conn.recv(1024)
-                    if data == self.end_payload:
+                    if len(data) >= 12 and data[-len(self.end_payload):] == self.end_payload:
                         log.debug(f"[{self.current_node}][S] Received end-payload.")
                         break
                     num_bits_rcvd += 1024
