@@ -39,13 +39,16 @@ class PingPongMeasure:
         # Test between all pairs of nodes
         for client, server in pairs:
             # Fork process: one acts as server, the other as client
-            if server == self.current_node:
-                log.info(f"[{self.current_node}][S] Acting as server to client {client} on port {port}")
-                self.server_ping_pong(port)
-            elif client == self.current_node:
-                log.info(f"[{self.current_node}][C] Acting as client to server {server} on port {port}")
-                rtt, bw = self.client_ping_pong(server, port)
-                data[self.current_node] = {"node": server, "rtt": round(rtt, 4), "bandwidth": round(bw, 4)}
+            try:
+                if server == self.current_node:
+                    log.info(f"[{self.current_node}][S] Acting as server to client {client} on port {port}")
+                    self.server_ping_pong(port)
+                elif client == self.current_node:
+                    log.info(f"[{self.current_node}][C] Acting as client to server {server} on port {port}")
+                    rtt, bw = self.client_ping_pong(server, port)
+                    data[self.current_node] = {"node": server, "rtt": round(rtt, 4), "bandwidth": round(bw, 4)}
+            except Exception as e:
+                log.error(f"[{self.current_node}] Error during pingpong-test: {e}")
             port += 1
         return data
 
