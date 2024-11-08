@@ -3,6 +3,8 @@ import os
 import logging
 import socket
 import time
+from math import trunc
+from sqlite3 import connect
 from time import sleep
 
 import benchmon.common.slurm.slurm_utils as slurm_utils
@@ -53,7 +55,8 @@ class PingPongMeasure:
 
     socket_timeout = 30
 
-    def measure(self, port=51437):
+    def measure(self, port=51434):
+        original_port = port
         self.current_node = os.environ.get("SLURMD_NODENAME")
         nodes = slurm_utils.get_node_list()
         if self.current_node is None or len(nodes) == 0:
@@ -71,7 +74,8 @@ class PingPongMeasure:
         pairs = arrange_pairs_min_overlap(list(itertools.permutations(nodes, 2)))
 
         # Test between all pairs of nodes
-        for client, server in pairs:
+        for p_idx, (client, server) in enumerate(pairs):
+            port = original_port + p_idx
             # Fork process: one acts as server, the other as client
             try:
                 if server == self.current_node:
@@ -83,14 +87,20 @@ class PingPongMeasure:
                     data[self.current_node] = {"node": server, "rtt": round(rtt, 4), "bandwidth": round(bw, 4)}
             except Exception as e:
                 log.error(f"[{self.current_node}] Error during pingpong-test: {e}")
-            port += 1
-            sleep(0.1)
         return data
 
     # Function for server-side of ping-pong test
     def server_ping_pong(self, port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-            server_socket.bind(('', port))
+            connected = False
+            while not connected:
+                try:
+                    server_socket.bind(('', port))
+                    connected = True
+                except OSError as e:
+                    log.error(f"[{self.current_node}][S] Could not bind socket! Got OSError: {e}. Retrying.")
+                    sleep(1)
+
             server_socket.listen(1)
 
             conn, addr = server_socket.accept()
@@ -99,7 +109,7 @@ class PingPongMeasure:
                 # first, receive the Ping:
                 data = conn.recv(1024)
                 if data != self.ping_payload:
-                    raise "Expected Ping as first message!"
+                    raise Exception(f"[{self.current_node}][S] Expected Ping as first message!")
 
                 log.debug(f"[{self.current_node}][S] Received ping, returning ping.")
                 conn.sendall(data)
@@ -122,6 +132,9 @@ class PingPongMeasure:
                     bytes_sent += len(chunk)
                 conn.sendall(self.end_payload)
                 log.debug(f"[{self.current_node}][S] Done sending data.")
+                conn.close()
+            server_socket.shutdown(socket.SHUT_RDWR)
+            server_socket.close()
 
     # Function for client-side of ping-pong test
     def client_ping_pong(self, server_ip, port, data_size=1024*1024*10):
@@ -129,11 +142,16 @@ class PingPongMeasure:
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
             connected = False
+            num_retries = 0
             while not connected:
                 try:
                     client_socket.connect((server_ip, port))
                     connected = True
                 except ConnectionRefusedError:
+                    num_retries += 1
+                    if num_retries == 30:
+                        raise Exception(f"[C] Server {server_ip} did not respond within 30 seconds.")
+
                     log.debug(f"[{self.current_node}][C] Server not yet ready. Waiting...")
                     time.sleep(1)
 
@@ -178,4 +196,7 @@ class PingPongMeasure:
             transfer_time = end_time - start_time
             bandwidth_mbps = (data_size * 8) / (transfer_time * 1_000_000)  # Convert to Mbps
 
-            return rtt, bandwidth_mbps
+            client_socket.shutdown(socket.SHUT_RDWR)
+            client_socket.close()
+
+        return rtt, bandwidth_mbps
