@@ -2,6 +2,7 @@ import os
 import logging
 import socket
 import time
+from math import trunc
 
 import benchmon.common.slurm.slurm_utils as slurm_utils
 from benchmon.common.utils import execute_cmd
@@ -9,11 +10,12 @@ from benchmon.common.utils import execute_cmd
 log = logging.getLogger(__name__)
 
 num_ping = 10
-
+ping_payload = b"Ping"
+end_payload = b"BENCHMON_END"
 
 class PingPongMeasure:
     def get_random_data(self, size):
-        with open('/dev/random', 'rb') as f:
+        with open('/dev/urandom', 'rb') as f:
             return f.read(size)
 
     def measure(self, port=51437):
@@ -56,12 +58,24 @@ class PingPongMeasure:
             conn, addr = server_socket.accept()
             num_bits_rcvd = 0
             with conn:
+                # first, receive the Ping:
+                data = conn.recv(1024)
+                print(f"Received first element: {data}", flush=True)
+                if data != ping_payload:
+                    raise "Expected Ping as first message!"
+
+                print("Received ping, returning ping.", flush=True)
+                conn.sendall(data)
+
                 while True:
                     data = conn.recv(1024)
-                    if not data:
+                    # print(f"Received data! -> {num_bits_rcvd + 1024}", flush=True)
+                    if data == end_payload:
+                        print("Received end-payload")
                         break
                     num_bits_rcvd += 1024
 
+                print(f"Done receiving data! Returning {num_bits_rcvd} bits.")
                 # Generate new response with the same size to return to the client
                 data = self.get_random_data(num_bits_rcvd)
                 bytes_sent = 0
@@ -69,9 +83,10 @@ class PingPongMeasure:
                     chunk = data[bytes_sent:bytes_sent + 1024]
                     conn.sendall(chunk)
                     bytes_sent += len(chunk)
+                conn.sendall(end_payload)
 
     # Function for client-side of ping-pong test
-    def client_ping_pong(self, server_ip, port, data_size=1024*1024*10):
+    def client_ping_pong(self, server_ip, port, data_size=1024*1024*1000):
         test_data = self.get_random_data(data_size)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
@@ -82,11 +97,13 @@ class PingPongMeasure:
                     connected = True
                 except ConnectionRefusedError:
                     log.debug("Server not yet ready. Waiting...")
+                    print("Server not yet ready. Waiting...")
                     time.sleep(1)
 
             # Measure round-trip time
             start_time = time.time()
-            client_socket.sendall(b'Ping')
+            client_socket.sendall(ping_payload)
+            print(f"Sent Ping!", flush=True)
             data = client_socket.recv(1024)
             end_time = time.time()
 
@@ -102,16 +119,23 @@ class PingPongMeasure:
             bytes_sent = 0
             while bytes_sent < data_size:
                 chunk = test_data[bytes_sent:bytes_sent + 1024]
+                # print("Sending chunk")
                 client_socket.sendall(chunk)
                 bytes_sent += len(chunk)
+            print("Done sending chunks - sending end payload")
+            # send end-payload
+            client_socket.sendall(end_payload)
 
             # Wait to receive the full response from server
+            print("Preparing to receive")
             received_size = 0
-            while received_size < data_size:
+            while received_size < data_size + len(end_payload):
                 data = client_socket.recv(1024)
-                if not data:
+                # print(f"Received data: {received_size + len(data)}", flush=True)
+                if data == end_payload:
                     break
                 received_size += len(data)
+            print("Done receiving on client-side", flush=True)
             end_time = time.time()
 
             transfer_time = end_time - start_time
