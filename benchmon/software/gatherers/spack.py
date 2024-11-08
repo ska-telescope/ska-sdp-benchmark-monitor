@@ -27,6 +27,12 @@ class SpackReader:
         env_data = execute_cmd('spack env status')
         if env_data.startswith("==> In environment"):
             env = env_data.strip().split()[-1]
+        elif env_data.startswith("==> No active environment"):
+            env = None
+        else:
+            # something is wrong with the spack installation! Logging and aborting
+            log.error("Could not determine spack env status! Is the spack installation corrupt?")
+            return None
 
         if env is not None:
             # We are in an environment, use env specific commands

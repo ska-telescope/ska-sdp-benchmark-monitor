@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 
 from .gatherers import spack, pyenv, environment, modules
 from ..common.utils import execute_cmd
@@ -9,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class SoftwareMonitor:
     def __init__(self, args):
+        logging.basicConfig(stream=sys.stdout, level=logging.DEBUG if args.verbose else logging.INFO)
         self.save_dir = args.save_dir
         self.prefix = args.prefix
         self.verbose = args.verbose
