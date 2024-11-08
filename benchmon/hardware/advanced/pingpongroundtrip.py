@@ -3,8 +3,6 @@ import os
 import logging
 import socket
 import time
-from math import trunc
-from sqlite3 import connect
 from time import sleep
 
 import benchmon.common.slurm.slurm_utils as slurm_utils
