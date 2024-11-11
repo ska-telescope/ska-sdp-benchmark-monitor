@@ -16,6 +16,8 @@ class HardwareMonitor:
         self.prefix = args.prefix
         self.verbose = args.verbose
         self.run_long_tasks = not args.no_long_checks
+        self.save_path = f"{self.save_dir}/{self.prefix if self.prefix is not None else ''}"
+        os.makedirs(self.save_path, exist_ok=True)
 
     def run(self):
         logger.info("Starting Hardware Monitor")
@@ -67,7 +69,7 @@ class HardwareMonitor:
 
         # Serialize to json
         logger.info("Save Data to file")
-        json.dump(data, open(f"{self.save_dir}/{f'{self.prefix}-' if self.prefix is not None else ''}hwmon-{hostname}.json", "w"))
+        json.dump(data, open(f"{self.save_path}/hwmon-{hostname}.json", "w"))
 
         logger.info("Exiting...")
         return
