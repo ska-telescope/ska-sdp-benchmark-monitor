@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""
+Main Python script to visualize monitoring metrics
+"""
+
+import argparse
+import os
+import sys
+import matplotlib.pyplot as plt
+
+# Add parent directory to PYTHONPATH
+parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+print("Add parent directory to sys.path.")
+sys.path.insert(0, parent_dir)
+
+from benchmon.visualization import system_metrics
+
+def parsing():
+    """
+    Parse benchmonspc_visu arguments
+    """
+    # Parser
+    parser = argparse.ArgumentParser()
+
+    # Traces repo
+    parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Traces repository path")
+
+    # System metrics
+    parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
+    parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
+    parser.add_argument("--cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")
+    parser.add_argument("--cpu-all-acc", action="store_true", help="Visualize all CPU cores accumulated")
+    parser.add_argument("--cpu-cores-in", type=str, default="", help="CPU cores to display")
+    parser.add_argument("--cpu-cores-out", type=str, default="", help="CPU cores to exclude")
+    parser.add_argument("--mem", action="store_true", help="Visualize memory")
+    parser.add_argument("--net", action="store_true", help="Visualize network")
+    parser.add_argument("--io", action="store_true", help="Visualize io")
+    parser.add_argument("--sys", action="store_true", help="Visualize all system data")
+
+    # Power profile
+    parser.add_argument("--pow", action="store_true", help="Visualize power")
+
+    # Callstack
+    parser.add_argument("--call", action="store_true", help="Visualize callstack")
+    parser.add_argument("--call-depth", type=int, default=1, help="Callstack depth level")
+    parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
+    parser.add_argument('--call-cmd', type=str, default="", help="Command to visualize")
+
+    # Figures
+    parser.add_argument("--interactive", action="store_true", help="Interactive visualization")
+    parser.add_argument("--fig-path", type=str, help="Figure format")
+    parser.add_argument("--fig-fmt", type=str, default="svg", help="Figure format")
+    parser.add_argument("--fig-name", type=str, default="benchmon_fig", help="Figure name")
+    parser.add_argument("--fig-dpi", type=str, default="medium", help="Quality of figure: low, medium, high")
+    parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
+
+    return parser.parse_args()
+
+
+def main():
+    """
+    Main of benchmonspc_visu
+    """
+    args = parsing()
+
+    # Load dool data
+    is_sys = args.sys
+    is_cpu = args.cpu or is_sys
+    is_cpu_all = args.cpu_all or is_sys
+    is_cpu_freq = args.cpu_freq
+    is_cpu_all_acc = args.cpu_all_acc
+    is_mem = args.mem or is_sys
+    is_net = args.net or is_sys
+    is_io = args.io or is_sys
+
+    _xticks = []
+    _xlim = []
+    if is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io:
+        sys_trace = system_metrics.DoolData(csv_filename=f"{args.traces_repo}/sys_report.csv")
+        _xticks = sys_trace._xticks
+        _xlim = sys_trace._xlim
+    n_sys = is_cpu + is_cpu_all + is_cpu_freq + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
+
+    # # Load power data
+    # if args.pow:
+    #     from benchmonspc_pow import PerfPowerData
+    #     power_trace = PerfPowerData(csv_filename=f"{args.traces_repo}/pow_report.csv")
+
+    # # Load call data
+    call_depths = []
+    # if args.call:
+    #     from benchmonspc_call import PerfCallRawData, PerfCallData
+
+    #     with open(f"{args.traces_repo}/mono_to_real_file.txt", "r") as file:
+    #         mono_to_real_val = float(file.readline())
+    #     call_raw = PerfCallRawData(filename=f"{args.traces_repo}/call_report.txt")
+    #     samples, cmds = call_raw.cmds_list()
+
+    #     if args.call_cmd:
+    #         cmd = args.call_cmd
+    #     else:
+    #         cmd = list(cmds.keys())[0]
+
+    #     call_trace = PerfCallData(cmd=cmd, samples=samples, m2r=mono_to_real_val)
+    #     if args.call_depth:
+    #         call_depths = [depth for depth in range(args.call_depth)]
+    #     elif args.call_depths:
+    #         call_depths = [int(depth) for depth in args.call_depths.split(",")]
+
+    # Figure and subplots
+    nsbp = n_sys + args.pow + args.call * (2 if len(call_depths) > 2 else 1)
+    sbp = 1
+    wid, hei = 19.2, nsbp * 3 #10.8
+    # fig = plt.figure(figsize=(wid,hei))
+
+    fig, axs = plt.subplots(nsbp, sharex=True)
+    fig.set_size_inches(wid, hei)
+    fig.add_gridspec(nsbp, hspace=0)
+
+    # CPU plot
+    if is_cpu:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_cpu_average()
+
+    # CPU per core plot
+    if is_cpu_all:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_cpu_per_core(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1,
+                                    cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out)
+
+    # CPU per core (accumulated) plot
+    if is_cpu_all_acc:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_cpu_per_core_acc(with_color_bar=True, with_legend=False, fig=fig, nsbp=nsbp, sbp=sbp-1)
+
+    if is_cpu_freq:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_cpu_freq(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1,
+                                cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out)
+
+    # Memory plot
+    if is_mem:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_memory_usage()
+
+    # Network plot
+    if is_net:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_network()
+
+    # IO plot
+    if is_io and sys_trace.with_io:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        sys_trace.plot_io()
+
+    # # Power plot
+    # if args.pow:
+    #     ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+    #     power_trace.plot_events(xticks=_xticks, xlim=_xlim)
+
+    # # Calltrace plot
+    # if args.call:
+    #     plt.subplot(nsbp, 1, (sbp,sbp+1), sharex=ax)
+    #     call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
+
+    plt.xlabel("Time (s)")
+    plt.subplots_adjust(hspace=.5)
+    plt.tight_layout()
+
+    # Enable interactive plot
+    if args.interactive:
+        plt.show()
+
+    # Figure saving parameters
+    dpi = {"low": 200, "medium": 600, "high": 1200}
+    figpath = f"{args.traces_repo}" if args.fig_path is None else args.fig_path
+    for fmt in args.fig_fmt.split(","):
+        figname = f"{figpath}/{args.fig_name}.{fmt}"
+        fig.savefig(figname, format=fmt, dpi=dpi[args.fig_dpi])
+        print(f"Figure saved: {figname}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    main()

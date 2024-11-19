@@ -1,0 +1,9 @@
+#!/usr/bin/bash -x
+
+benchmon_pid_file=./.benchmon-run_pid_$(hostname)
+if [[ -f ${benchmon_pid_file} ]]
+then
+    pid=$(cat ${benchmon_pid_file})
+    kill -15 ${pid}
+    rm -v ${benchmon_pid_file}
+fi
