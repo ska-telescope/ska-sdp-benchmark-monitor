@@ -1,6 +1,5 @@
 from benchmon.common.utils import execute_cmd, get_parser, safe_parse
 import logging
-import re
 log = logging.getLogger(__name__)
 
 

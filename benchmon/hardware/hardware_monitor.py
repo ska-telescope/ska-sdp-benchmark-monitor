@@ -1,8 +1,10 @@
 import json
 import logging
+import os
 import sys
 
-from .gatherers import cpu, memory, mounts, interface, accelerator, system, topology, pci
+from .gatherers import cpu, memory, mounts, interface, accelerator, system, topology, pci, ping
+from .advanced import pingpongroundtrip as ppr
 from ..common.utils import execute_cmd
 
 logger = logging.getLogger(__name__)
@@ -13,6 +15,9 @@ class HardwareMonitor:
         self.save_dir = args.save_dir
         self.prefix = args.prefix
         self.verbose = args.verbose
+        self.run_long_tasks = not args.no_long_checks
+        self.save_path = f"{self.save_dir}/{self.prefix if self.prefix is not None else ''}"
+        os.makedirs(self.save_path, exist_ok=True)
 
     def run(self):
         logger.info("Starting Hardware Monitor")
@@ -50,9 +55,21 @@ class HardwareMonitor:
         logger.info("Gathering OS Data")
         data['system'] = system.SystemReader().read()
 
+        # Ping to other nodes in reservation
+        nnodes = os.environ.get("SLURM_NNODES")
+        if nnodes is not None and int(nnodes) > 1:
+            logger.info("Gathering Ping Data to other nodes in the reservation")
+            data['ping'] = ping.PingReader().read()
+
+            if self.run_long_tasks:
+                logger.info("Gathering RoundTrip Time to other nodes in the reservation")
+                data['pingpong'] = ppr.PingPongMeasure().measure()
+            else:
+                logger.info("Skipping RoundTrip test because -n / --no-long-checks is set.")
+
         # Serialize to json
         logger.info("Save Data to file")
-        json.dump(data, open(f"{self.save_dir}/{f'{self.prefix}-' if self.prefix is not None else ''}hwmon-{hostname}.json", "w"))
+        json.dump(data, open(f"{self.save_path}/hwmon-{hostname}.json", "w"))
 
         logger.info("Exiting...")
         return
