@@ -25,12 +25,6 @@ packages += [
     if '__pycache__' not in i
 ]
 
-#package_data = {
-#    'benchmon': [
-#        'perfevents/*.yml'
-#    ]
-#}
-
 # List of all required packages
 reqs = [
     line.strip()

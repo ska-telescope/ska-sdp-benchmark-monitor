@@ -5,16 +5,14 @@ import socket
 import subprocess
 import sys
 
-from benchmon.common.utils import execute_cmd
-
 
 class RunMonitor:
     def __init__(self, args):
         self.should_run = True
         self.save_dir = args.save_dir
-        self.filename = args.filename
+        self.prefix = args.prefix
+        self.filename = f"{self.prefix if self.prefix is not None else ''}benchmon-%n.csv"
         self.sampling_freq = args.sampling_freq
-        # self.checkpoint = args.checkpoint
         self.verbose = args.verbose
 
         # Mark the node with SLURM_NODEID == "0" as main node responsible for collecting all the different reports in the end
