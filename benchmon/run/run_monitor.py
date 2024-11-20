@@ -12,8 +12,8 @@ class RunMonitor:
 
         self.save_dir = args.save_dir
         self.prefix = args.prefix
-
         self.filename = "sys_report.csv" #f"{self.prefix if self.prefix is not None else ''}benchmon-%n.csv"
+        self.sampling_freq = args.sampling_freq
         self.verbose = args.verbose
 
         self.is_system = args.system
