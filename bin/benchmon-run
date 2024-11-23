@@ -21,6 +21,9 @@ except ImportError as e:
         print('%2d) %s' % (i + 1, sys.path[i]))
     raise
 
+JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")
+HOSTNAME = os.uname()[1]
+PID = os.getpid()
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -29,7 +32,7 @@ def parse_args():
     parser.add_argument(
         "-d",
         "--save-dir",
-        default=f"{os.getcwd()}/benchmon_traces_{os.getenv('SLURM_JOB_ID') or os.getenv('OAR_JOB_ID')}",
+        default=f"{os.getcwd()}/benchmon_traces_{JOBID}",
         help="Base directory where metrics will be saved. This directory should be available from all compute nodes Default is $PWD/benchmon_traces_$JOBID"
     )
 
@@ -94,6 +97,13 @@ def parse_args():
 
     return parser.parse_args()
 
+def get_benchmon_pid():
+    """
+    Get benchmon-run pid
+    """
+    filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
+    with open(filename, 'w') as fn:
+        fn.write(f"{PID}")
 
 if __name__ == '__main__':
     print(f'benchmon-run version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))

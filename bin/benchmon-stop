@@ -1,6 +1,6 @@
 #!/usr/bin/bash -x
 
-benchmon_pid_file=./.benchmon-run_pid_$(hostname)
+benchmon_pid_file=./.benchmon-run_pid_${OAR_JOB_ID}${SLURM_JOB_ID}_$(hostname)
 if [[ -f ${benchmon_pid_file} ]]
 then
     pid=$(cat ${benchmon_pid_file})

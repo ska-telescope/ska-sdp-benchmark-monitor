@@ -1,10 +1,12 @@
 import os
+import psutil
 import shutil
 import signal
-import socket
 import subprocess
 import sys
+import time
 
+HOSTNAME = os.uname()[1]
 
 class RunMonitor:
     def __init__(self, args):
@@ -13,7 +15,7 @@ class RunMonitor:
         self.save_dir = args.save_dir
         self.prefix = args.prefix
 
-        self.filename = "sys_report.csv" #f"{self.prefix if self.prefix is not None else ''}benchmon-%n.csv"
+        self.filename = "sys_report.csv"
         self.verbose = args.verbose
 
         self.is_system = args.system
@@ -28,7 +30,7 @@ class RunMonitor:
         self.is_benchmon_control_node = os.environ.get("SLURM_NODEID") == "0" if "SLURM_NODEID" in os.environ else False
 
         # Setup SIGTERM handler for graceful termination
-        signal.signal(signal.SIGTERM, self.terminate_dool) # @hc
+        signal.signal(signal.SIGTERM, self.terminate)
 
         # Get dool binary
         self.dool = args.dool
@@ -45,7 +47,7 @@ class RunMonitor:
                 raise Exception(f"Specified dool executable \"{self.dool}\" is not executable or not found! Please specify the correct dool executable using --dool")
 
         self.filename = self.filename.replace("%j", os.environ.get("SLURM_JOB_ID") if "SLURM_JOB_ID" in os.environ else "noslurm")
-        self.filename = self.filename.replace("%n", socket.gethostname())
+        self.filename = self.filename.replace("%n", HOSTNAME)
         if not self.filename.endswith(".csv"):
             self.filename = f"{self.filename}.csv"
 
@@ -55,7 +57,7 @@ class RunMonitor:
 
         # handle for the dool process
         self.dool_process = None
-        self.perfpow_process = None # @hc
+        self.perfpow_process = None
 
 
     def run(self):
@@ -67,10 +69,15 @@ class RunMonitor:
         if self.is_system:
             self.run_dool()
 
-        # # @bug
-        # if self.is_power:
-        #     print
-        #     self.run_perf_pow()
+        if self.is_power:
+            self.run_perf_pow()
+
+        if self.is_system:
+            self.dool_process.wait()
+            print("Dool exited unexpectedly!")
+            print(f"Terminated dool process on node \"{HOSTNAME}\".\nOutput: {self.dool_process.stdout.read()}")
+
+        self.terminate("", "")
 
     def run_dool(self):
         # Hardcoded
@@ -78,58 +85,57 @@ class RunMonitor:
         subprocess.run(["bash", f"{sh_file}", f"{self.save_dir}"])
 
         # The constructor made sure we have a correct dool executable at self.dool
-        # dool --time --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --output ./dool-report-$SLURM_JOB_ID-$(hostname).csv 1&
+        # dool --time --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --output save_dir/sys_report.csv
         dool_cmd = [self.dool, "--epoch", "--mem", "--swap", "--io", "--aio", "--disk", "--fs", "--net", "--cpu", "--cpu-use", "--cpufreq", "--output", f"{self.save_dir}{os.path.sep}{self.filename}", f"{self.system_sampling_interval}"]
+
         if self.verbose:
             print(f"Starting dool with command \"{' '.join(dool_cmd)}\"")
-        self.dool_process = subprocess.Popen(dool_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        self.dool_process.wait()
-        print("Dool exited unexpectedly!")
-        print(f"Terminated dool process on node \"{socket.gethostname()}\".\nOutput: {self.dool_process.stdout.read()}")
-        self.terminate_dool("", "")
 
-    # @bug
+        self.dool_process = subprocess.Popen(dool_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
     def run_perf_pow(self):
+        """
+        Get and run (as subprocess) perf power events
+        """
+        # Get Perf Power event
         get_events_cmd = "perf list | grep -i power/energy | awk '{print $1}'"
         events = subprocess.run(get_events_cmd, capture_output=True, shell=True, text=True).stdout.split("\n")[:-1]
-
         event_flags = []
         for event in events:
             event_flags += ["-e"] + [event]
 
-        # sampl_intv = 250
-        # filename = "./perf_rep.csv"
-
+        # Reporting in/ouput
         sampl_intv = self.power_sampling_interval
         filename = f"{self.save_dir}{os.path.sep}{self.pow_filename}"
 
+        # Get start time for
+        with open(filename, "w") as fn:
+            fn.write(f"# {time.time()}\n")
+
+        # Perf power command
         perf_pow_cmd = ["sudo-g5k", "perf", "stat", "-A", "-a"] + event_flags + ["-I", f"{sampl_intv}"] + ["-x", ",", "--append", "-o", f"{filename}"]
 
         if self.verbose:
             print(f"Starting perf-pow with command \"{' '.join(perf_pow_cmd)}\"")
-        # self.powperf_process
+
+        # Run perf
         self.perfpow_process = subprocess.Popen(perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-        self.perfpow_process.wait()
-
-        pid = self.powperf_process.pid
-        print(f"HERE I AMMM !!!!!!!!!!!!!!!!!!!!!!!!!!!! \n {self.powperf_process = } \n {pid = } ")
-        # subprocess.run(
-        #             ["sudo-g5k", "kill", "-15", str(pid)],
-        #             check=True,
-        #             text=True
-        #         )
-        print("Perf (power) exited unexpectedly!")
-        print(f"Terminated perf-pow process on node \"{socket.gethostname()}\".\nOutput: {self.perfpow_process.stdout.read()}")
-        self.terminate_perfpow_process("", "")
-
-    def terminate_dool(self, signum=None, frame=None):
+    def terminate(self, signum=None, frame=None):
         # kill dool process gracefully
         if self.dool_process and self.dool_process.poll() is None:
             self.dool_process.terminate()
             if self.verbose:
-                print(f"Terminated dool process on node \"{socket.gethostname()}\".\nOutput: {self.dool_process.stdout.read()}")
+                print(f"Terminated dool process on node \"{HOSTNAME}\".\nOutput: {self.dool_process.stdout.read()}")
             self.dool_process = None
+
+        # kill perf (power)
+        if self.perfpow_process:
+            perfpow_children = [f"{child.pid}" for child in psutil.Process(self.perfpow_process.pid).children()]
+            kill_perf_pow_cmd = ["sudo-g5k", "kill", "-15", f"{self.perfpow_process.pid}"] + perfpow_children
+            subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            if self.verbose:
+                print(f"Terminated perf (pow) process on node \"{HOSTNAME}\".\nOutput: {self.perfpow_process.stdout.read()}")
 
         if self.is_benchmon_control_node:
             print("Dool Control Node: Merging output...")
@@ -139,21 +145,3 @@ class RunMonitor:
 
         print("Benchmon-Run (dool) done. Exiting...")
         sys.exit(0)
-
-    def terminate_perfpow_process(self, signum=None, frame=None):
-        # kill dool process gracefully
-        if self.perfpow_process and self.perfpow_process.poll() is None:
-            self.perfpow_process.terminate()
-            if self.verbose:
-                print(f"Terminated perf-pow process on node \"{socket.gethostname()}\".\nOutput: {self.perfpow_process.stdout.read()}")
-            self.perfpow_process = None
-
-        if self.is_benchmon_control_node:
-            print("Dool Control Node: Merging output...")
-            pass
-            # todo scoop-315: ensure all dool processes of all nodes are terminated
-            # todo scoop-315: merge all dool outputs of all nodes
-
-        print("Benchmon-Run (perf) done. Exiting...")
-        sys.exit(0)
-
