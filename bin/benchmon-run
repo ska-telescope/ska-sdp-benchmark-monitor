@@ -21,15 +21,18 @@ except ImportError as e:
         print('%2d) %s' % (i + 1, sys.path[i]))
     raise
 
+JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")
+HOSTNAME = os.uname()[1]
+PID = os.getpid()
 
 def parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
     # add arguments
     parser.add_argument(
         "-d",
         "--save-dir",
-        default=f"{os.getcwd()}/benchmon_traces_{os.getenv('SLURM_JOB_ID') or os.getenv('OAR_JOB_ID')}",
+        default=f"{os.getcwd()}/benchmon_traces_{JOBID}",
         help="Base directory where metrics will be saved. This directory should be available from all compute nodes Default is $PWD/benchmon_traces_$JOBID"
     )
 
@@ -38,13 +41,16 @@ def parse_args():
         '--prefix',
         default=None,
         nargs='?',
-        help='''
-                Prefix of the file to be created. If provided, metrics will be located at $SAVE_DIR/$PREFIX-benchmon-%n.csv.
-                Supported variables are:
-                  %j - Slurm Job ID
-                  %n - Host Name
-                Default value is "benchmon-%n".
-            ''',
+        help='''Prefix of the file to be created. If provided, metrics will be located at $SAVE_DIR/$PREFIX-benchmon-%%n.csv.
+Supported variables are:
+  %%j - Slurm Job ID
+  %%n - Host Name
+Default value is "benchmon-%%n".''',
+    )
+
+    # Is it necessary?
+    parser.add_argument(
+        '--sampling-freq',
     )
 
     parser.add_argument(
@@ -92,8 +98,42 @@ def parse_args():
         help="Sampling interval to collect power metrics. Default value is 250 milliseconds",
     )
 
+    parser.add_argument(
+        "--call",
+        action="store_true",
+        help="Enable callstack tracing"
+    )
+
+    parser.add_argument(
+        "--call-mode",
+        type=str,
+        default="dwarf",
+        help="Call graph collection mode (dwarf, lbr, fp). Default: dwarf"
+    )
+
+    parser.add_argument(
+        "--call-profiling-frequency",
+        "--call-prof-freq",
+        type=int,
+        default=10,
+        help="Profiling frequency. Default: 10 Hz"
+    )
+
+    parser.add_argument(
+        "--sudo-g5k",
+        action="store_true",
+        help="Use super user space on Grid5000 clusters to run perf"
+    )
+
     return parser.parse_args()
 
+def get_benchmon_pid():
+    """
+    Get benchmon-run pid
+    """
+    filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
+    with open(filename, 'w') as fn:
+        fn.write(f"{PID}")
 
 if __name__ == '__main__':
     print(f'benchmon-run version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))

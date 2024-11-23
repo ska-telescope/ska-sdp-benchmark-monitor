@@ -13,11 +13,9 @@ class HardwareMonitor:
     def __init__(self, args):
         logging.basicConfig(stream=sys.stdout, level=logging.DEBUG if args.verbose else logging.INFO)
         self.save_dir = args.save_dir
-        self.prefix = args.prefix
         self.verbose = args.verbose
         self.run_long_tasks = not args.no_long_checks
-        self.save_path = f"{self.save_dir}/{self.prefix if self.prefix is not None else ''}"
-        os.makedirs(self.save_path, exist_ok=True)
+        os.makedirs(self.save_dir, exist_ok=True)
 
     def run(self):
         logger.info("Starting Hardware Monitor")
@@ -56,8 +54,9 @@ class HardwareMonitor:
         data['system'] = system.SystemReader().read()
 
         # Ping to other nodes in reservation
+        is_locking = True # @bug to be fixed
         nnodes = os.environ.get("SLURM_NNODES")
-        if nnodes is not None and int(nnodes) > 1:
+        if not is_locking and nnodes is not None and int(nnodes) > 1:
             logger.info("Gathering Ping Data to other nodes in the reservation")
             data['ping'] = ping.PingReader().read()
 
@@ -69,7 +68,7 @@ class HardwareMonitor:
 
         # Serialize to json
         logger.info("Save Data to file")
-        json.dump(data, open(f"{self.save_path}/hwmon-{hostname}.json", "w"))
+        json.dump(data, open(f"{self.save_dir}/hwmon-{hostname}.json", "w"))
 
         logger.info("Exiting...")
         return
