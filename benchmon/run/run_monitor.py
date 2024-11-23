@@ -16,6 +16,7 @@ class RunMonitor:
         self.prefix = args.prefix
 
         self.filename = "sys_report.csv"
+        self.sampling_freq = args.sampling_freq
         self.verbose = args.verbose
 
         self.is_system = args.system
