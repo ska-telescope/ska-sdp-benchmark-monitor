@@ -50,6 +50,11 @@ def parse_args():
             ''',
     )
 
+    # Is it necessary?
+    parser.add_argument(
+        '--sampling-freq',
+    )
+
     parser.add_argument(
         '-v',
         '--verbose',
@@ -93,6 +98,33 @@ def parse_args():
         type=int,
         default=250,
         help="Sampling interval to collect power metrics. Default value is 250 milliseconds",
+    )
+
+    parser.add_argument(
+        "--call",
+        action="store_true",
+        help="Enable callstack tracing"
+    )
+
+    parser.add_argument(
+        "--call-mode",
+        type=str,
+        default="dwarf",
+        help="Call graph collection mode (dwarf, lbr, fp). Default: dwarf"
+    )
+
+    parser.add_argument(
+        "--call-profiling-frequency",
+        "--call-prof-freq",
+        type=int,
+        default=10,
+        help="Profiling frequency. Default: 10 Hz"
+    )
+
+    parser.add_argument(
+        "--sudo-g5k",
+        action="store_true",
+        help="Use super user space on Grid5000 clusters to run perf"
     )
 
     return parser.parse_args()
