@@ -21,20 +21,19 @@ except ImportError as e:
         print('%2d) %s' % (i + 1, sys.path[i]))
     raise
 
+JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")
+HOSTNAME = os.uname()[1]
+PID = os.getpid()
 
 def parse_args():
     parser = argparse.ArgumentParser()
 
     # add arguments
     parser.add_argument(
-        '-d',
-        '--save-dir',
-        default=os.getcwd(),
-        nargs='?',
-        help='''
-            Base directory where metrics will be saved. This directory should 
-            be available from all compute nodes. Default is $PWD
-        ''',
+        "-d",
+        "--save-dir",
+        default=f"{os.getcwd()}/benchmon_traces_{JOBID}",
+        help="Base directory where metrics will be saved. This directory should be available from all compute nodes Default is $PWD/benchmon_traces_$JOBID"
     )
 
     parser.add_argument(
@@ -51,12 +50,9 @@ def parse_args():
             ''',
     )
 
+    # Is it necessary?
     parser.add_argument(
-        '-i',
         '--sampling-freq',
-        type=int,
-        default=30,
-        help="Sampling interval to collect metrics. Default value is 30 seconds",
     )
 
     parser.add_argument(
@@ -69,17 +65,82 @@ def parse_args():
 
     parser.add_argument(
         '--dool',
-        action='store_true',
+        type=str,
         default="",
         help="Path to the dool executable. If unset, a dool executable is searched in the PATH"
     )
 
+    parser.add_argument(
+        "--system",
+        "--sys",
+        action="store_true",
+        help="Enable system monitoring"
+    )
+
+    parser.add_argument(
+        "--system-sampling-interval",
+        "--sys-sampl-intv",
+        type=int,
+        default=1,
+        help="Sampling interval to collect system metrics. Default value is 1 second",
+    )
+
+    parser.add_argument(
+        "--power",
+        "--pow",
+        action="store_true",
+        help="Enable power monitoring"
+    )
+
+    parser.add_argument(
+        "--power-sampling-interval",
+        "--pow-sampl-intv",
+        type=int,
+        default=250,
+        help="Sampling interval to collect power metrics. Default value is 250 milliseconds",
+    )
+
+    parser.add_argument(
+        "--call",
+        action="store_true",
+        help="Enable callstack tracing"
+    )
+
+    parser.add_argument(
+        "--call-mode",
+        type=str,
+        default="dwarf",
+        help="Call graph collection mode (dwarf, lbr, fp). Default: dwarf"
+    )
+
+    parser.add_argument(
+        "--call-profiling-frequency",
+        "--call-prof-freq",
+        type=int,
+        default=10,
+        help="Profiling frequency. Default: 10 Hz"
+    )
+
+    parser.add_argument(
+        "--sudo-g5k",
+        action="store_true",
+        help="Use super user space on Grid5000 clusters to run perf"
+    )
+
     return parser.parse_args()
 
+def get_benchmon_pid():
+    """
+    Get benchmon-run pid
+    """
+    filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
+    with open(filename, 'w') as fn:
+        fn.write(f"{PID}")
 
 if __name__ == '__main__':
     print(f'benchmon-run version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))
     print("Beginning gathering of run context.")
     args = parse_args()
+    get_benchmon_pid()
     rm = rc.RunMonitor(args)
     rm.run()
