@@ -34,15 +34,10 @@ def parse_args():
         "--save-dir",
         default=f"{os.getcwd()}",
         help='''Base directory where metrics will be saved.
-        Inside this directory, a directory called "benchmon_traces_$JOBID_$HOSTNAME" will be created per host.
-        In the end, they will be merged into a single directory: "benchmon_traces_$JOBID".
+        Inside this directory, a directory called "benchmon_traces_$HOSTNAME" will be created per host.
+        In the end, they will be merged into a single directory: "benchmon_traces".
         This directory must be available from all compute nodes.
         '''
-    )
-
-    # Is it necessary?
-    parser.add_argument(
-        '--sampling-freq',
     )
 
     parser.add_argument(

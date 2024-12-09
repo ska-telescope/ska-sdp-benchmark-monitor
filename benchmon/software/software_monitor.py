@@ -12,10 +12,8 @@ class SoftwareMonitor:
     def __init__(self, args):
         logging.basicConfig(stream=sys.stdout, level=logging.DEBUG if args.verbose else logging.INFO)
         self.save_dir = args.save_dir
-        self.prefix = args.prefix
         self.verbose = args.verbose
-        self.save_path = f"{self.save_dir}/{self.prefix if self.prefix is not None else ''}"
-        os.makedirs(self.save_path, exist_ok=True)
+        os.makedirs(self.save_dir, exist_ok=True)
 
     def run(self):
         logger.info("Starting Software Monitor")
@@ -41,7 +39,7 @@ class SoftwareMonitor:
 
         # Dump to json
         logger.info("Save Data to file")
-        json.dump(data, open(f"{self.save_path}/swmon-{hostname}.json", "w"))
+        json.dump(data, open(f"{self.save_dir}/swmon-{hostname}.json", "w"))
 
         logger.info("Exiting...")
         return

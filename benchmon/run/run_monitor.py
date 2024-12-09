@@ -1,3 +1,5 @@
+import glob
+import json
 import os
 import psutil
 import shutil
@@ -10,32 +12,32 @@ HOSTNAME = os.uname()[1]
 
 class RunMonitor:
     def __init__(self, args):
-        self.JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")
+        self.JOBID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
         self.HOSTNAME = os.uname()[1]
 
         self.should_run = True
 
-        self.save_dir = f"{args.save_dir}{os.sep}benchmon_traces_{self.JOBID}_{self.HOSTNAME}"
+        self.save_dir_base = args.save_dir
+        self.save_dir = f"{self.save_dir}/benchmon_traces_{self.HOSTNAME}"
 
-        self.sampling_freq = args.sampling_freq
         self.verbose = args.verbose
 
         # System monitoring parameters
-        self.filename = f"sys_report_{self.HOSTNAME}.csv"
+        self.filename = f"sys_report.csv"
         self.is_system = args.system
         self.system_sampling_interval = args.system_sampling_interval
 
         # Power monitoring parameters
-        self.pow_filename = f'pow_report_{self.HOSTNAME}.csv'
+        self.pow_filename = f'pow_report.csv'
         self.is_power = args.power
         self.power_sampling_interval = args.power_sampling_interval
 
         # Profiling and callstack parameters
-        self.call_filename = f'call_report_{self.HOSTNAME}.txt'
+        self.call_filename = f'call_report.txt'
         self.is_call = args.call
         self.call_mode = args.call_mode
         self.call_profiling_frequency = args.call_profiling_frequency
-        self.temp_perf_file = f'_temp_perf_{self.HOSTNAME}.data'
+        self.temp_perf_file = f'_temp_perf.data'
 
         # Enable sudo-g5k (for Grid5000 clusters)
         self.sudo_g5k = "sudo-g5k" if args.sudo_g5k else ""
@@ -96,8 +98,7 @@ class RunMonitor:
         subprocess.run(["bash", f"{sh_file}", f"{self.save_dir}"])
 
         # The constructor made sure we have a correct dool executable at self.dool
-        # dool --time --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --output save_dir/sys_report.csv
-        dool_cmd = [self.dool, "--epoch", "--mem", "--swap", "--io", "--aio", "--disk", "--fs", "--net", "--cpu", "--cpu-use", "--cpufreq", "--output", f"{self.save_dir}{os.path.sep}{self.filename}", f"{self.system_sampling_interval}"]
+        dool_cmd = [self.dool, "--epoch", "--mem", "--swap", "--io", "--aio", "--disk", "--fs", "--net", "--cpu", "--cpu-use", "--cpufreq", "--output", f"{self.save_dir}/{self.filename}", f"{self.system_sampling_interval}"]
 
         if self.verbose:
             print(f"Starting dool with command \"{' '.join(dool_cmd)}\"")
@@ -117,7 +118,7 @@ class RunMonitor:
 
         # Reporting in/ouput
         sampl_intv = self.power_sampling_interval
-        filename = f"{self.save_dir}{os.path.sep}{self.pow_filename}"
+        filename = f"{self.save_dir}/{self.pow_filename}"
 
         # Get start time for
         with open(filename, "w") as fn:
@@ -152,18 +153,14 @@ class RunMonitor:
 
     def terminate(self, signum=None, frame=None):
         # kill perf (call)
-        if self.perfcall_process:
-            perfcall_children = [f"{child.pid}" for child in psutil.Process(self.perfcall_process.pid).children()]
-            kill_perf_pow_cmd = [self.sudo_g5k, "kill", "-15", f"{self.perfcall_process.pid}"] + perfcall_children
-            subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if self.perfcall_process and self.perfcall_process.poll() is None:
+            self.perfcall_process.terminate()
             if self.verbose:
                 print(f"Terminated perf (call) process on node \"{HOSTNAME}\".\nOutput: {self.perfcall_process.stdout.read()}")
 
         # kill perf (power)
-        if self.perfpow_process:
-            perfpow_children = [f"{child.pid}" for child in psutil.Process(self.perfpow_process.pid).children()]
-            kill_perf_pow_cmd = [self.sudo_g5k, "kill", "-15", f"{self.perfpow_process.pid}"] + perfpow_children
-            subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if self.perfpow_process and self.perfpow_process.poll() is None:
+            self.perfpow_process.terminate()
             if self.verbose:
                 print(f"Terminated perf (pow) process on node \"{HOSTNAME}\".\nOutput: {self.perfpow_process.stdout.read()}")
 
@@ -181,11 +178,52 @@ class RunMonitor:
                 subprocess.run(create_callgraph_cmd, stdout=redirect_stdout, stderr=subprocess.STDOUT, text=True)
 
         if self.is_benchmon_control_node:
-            print("Dool Control Node: Merging output...")
-            base_directory = self.save_dir
-            pass
-            # todo scoop-315: ensure all dool processes of all nodes are terminated
-            # todo scoop-315: merge all dool outputs of all nodes
+            print("Control Node: Merging output...")
 
-        print("Benchmon-Run (dool) done. Exiting...")
+            """
+            Files:
+            ./swmon-*.json
+            ./hwmon-*.json
+            ./benchmon_traces_*   (directories)
+                -> ./mono_to_real_file.txt
+                -> ./sys_report.csv
+                -> ./pow_report.csv
+                -> ./call_report.txt
+            """
+            swmon_files = sorted(glob.glob(f"{self.save_dir_base}/swmon-*.json"))
+            hwmon_files = sorted(glob.glob(f"{self.save_dir_base}/hwmon-*.json"))
+            traces_dirs = sorted(glob.glob(f"{self.save_dir_base}/benchmon_traces_*"))
+
+            # merge swmon-files if any:
+            if len(swmon_files) > 0:
+                swmon_data = {}
+                for file in swmon_files:
+                    filename = file.split("/")[-1][6:-4]  # remove "swmon-" and ".csv" - should result in the hostname
+                    with open(file, "r") as f:
+                        swmon_data[filename] = json.load(f)
+
+                with open(f"{self.save_dir_base}/swmon_merged.json", "w") as f:
+                    json.dump(swmon_data, f)
+
+                for file in swmon_files:
+                    os.remove(file)
+
+            # merge hwmon-files if any:
+            if len(hwmon_files) > 0:
+                hwmon_data = {}
+
+                for file in hwmon_files:
+                    filename = file.split("/")[-1][6:-4]  # remove "hwmon-" and ".csv" - should result in the hostname
+                    with open(file, "r") as f:
+                        hwmon_data[filename] = json.load(f)
+
+                with open(f"{self.save_dir_base}/hwmon_merged.json", "w") as f:
+                    json.dump(hwmon_data, f)
+
+                for file in swmon_files:
+                    os.remove(file)
+
+            print("Control Node: Output Merged.")
+
+        print("Benchmon-Run done. Exiting...")
         sys.exit(0)
