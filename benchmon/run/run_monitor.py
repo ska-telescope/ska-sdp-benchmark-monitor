@@ -10,30 +10,32 @@ HOSTNAME = os.uname()[1]
 
 class RunMonitor:
     def __init__(self, args):
+        self.JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")
+        self.HOSTNAME = os.uname()[1]
+
         self.should_run = True
 
-        self.save_dir = args.save_dir
-        self.prefix = args.prefix
+        self.save_dir = f"{args.save_dir}{os.sep}benchmon_traces_{self.JOBID}_{self.HOSTNAME}"
 
         self.sampling_freq = args.sampling_freq
         self.verbose = args.verbose
 
         # System monitoring parameters
-        self.filename = "sys_report.csv"
+        self.filename = f"sys_report_{self.HOSTNAME}.csv"
         self.is_system = args.system
         self.system_sampling_interval = args.system_sampling_interval
 
         # Power monitoring parameters
-        self.pow_filename = "pow_report.csv"
+        self.pow_filename = f'pow_report_{self.HOSTNAME}.csv'
         self.is_power = args.power
         self.power_sampling_interval = args.power_sampling_interval
 
         # Profiling and callstack parameters
-        self.call_filename = "call_report.txt"
+        self.call_filename = f'call_report_{self.HOSTNAME}.txt'
         self.is_call = args.call
         self.call_mode = args.call_mode
         self.call_profiling_frequency = args.call_profiling_frequency
-        self.temp_perf_file = "_temp_perf.data"
+        self.temp_perf_file = f'_temp_perf_{self.HOSTNAME}.data'
 
         # Enable sudo-g5k (for Grid5000 clusters)
         self.sudo_g5k = "sudo-g5k" if args.sudo_g5k else ""
@@ -58,14 +60,8 @@ class RunMonitor:
             if dool_path is None:
                 raise Exception(f"Specified dool executable \"{self.dool}\" is not executable or not found! Please specify the correct dool executable using --dool")
 
-        self.filename = self.filename.replace("%j", os.environ.get("SLURM_JOB_ID") if "SLURM_JOB_ID" in os.environ else "noslurm")
-        self.filename = self.filename.replace("%n", HOSTNAME)
         if not self.filename.endswith(".csv"):
             self.filename = f"{self.filename}.csv"
-
-        # Remove possible trailing slashes in save_dir path
-        if self.save_dir[-1] == os.path.sep:
-            self.save_dir = self.save_dir[:-1]
 
         # handle for the dool process
         self.dool_process = None
@@ -186,6 +182,7 @@ class RunMonitor:
 
         if self.is_benchmon_control_node:
             print("Dool Control Node: Merging output...")
+            base_directory = self.save_dir
             pass
             # todo scoop-315: ensure all dool processes of all nodes are terminated
             # todo scoop-315: merge all dool outputs of all nodes
