@@ -154,13 +154,17 @@ class RunMonitor:
     def terminate(self, signum=None, frame=None):
         # kill perf (call)
         if self.perfcall_process and self.perfcall_process.poll() is None:
-            self.perfcall_process.terminate()
+            perfcall_children = [f"{child.pid}" for child in psutil.Process(self.perfcall_process.pid).children()]
+            kill_perf_pow_cmd = [self.sudo_g5k, "kill", "-15", f"{self.perfcall_process.pid}"] + perfcall_children
+            subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if self.verbose:
                 print(f"Terminated perf (call) process on node \"{HOSTNAME}\".\nOutput: {self.perfcall_process.stdout.read()}")
 
         # kill perf (power)
         if self.perfpow_process and self.perfpow_process.poll() is None:
-            self.perfpow_process.terminate()
+            perfpow_children = [f"{child.pid}" for child in psutil.Process(self.perfpow_process.pid).children()]
+            kill_perf_pow_cmd = [self.sudo_g5k, "kill", "-15", f"{self.perfpow_process.pid}"] + perfpow_children
+            subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if self.verbose:
                 print(f"Terminated perf (pow) process on node \"{HOSTNAME}\".\nOutput: {self.perfpow_process.stdout.read()}")
 
