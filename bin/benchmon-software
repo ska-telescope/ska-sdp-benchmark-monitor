@@ -43,17 +43,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        '-p',
-        '--prefix',
-        default=None,
-        nargs='?',
-        help='''
-                    Name of the directory to be created to save software context data. If provided, 
-                    software information will be located at $SAVE_DIR/$PREFIX.
-                ''',
-    )
-
-    parser.add_argument(
         '-v',
         '--verbose',
         action='store_true',
