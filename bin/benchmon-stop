@@ -6,4 +6,5 @@ then
     pid=$(cat ${benchmon_pid_file})
     kill -15 ${pid}
     rm -v ${benchmon_pid_file}
+    wait ${pid}
 fi
