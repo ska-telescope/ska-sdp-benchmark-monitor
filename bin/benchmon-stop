@@ -6,5 +6,8 @@ then
     pid=$(cat ${benchmon_pid_file})
     kill -15 ${pid}
     rm -v ${benchmon_pid_file}
-    wait ${pid}
+
+    set +x
+    while [ -e /proc/${pid} ]; do sleep 0.1; done
+    set -x
 fi

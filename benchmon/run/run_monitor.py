@@ -100,6 +100,7 @@ class RunMonitor:
             self.dool_process.wait()
 
         self.terminate("", "")
+        self.post_process()
 
     def run_dool(self):
         # Hardcoded
@@ -185,12 +186,14 @@ class RunMonitor:
                 print(f"Terminated dool process on node \"{HOSTNAME}\".\nOutput: {self.dool_process.stdout.read()}")
             self.dool_process = None
 
+    def post_process(self):
         # Create callgraph file
         if self.perfcall_process:
             print("Post-processing perf.data file ...")
             create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", f"{self.save_dir}/{self.temp_perf_file}"]
             with open(f"{self.save_dir}/{self.call_filename}", "w") as redirect_stdout:
                 subprocess.run(create_callgraph_cmd, stdout=redirect_stdout, stderr=subprocess.STDOUT, text=True)
+            print("...done")
 
         if self.is_benchmon_control_node:
             print("Control Node: Merging output...")
