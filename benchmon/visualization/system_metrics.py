@@ -146,7 +146,7 @@ class DoolData():
                 # Skip csv non-informative lines
                 if self.csv_report[stamp] == []:
                     continue
-                elif self.csv_report[stamp][0] in ("Host:", "Cmdline:", "system", "time"):
+                elif self.csv_report[stamp][0] in ("Host:", "Cmdline:", "system", "time", "epoch"):
                     continue
 
                 # Get value
