@@ -26,7 +26,7 @@ HOSTNAME = os.uname()[1]
 PID = os.getpid()
 
 def parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
     # add arguments
     parser.add_argument(
@@ -41,13 +41,11 @@ def parse_args():
         '--prefix',
         default=None,
         nargs='?',
-        help='''
-                Prefix of the file to be created. If provided, metrics will be located at $SAVE_DIR/$PREFIX-benchmon-%n.csv.
-                Supported variables are:
-                  %j - Slurm Job ID
-                  %n - Host Name
-                Default value is "benchmon-%n".
-            ''',
+        help='''Prefix of the file to be created. If provided, metrics will be located at $SAVE_DIR/$PREFIX-benchmon-%%n.csv.
+Supported variables are:
+  %%j - Slurm Job ID
+  %%n - Host Name
+Default value is "benchmon-%%n".''',
     )
 
     # Is it necessary?
