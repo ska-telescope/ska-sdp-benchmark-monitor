@@ -34,7 +34,7 @@ cd ska-sdp-benchmark-monitor/bin
 export PATH=$PATH/$PWD
 ```
 ## Monitoring mode
-This mode allows background monitoring of resource usage and recording of energy consumption. This includes: total CPU usage, per-core CPU usage, CPU frequencies, memory and swap utilization, network activity, and I/O operations. To use this mode, start monitoring with the `benchmon-start`, with chosen options, before launching the target application. Once the application has finished execution, stop the monitoring by running `benchmon-stop`. Upon completion, several reports will be saved in the traces directory, which can be visualized using the `benchmon-visu` described below. Additional options/flags available for the monitoring mode are described as follows:
+This mode allows background monitoring of resource usage and recording of energy consumption. This includes: total CPU usage, per-core CPU usage, CPU frequencies, memory and swap utilization, network activity, and I/O operations. To use this mode, start monitoring with the `benchmon-start` (or `benchmon-slurm-start` for slurm multi-nodes runs), with chosen options, before launching the target application. Once the application has finished execution, stop the monitoring by running `benchmon-stop` (or `benchmon-slurm-stop` for slurm multi-nodes runs). Upon completion, several reports will be saved in the traces directory, which can be visualized using the `benchmon-visu` described below. Additional options/flags available for the monitoring mode are described as follows:
   - `-d | --save-dir`:  Traces repository (default: `./traces_<JobId>/`). For each compute nodes, a sub-repository will be created in, and named `<traces>/benchmon_traces_<hostname>`
  -  `-v | --verbose`: Enable verbose mode.
  - `--dool`:   Path to the dool executable. If unset, a dool executable is searched in the PATH.
@@ -64,7 +64,7 @@ The visualization tool `benchmon-visu` allows for partial or complete display of
 ## Example on AWS
 ```bash
 #!/usr/bin/bash
-# SBATCH ...
+# SBATCH -N 2 -n 8 -t 10
 
 # Benchmon executables
 benchmon=/shared/fsx1/benchmark-monitor/bin
@@ -83,16 +83,18 @@ benchmon_params+=" --dool $HOME/bin/dool"
 benchmon_params+=" --verbose"
 
 # Run benchmon
-$benchmon/benchmon-start $benchmon_params
+$benchmon/benchmon-slurm-start $benchmon_params
 sleep 2
 
 # Target app
-/shared/fsx1/benchmark-monitor/mytest/nas-omp/bin/ft.B.x
+mpirun -n $SLURM_NPROCS /shared/fsx1/benchmark-monitor/mytest/nas-mpiomp/bin/ft.B.x
 
 # Stop benchmon
 sleep 2
-$benchmon/benchmon-stop
+$benchmon/benchmon-slurm-stop
 
 # Create visualization plot
-$benchmon/benchmon-visu --cpu --cpu-all --mem --fig-fmt png --fig-dpi medium "$traces_repo/benchmon_traces_$(hostname)"
+for subrepo in $traces_repo/*/; do
+    $benchmon/benchmon-visu --cpu --cpu-all --cpu-freq --cpu-cores-in 1,2,3,4 --mem --fig-fmt png --fig-dpi medium $subrepo
+done
 ```
