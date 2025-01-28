@@ -163,6 +163,7 @@ def main():
         call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
 
     plt.xlabel("Time (s)")
+    fig.suptitle(f"{os.path.basename(os.path.realpath(args.traces_repo))[16:]}")
     plt.subplots_adjust(hspace=.5)
     plt.tight_layout()
 
@@ -176,7 +177,7 @@ def main():
     for fmt in args.fig_fmt.split(","):
         figname = f"{figpath}/{args.fig_name}.{fmt}"
         fig.savefig(figname, format=fmt, dpi=dpi[args.fig_dpi])
-        print(f"Figure saved: {figname}")
+        print(f"Figure saved: {os.path.realpath(figname)}")
 
     return 0
 

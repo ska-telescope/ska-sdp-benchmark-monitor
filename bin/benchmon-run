@@ -26,18 +26,31 @@ HOSTNAME = os.uname()[1]
 PID = os.getpid()
 
 def parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
     # add arguments
     parser.add_argument(
         "-d",
         "--save-dir",
-        default=f"{os.getcwd()}",
-        help='''Base directory where metrics will be saved.
-        Inside this directory, a directory called "benchmon_traces_$HOSTNAME" will be created per host.
-        In the end, they will be merged into a single directory: "benchmon_traces".
-        This directory must be available from all compute nodes.
-        '''
+        default=f"{os.getcwd()}/benchmon_traces_{JOBID}",
+        help="Base directory where metrics will be saved. This directory should be available from all compute nodes Default is $PWD/benchmon_traces_$JOBID"
+    )
+
+    parser.add_argument(
+        '-p',
+        '--prefix',
+        default=None,
+        nargs='?',
+        help='''Prefix of the file to be created. If provided, metrics will be located at $SAVE_DIR/$PREFIX-benchmon-%%n.csv.
+Supported variables are:
+  %%j - Slurm Job ID
+  %%n - Host Name
+Default value is "benchmon-%%n".''',
+    )
+
+    # Is it necessary?
+    parser.add_argument(
+        '--sampling-freq',
     )
 
     parser.add_argument(
@@ -127,6 +140,5 @@ if __name__ == '__main__':
     print("Beginning gathering of run context.")
     args = parse_args()
     get_benchmon_pid()
-
     rm = rc.RunMonitor(args)
     rm.run()
