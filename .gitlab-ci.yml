@@ -4,6 +4,7 @@ stages:
   - pretest
   - test
   - pages
+  - scan
 
 lint-test:
   stage: pretest

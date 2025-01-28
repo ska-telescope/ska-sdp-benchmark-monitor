@@ -54,8 +54,9 @@ class HardwareMonitor:
         data['system'] = system.SystemReader().read()
 
         # Ping to other nodes in reservation
+        is_locking = True # @bug to be fixed
         nnodes = os.environ.get("SLURM_NNODES")
-        if nnodes is not None and int(nnodes) > 1:
+        if not is_locking and nnodes is not None and int(nnodes) > 1:
             logger.info("Gathering Ping Data to other nodes in the reservation")
             data['ping'] = ping.PingReader().read()
 

@@ -50,10 +50,10 @@ class CpuReader:
         cpu.update(
             {
                 'Power_Policy': execute_cmd(
-                    'cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor ' '| sort | uniq'
+                    'cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2> /dev/null ' '| sort | uniq'
                 ),
                 'Power_Driver': execute_cmd(
-                    'cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_driver ' '| sort | uniq'
+                    'cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_driver 2> /dev/null ' '| sort | uniq'
                 ),
                 'Microcode': execute_cmd(
                     'grep microcode /proc/cpuinfo | uniq | awk ' '\'NR==1{print $3}\''

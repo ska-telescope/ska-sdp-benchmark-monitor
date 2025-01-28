@@ -1,0 +1,5 @@
+# umbrella include for all Raw life cycle stages
+include:
+  # Publish stage
+  - local: gitlab-ci/includes/changelog.gitlab-ci.yml
+

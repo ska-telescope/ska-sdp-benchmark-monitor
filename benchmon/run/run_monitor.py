@@ -9,16 +9,19 @@ import sys
 import time
 
 HOSTNAME = os.uname()[1]
+PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
 
 class RunMonitor:
     def __init__(self, args):
-        self.JOBID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
-        self.HOSTNAME = os.uname()[1]
-
         self.should_run = True
 
+        self.save_dir = args.save_dir
+        self.prefix = args.prefix
+
+        self.sampling_freq = args.sampling_freq
+
         self.save_dir_base = args.save_dir
-        self.save_dir = f"{self.save_dir}/benchmon_traces_{self.HOSTNAME}"
+        self.save_dir = f"{self.save_dir}/benchmon_traces_{HOSTNAME}"
 
         self.verbose = args.verbose
 
@@ -43,7 +46,9 @@ class RunMonitor:
         self.sudo_g5k = "sudo-g5k" if args.sudo_g5k else ""
 
         # Mark the node with SLURM_NODEID == "0" as main node responsible for collecting all the different reports in the end
-        self.is_benchmon_control_node = os.environ.get("SLURM_NODEID") == "0" if "SLURM_NODEID" in os.environ else False
+        is_slurm_control_node = os.environ.get("SLURM_NODEID") == "0" if "SLURM_NODEID" in os.environ else False
+        is_oar_control_node = True if subprocess.run(["oarprint host"], capture_output=True, shell=True, text=True).stdout.split("\n")[0] == HOSTNAME else False
+        self.is_benchmon_control_node = is_slurm_control_node or is_oar_control_node
 
         # Setup SIGTERM handler for graceful termination
         signal.signal(signal.SIGTERM, self.terminate)
@@ -62,13 +67,19 @@ class RunMonitor:
             if dool_path is None:
                 raise Exception(f"Specified dool executable \"{self.dool}\" is not executable or not found! Please specify the correct dool executable using --dool")
 
+        self.filename = self.filename.replace("%j", os.environ.get("SLURM_JOB_ID") if "SLURM_JOB_ID" in os.environ else "noslurm")
+        self.filename = self.filename.replace("%n", HOSTNAME)
         if not self.filename.endswith(".csv"):
             self.filename = f"{self.filename}.csv"
+
+        # # Remove possible trailing slashes in save_dir path
+        # if self.save_dir[-1] == os.path.sep:
+        #     self.save_dir = self.save_dir[:-1]
 
         # handle for the dool process
         self.dool_process = None
         self.perfpow_process = None
-
+        self.perfcall_process = None
 
     def run(self):
         """
@@ -87,10 +98,9 @@ class RunMonitor:
 
         if self.is_system:
             self.dool_process.wait()
-            print("Dool exited unexpectedly!")
-            print(f"Terminated dool process on node \"{HOSTNAME}\".\nOutput: {self.dool_process.stdout.read()}")
 
         self.terminate("", "")
+        self.post_process()
 
     def run_dool(self):
         # Hardcoded
@@ -98,7 +108,8 @@ class RunMonitor:
         subprocess.run(["bash", f"{sh_file}", f"{self.save_dir}"])
 
         # The constructor made sure we have a correct dool executable at self.dool
-        dool_cmd = [self.dool, "--epoch", "--mem", "--swap", "--io", "--aio", "--disk", "--fs", "--net", "--cpu", "--cpu-use", "--cpufreq", "--output", f"{self.save_dir}/{self.filename}", f"{self.system_sampling_interval}"]
+        # dool --time --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --output save_dir/sys_report.csv
+        dool_cmd = [self.dool, "--epoch", "--mem", "--swap", "--io", "--aio", "--disk", "--fs", "--net", "--cpu", "--cpu-use", "--cpufreq", "--output", f"{self.save_dir}{os.path.sep}{self.filename}", f"{self.system_sampling_interval}"]
 
         if self.verbose:
             print(f"Starting dool with command \"{' '.join(dool_cmd)}\"")
@@ -118,7 +129,7 @@ class RunMonitor:
 
         # Reporting in/ouput
         sampl_intv = self.power_sampling_interval
-        filename = f"{self.save_dir}/{self.pow_filename}"
+        filename = f"{self.save_dir}{os.path.sep}{self.pow_filename}"
 
         # Get start time for
         with open(filename, "w") as fn:
@@ -153,7 +164,7 @@ class RunMonitor:
 
     def terminate(self, signum=None, frame=None):
         # kill perf (call)
-        if self.perfcall_process and self.perfcall_process.poll() is None:
+        if self.perfcall_process:
             perfcall_children = [f"{child.pid}" for child in psutil.Process(self.perfcall_process.pid).children()]
             kill_perf_pow_cmd = [self.sudo_g5k, "kill", "-15", f"{self.perfcall_process.pid}"] + perfcall_children
             subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -161,7 +172,7 @@ class RunMonitor:
                 print(f"Terminated perf (call) process on node \"{HOSTNAME}\".\nOutput: {self.perfcall_process.stdout.read()}")
 
         # kill perf (power)
-        if self.perfpow_process and self.perfpow_process.poll() is None:
+        if self.perfpow_process:
             perfpow_children = [f"{child.pid}" for child in psutil.Process(self.perfpow_process.pid).children()]
             kill_perf_pow_cmd = [self.sudo_g5k, "kill", "-15", f"{self.perfpow_process.pid}"] + perfpow_children
             subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -175,11 +186,14 @@ class RunMonitor:
                 print(f"Terminated dool process on node \"{HOSTNAME}\".\nOutput: {self.dool_process.stdout.read()}")
             self.dool_process = None
 
+    def post_process(self):
         # Create callgraph file
         if self.perfcall_process:
+            print("Post-processing perf.data file ...")
             create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", f"{self.save_dir}/{self.temp_perf_file}"]
             with open(f"{self.save_dir}/{self.call_filename}", "w") as redirect_stdout:
                 subprocess.run(create_callgraph_cmd, stdout=redirect_stdout, stderr=subprocess.STDOUT, text=True)
+            print("...done")
 
         if self.is_benchmon_control_node:
             print("Control Node: Merging output...")
@@ -224,10 +238,11 @@ class RunMonitor:
                 with open(f"{self.save_dir_base}/hwmon_merged.json", "w") as f:
                     json.dump(hwmon_data, f)
 
-                for file in swmon_files:
+                for file in hwmon_files:
                     os.remove(file)
 
             print("Control Node: Output Merged.")
 
-        print("Benchmon-Run done. Exiting...")
-        sys.exit(0)
+        # print("Benchmon-Run (dool) done. Exiting...")
+        # sys.exit(0)
+        return 0
