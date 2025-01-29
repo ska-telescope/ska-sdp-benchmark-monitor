@@ -25,7 +25,12 @@ class RunMonitor:
 
         self.verbose = args.verbose
 
-        # System monitoring parameters
+        # High-frequency system monitoring
+        self.hfsys_filename = lambda device: f"hf_{device}_report.csv" # @nc
+        self.is_hf_system = args.high_freq_system
+        self.hf_sys_freq = args.hf_sys_freq
+
+        # System monitoring parameters (with dool)
         self.filename = f"sys_report.csv"
         self.is_system = args.system
         self.system_sampling_interval = args.system_sampling_interval
@@ -80,12 +85,19 @@ class RunMonitor:
         self.dool_process = None
         self.perfpow_process = None
         self.perfcall_process = None
+        self.hf_sys_process = []
 
     def run(self):
         """
         Wrapper of monitoring functions
         """
         os.makedirs(self.save_dir, exist_ok=True)
+        # Hardcoded (system info)
+        sh_file = f"{os.path.dirname(os.path.realpath(__file__))}/pre_dool_hc.sh"
+        subprocess.run(["bash", f"{sh_file}", f"{self.save_dir}"])
+
+        if self.is_hf_system:
+            self.run_hf_sys_monitoring()
 
         if self.is_system:
             self.run_dool()
@@ -96,17 +108,56 @@ class RunMonitor:
         if self.is_call:
             self.run_perf_call()
 
-        if self.is_system:
+        if self.is_hf_system:
+            self.hf_sys_process[0].wait()
+        elif self.is_system:
             self.dool_process.wait()
 
         self.terminate("", "")
         self.post_process()
 
-    def run_dool(self):
-        # Hardcoded
-        sh_file = f"{os.path.dirname(os.path.realpath(__file__))}/pre_dool_hc.sh"
-        subprocess.run(["bash", f"{sh_file}", f"{self.save_dir}"])
+    def run_hf_sys_monitoring(self):
+        """
+        Run high-frequency monitoring
+        """
+        freq = self.hf_sys_freq
 
+        exec_sh_file = lambda device:  f"{os.path.dirname(os.path.realpath(__file__))}/hf_{device}_mon.sh"
+
+        # Memory process
+        self.hf_sys_process += [
+            subprocess.Popen(
+                [
+                    "bash", exec_sh_file("mem"),
+                    f"{freq}",
+                    f"{self.save_dir}/{self.hfsys_filename('mem')}"
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+        ]
+
+        # CPU process
+        self.hf_sys_process += [
+            subprocess.Popen(
+                [
+                    "bash", exec_sh_file("cpu"),
+                    f"{freq}",
+                    f"{self.save_dir}/{self.hfsys_filename('cpu')}",
+                    f"{self.save_dir}/{self.hfsys_filename('cpufreq')}"
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+        ]
+
+
+    def run_dool(self):
+        """
+        Run dool as subprocess
+        """
         # The constructor made sure we have a correct dool executable at self.dool
         # dool --time --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --output save_dir/sys_report.csv
         dool_cmd = [self.dool, "--epoch", "--mem", "--swap", "--io", "--aio", "--disk", "--fs", "--net", "--cpu", "--cpu-use", "--cpufreq", "--output", f"{self.save_dir}{os.path.sep}{self.filename}", f"{self.system_sampling_interval}"]
@@ -185,6 +236,11 @@ class RunMonitor:
             if self.verbose:
                 print(f"Terminated dool process on node \"{HOSTNAME}\".\nOutput: {self.dool_process.stdout.read()}")
             self.dool_process = None
+
+        for process in self.hf_sys_process:
+            process.terminate()
+            if self.verbose:
+                print(f"Terminated high-frequency monitoring process on node \"{HOSTNAME}\".\nOutput: {process.stdout.read()}")
 
     def post_process(self):
         # Create callgraph file
