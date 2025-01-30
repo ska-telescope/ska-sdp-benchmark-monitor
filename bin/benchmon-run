@@ -125,6 +125,20 @@ Default value is "benchmon-%%n".''',
         help="Use super user space on Grid5000 clusters to run perf"
     )
 
+    parser.add_argument(
+        "--high-freq-system",
+        "--hf-sys",
+        action="store_true",
+        help="Enable high frequency system monitoring"
+    )
+
+    parser.add_argument(
+        "--hf-sys-freq",
+        type=int,
+        default=10,
+        help="High-frequency profiling frequency. Default: 10 Hz"
+    )
+
     return parser.parse_args()
 
 def get_benchmon_pid():
