@@ -1,7 +1,9 @@
 import glob
 import json
+import math
 import os
 import psutil
+import requests
 import shutil
 import signal
 import subprocess
@@ -39,6 +41,10 @@ class RunMonitor:
         self.pow_filename = f'pow_report.csv'
         self.is_power = args.power
         self.power_sampling_interval = args.power_sampling_interval
+
+        # G5K Power monitoring
+        self.pow_filename_base = "pow_g5k_.csv"
+        self.is_power_g5k = args.power_g5k
 
         # Profiling and callstack parameters
         self.call_filename = f'call_report.txt'
@@ -91,6 +97,8 @@ class RunMonitor:
         """
         Wrapper of monitoring functions
         """
+        self.t0 = time.time()
+
         os.makedirs(self.save_dir, exist_ok=True)
         # Hardcoded (system info)
         sh_file = f"{os.path.dirname(os.path.realpath(__file__))}/pre_dool_hc.sh"
@@ -213,6 +221,36 @@ class RunMonitor:
         # Run perf (call)
         self.perfcall_process = subprocess.Popen(perf_call_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
+
+    def download_g5k_pow(self):
+        """
+        Download grid5000 power consumption report
+        """
+        _site = HOSTNAME.split(".")[1]
+        _cluster = HOSTNAME.split(".")[0]
+
+        self.t1 = time.time()
+
+        metrics = ["wattmetre_power_watt", "bmc_node_power_watt"]
+
+        for metric in metrics:
+
+            suffix = f"stable/sites/{_site}/metrics?metrics={metric}&nodes={_cluster}&start_time={math.floor(self.t0)}&end_time={math.ceil(self.t1)}"
+            url = f"https://api.grid5000.fr/{suffix}"
+
+            if self.verbose:
+                print(f"Downloading ...: {url}")
+
+            req = requests.get(url, verify=False)
+            filepath = f"{self.save_dir}/g5k_pow_report_{metric}.json"
+            with open (filepath, "w") as jsfile:
+                json.dump(req.json(), jsfile)
+
+            if self.verbose:
+                print(f"File saved in: {filepath}")
+
+
+
     def terminate(self, signum=None, frame=None):
         # kill perf (call)
         if self.perfcall_process:
@@ -243,6 +281,12 @@ class RunMonitor:
                 print(f"Terminated high-frequency monitoring process on node \"{HOSTNAME}\".\nOutput: {process.stdout.read()}")
 
     def post_process(self):
+        """
+        Post-process data
+        """
+        if self.is_power_g5k or (self.is_power and HOSTNAME.split(".")[-2] == "grid5000"):
+            self.download_g5k_pow()
+
         # Create callgraph file
         if self.perfcall_process:
             print("Post-processing perf.data file ...")
