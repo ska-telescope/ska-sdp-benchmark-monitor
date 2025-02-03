@@ -45,8 +45,9 @@ This mode allows background monitoring of resource usage and recording of energy
 - `--sys | --system`: Enable system monitoring with dool.
 - `--sys-sampl-intv | --system-sampling-interval` Sampling interval to collect system metrics (default: `1` second).
 #### Energy profiling
-- `--pow | --power`: Enable power monitoring (with perf).
+- `--pow | --power`: Enable power monitoring (with perf and g5k).
 - `--pow-sampl-intv | --power-sampling-interval`: Sampling interval to collect power metrics (default: `250` milliseconds)
+- `--pow-g5k | --power-g5k`: Enable only G5K power monitoring
 #### Callstack recording
 - `--call`: Enable callstack tracing.
 - `--call-mode`: Call graph collection mode (`dwarf`; `lbr`; `fp`) (default: `dwarf`)
@@ -54,7 +55,7 @@ This mode allows background monitoring of resource usage and recording of energy
 ## Visualization
 The visualization tool `benchmon-visu` allows for partial or complete display of monitoring and/or call tracing data. This tool accepts flags for the trace directory and information related to the desired metrics. It takes the traces repository as a positional arguments (if unset, it takes `./`). Here is the list of flags and options:
 ###### If native monitoring is enabled
-- `--hf-mem`: Visualize memory
+- `--hf-mem`: Visualize memory
 - `--hf-cpu`: Display average cpu usage per space (usr, sys, wait, idle, virt)
 - `--hf-cpu-all`: Visualize all CPU cores usage (usr+sys+wait)
 - `--hf-cpu-freq`: Visualize all CPU cores frequencies

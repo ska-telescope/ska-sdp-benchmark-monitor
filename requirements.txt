@@ -1,2 +1,5 @@
 psutil
 ping3
+matplotlib
+requests
+numpy
