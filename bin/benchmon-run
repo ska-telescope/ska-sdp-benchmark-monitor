@@ -91,6 +91,13 @@ Default value is "benchmon-%%n".''',
     )
 
     parser.add_argument(
+        "--power-g5k",
+        "--pow-g5k",
+        action="store_true",
+        help="Download grid5000 power monitoring"
+    )
+
+    parser.add_argument(
         "--power-sampling-interval",
         "--pow-sampl-intv",
         type=int,

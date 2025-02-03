@@ -5,6 +5,7 @@ Main Python script to visualize monitoring metrics
 
 import argparse
 import os
+import socket
 import sys
 import matplotlib.pyplot as plt
 
@@ -16,6 +17,8 @@ sys.path.insert(0, parent_dir)
 from benchmon.visualization import system_metrics
 from benchmon.visualization import power_metrics
 from benchmon.visualization import call_profile
+
+HOSTNAME = socket.getfqdn()
 
 def parsing():
     """
@@ -48,6 +51,7 @@ def parsing():
     parser.add_argument("--hf-sys", action="store_true", help="Visualize all system data")
 
     # Power profile
+    parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power")
     parser.add_argument("--pow", action="store_true", help="Visualize power")
 
     # Callstack
@@ -114,6 +118,9 @@ def main():
     # Load power data
     if args.pow:
         power_trace = power_metrics.PerfPowerData(csv_filename=f"{args.traces_repo}/pow_report.csv")
+    is_pow_g5k = args.pow_g5k or (args.pow and HOSTNAME.split(".")[-2] == "grid5000")
+    if is_pow_g5k:
+        power_g5k_trace = power_metrics.G5KPowerData(traces_dir=args.traces_repo)
 
     # Load call data
     call_depths = []
@@ -135,7 +142,7 @@ def main():
             call_depths = [int(depth) for depth in args.call_depths.split(",")]
 
     # Figure and subplots
-    nsbp = n_sys + n_hf_sys + args.pow + args.call * (2 if len(call_depths) > 2 else 1)
+    nsbp = n_sys + n_hf_sys + (args.pow or is_pow_g5k) + args.call * (2 if len(call_depths) > 2 else 1)
     sbp = 1
     wid, hei = 19.2, nsbp * 3 #10.8
     # fig = plt.figure(figsize=(wid,hei))
@@ -208,9 +215,17 @@ def main():
         sys_trace.plot_io()
 
     # (perf) Power plot
-    if args.pow:
+    if args.pow or is_pow_g5k:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        power_trace.plot_events(xticks=_xticks, xlim=_xlim)
+        if args.pow:
+            power_trace.plot_events(xticks=_xticks, xlim=_xlim)
+        if is_pow_g5k:
+            power_g5k_trace.plot_g5k_pow_profiles(xticks=_xticks, xlim=_xlim)
+        plt.xticks(_xticks[0], _xticks[1])
+        plt.xlim(_xlim)
+        plt.ylabel("Power (W)")
+        plt.legend(loc=1)
+        plt.grid()
 
     # (perf) Calltrace plot
     if args.call:
