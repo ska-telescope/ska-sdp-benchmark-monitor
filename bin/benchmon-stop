@@ -1,4 +1,23 @@
-#!/usr/bin/bash -x
+#!/usr/bin/bash
+
+args=""
+save_dir="./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        "-l" | "--level")
+            level=$2
+            shift 2
+            ;;
+        "-d" | "--save-dir")
+            save_dir=$2
+            shift 2
+            ;;
+        *)
+            args="$args $1"
+            shift 1
+            ;;
+    esac
+done
 
 benchmon_pid_file=./.benchmon-run_pid_${OAR_JOB_ID}${SLURM_JOB_ID}_$(hostname)
 if [[ -f ${benchmon_pid_file} ]]
@@ -10,4 +29,31 @@ then
     set +x
     while [ -e /proc/${pid} ]; do sleep 0.1; done
     set -x
+fi
+
+if [[ $level == 0 ]]; then
+    for subrepo in $save_dir/*/; do
+        $(dirname $0)/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $subrepo &
+        $(dirname $0)/benchmon-visu --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $subrepo &
+        $(dirname $0)/benchmon-visu --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $subrepo &
+    done
+    wait
+
+elif [[ $level == 1 ]]; then
+    for subrepo in $save_dir/*/; do
+        $(dirname $0)/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $subrepo & # --pow
+        $(dirname $0)/benchmon-visu --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $subrepo & # --pow
+        $(dirname $0)/benchmon-visu --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $subrepo & # --pow
+    done
+    wait
+
+elif [[ $level == 2 ]]; then
+    for subrepo in $save_dir/*/; do
+        $(dirname $0)/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $subrepo & # --pow --call --call-depth 4
+        $(dirname $0)/benchmon-visu --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $subrepo & # --pow --call --call-depth 4
+        $(dirname $0)/benchmon-visu --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $subrepo & # --pow --call --call-depth 4
+        $(dirname $0)/benchmon-visu --hf-cpu-all --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name call_only $subrepo & # --pow --call --call-depth 4
+
+    done
+    wait
 fi

@@ -2,4 +2,4 @@
 
 HOSTS=$(echo $(scontrol show hostname) | tr -s " " ",")
 
-mpirun -host $HOSTS $(dirname $0)/benchmon-stop
+mpirun -host $HOSTS $(dirname $0)/benchmon-stop $*
