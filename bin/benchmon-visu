@@ -55,6 +55,7 @@ def parsing():
     parser.add_argument("--pow", action="store_true", help="Visualize power")
 
     # Callstack
+    parser.add_argument("--inline-call", action="store_true", help="Visualize callstack inline within monitoring")
     parser.add_argument("--call", action="store_true", help="Visualize callstack")
     parser.add_argument("--call-depth", type=int, default=1, help="Callstack depth level")
     parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
@@ -124,7 +125,8 @@ def main():
 
     # Load call data
     call_depths = []
-    if args.call:
+    inline_calls_prof = None
+    if args.call or args.inline_call:
         with open(f"{args.traces_repo}/mono_to_real_file.txt", "r") as file:
             mono_to_real_val = float(file.readline())
         call_raw = call_profile.PerfCallRawData(filename=f"{args.traces_repo}/call_report.txt")
@@ -141,6 +143,32 @@ def main():
         elif args.call_depths:
             call_depths = [int(depth) for depth in args.call_depths.split(",")]
 
+
+        # Hard-coded system command to remove
+        kernel_calls = ["swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "prometheus-node", "htop", "kworker", "dbus-daemon", "ipmitool"]
+
+        # Create list of keys for user calls (remove command if less thant 5% of the larger command)
+        INLINE_CMDS_THRESHOLD = 0.01
+        user_calls_keys = []
+        for key in cmds:
+            if cmds[key] / cmds[cmd] > INLINE_CMDS_THRESHOLD:
+                user_calls_keys += [key]
+
+        # print(f"{user_calls_keys = }")
+        user_calls_keys_raw = user_calls_keys.copy()
+        for command in user_calls_keys_raw:
+            for kcall in kernel_calls:
+                if kcall in command:
+                    user_calls_keys.remove(command)
+                    break
+
+        inline_calls_prof = {key: [] for key in user_calls_keys}
+        print(f"{inline_calls_prof = }")
+        for sample in samples:
+            if sample["cmd"] in user_calls_keys and  sample["cpu"] == "[000]":
+                inline_calls_prof[sample["cmd"]] += [sample["timestamp"] + mono_to_real_val]
+
+
     # Figure and subplots
     nsbp = n_sys + n_hf_sys + (args.pow or is_pow_g5k) + args.call * (2 if len(call_depths) > 2 else 1)
     sbp = 1
@@ -154,7 +182,7 @@ def main():
     # (HF) CPU plot
     if is_hf_cpu:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_cpu()
+        hfsys_trace.plot_hf_cpu(calls=inline_calls_prof)
 
     # (HF) Full individual core plot
     if is_hf_cores_full:
@@ -170,7 +198,7 @@ def main():
     # (HF) CPU per core plot
     if is_hf_cpu_all:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out)
+        hfsys_trace.plot_hf_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
 
     # (dool) CPU per core plot
     if is_cpu_all:
@@ -187,7 +215,7 @@ def main():
     # (HF) CPU cores frequency plot
     if is_hf_cpu_freq:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_cpufreq(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out)
+        hfsys_trace.plot_hf_cpufreq(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
 
     # (dool) CPU cores frequency plot
     if is_cpu_freq:
@@ -197,7 +225,7 @@ def main():
     # (HF) Memory/swap plot
     if is_hf_mem:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_memory_usage(xticks=_xticks, xlim=_xlim) # @hc
+        hfsys_trace.plot_hf_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (dool) Memory plot
     if is_mem:
