@@ -196,9 +196,13 @@ class G5KPowerData:
             "value": np.zeros(nstamps)
             }
 
-            fmt = '%Y-%m-%dT%H:%M:%S.%f%z'
+            fmt = "%Y-%m-%dT%H:%M:%S.%f%z"
             for idx, item in enumerate(g5k_pow_list):
-                self.g5k_pow_prof[metric]["timestamps"][idx] = datetime.strptime(item["timestamp"], fmt).timestamp()
+                ts = item["timestamp"]
+                if ts[19] != ".":
+                    ts = ts[:19] + ".0" + ts[19:]
+
+                self.g5k_pow_prof[metric]["timestamps"][idx] = datetime.strptime(ts, fmt).timestamp()
                 self.g5k_pow_prof[metric]["value"][idx] = item["value"]
 
 
