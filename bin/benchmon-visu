@@ -193,7 +193,7 @@ def main():
     # (dool) CPU plot
     if is_cpu:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_average(_xticks, _xlim)
+        sys_trace.plot_cpu_average(_xticks, _xlim, calls=inline_calls_prof)
 
     # (HF) CPU per core plot
     if is_hf_cpu_all:
@@ -203,9 +203,8 @@ def main():
     # (dool) CPU per core plot
     if is_cpu_all:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_per_core(with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1,
-                                    cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out,
-                                    xticks=_xticks, xlim=_xlim)
+        sys_trace.plot_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out,
+                                    xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (dool) CPU per core (accumulated) plot
     if is_cpu_all_acc:
@@ -220,7 +219,7 @@ def main():
     # (dool) CPU cores frequency plot
     if is_cpu_freq:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_freq(xticks=_xticks, xlim=_xlim, with_color_bar=False, with_legend=True, fig=fig, nsbp=nsbp, sbp=sbp-1, cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out)
+        sys_trace.plot_cpu_freq(xticks=_xticks, xlim=_xlim, cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
 
     # (HF) Memory/swap plot
     if is_hf_mem:
@@ -230,7 +229,7 @@ def main():
     # (dool) Memory plot
     if is_mem:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_memory_usage(xticks=_xticks, xlim=_xlim)
+        sys_trace.plot_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (dool) Network plot
     if is_net:
@@ -245,10 +244,13 @@ def main():
     # (perf) Power plot
     if args.pow or is_pow_g5k:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        _ymax_pow = [0]
         if args.pow:
-            power_trace.plot_events(xticks=_xticks, xlim=_xlim)
+            _ymax_pow += [power_trace.plot_events(xticks=_xticks, xlim=_xlim)]
         if is_pow_g5k:
-            power_g5k_trace.plot_g5k_pow_profiles(xticks=_xticks, xlim=_xlim)
+            _ymax_pow += [power_g5k_trace.plot_g5k_pow_profiles(xticks=_xticks, xlim=_xlim)]
+        if inline_calls_prof:
+            system_metrics.plot_inline_calls(inline_calls_prof, ymax=max(_ymax_pow))
         plt.xticks(_xticks[0], _xticks[1])
         plt.xlim(_xlim)
         plt.ylabel("Power (W)")

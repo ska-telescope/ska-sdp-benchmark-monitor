@@ -113,7 +113,7 @@ class PerfPowerData:
         return 0
 
 
-    def plot_events(self, xticks: list = [], xlim: list = []) -> int:
+    def plot_events(self, xticks: list = [], xlim: list = []) -> float:
         """
         Plots total power events
 
@@ -127,28 +127,32 @@ class PerfPowerData:
                 pow_total[event] += self.prof[cpu][event]
 
         alpha = 0.4
+        ymax = 0
+
         event = "power/energy-cores/"
         if event in self.events:
-
             array = np.append(pow_total[event], pow_total[event][-1])
             plt.step(self._stamps, array, where="post", label=self.events_table[event], color="C4", ls="--")
+            ymax = max(ymax, max(array))
 
         event = "power/energy-ram/"
         if event in self.events:
             array = np.append(pow_total[event], pow_total[event][-1])
             plt.step(self._stamps, array, where="post", label=self.events_table[event], color="C1", ls="-.")
+            ymax = max(ymax, max(array))
 
         event = "power/energy-pkg/"
         if event in self.events:
             array = np.append(pow_total[event], pow_total[event][-1])
             plt.step(self._stamps, array, where="post", label=self.events_table[event], color="k")
+            ymax = max(ymax, max(array))
 
         # @todo
         # event = "power/energy-psys/"
         # if event in self.events:
         #     plt.plot(self._stamps, pow_total[event], label=self.events_table[event], color="b")
 
-        return 0
+        return ymax
 
 
 class G5KPowerData:
@@ -206,7 +210,7 @@ class G5KPowerData:
                 self.g5k_pow_prof[metric]["value"][idx] = item["value"]
 
 
-    def plot_g5k_pow_profiles(self, xticks: list = [], xlim: list = []) -> int:
+    def plot_g5k_pow_profiles(self, xticks: list = [], xlim: list = []) -> float:
         """
         Plots total power events
 
@@ -214,7 +218,7 @@ class G5KPowerData:
             xticks (list): x-axis ticks of current plot
             xlim (list): x-axis limit of current plot
         """
-
+        _ymax = 0
         metrics = ["wattmetre_power_watt", "bmc_node_power_watt"]
 
         metric = "wattmetre_power_watt"
@@ -222,9 +226,13 @@ class G5KPowerData:
         vals = self.g5k_pow_prof[metric]["value"]
         plt.plot(ts, vals, color="C2", ls="-", marker=".", label="g5k:wm")
 
+        _ymax = max(_ymax, max(vals))
+
         metric = "bmc_node_power_watt"
         ts = self.g5k_pow_prof[metric]["timestamps"]
         vals = self.g5k_pow_prof[metric]["value"]
         plt.plot(ts, vals, color="C9", ls="-", marker=".", label="g5k:bmc")
 
-        return 0
+        _ymax = max(_ymax, max(vals))
+
+        return _ymax
