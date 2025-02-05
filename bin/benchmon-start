@@ -1,3 +1,41 @@
 #!/usr/bin/bash
 
-$(dirname $0)/benchmon-run $* &
+args=""
+save_dir_arg="--save-dir ./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        "-l" | "--level")
+            level=$2
+            shift 2
+            ;;
+        "-d" | "--save-dir")
+            save_dir_arg="--save-dir $2"
+            shift 2
+            ;;
+        *)
+            args="$args $1"
+            shift 1
+            ;;
+    esac
+done
+
+args="$args $save_dir_arg"
+
+if [[ $level == 0 ]]; then
+    $(dirname $0)/benchmon-hardware $save_dir_arg
+    $(dirname $0)/benchmon-software $save_dir_arg
+    args="--sys --hf-sys --hf-sys-freq 1 $args"
+
+elif [[ $level == 1 ]]; then
+    $(dirname $0)/benchmon-hardware $save_dir_arg
+    $(dirname $0)/benchmon-software $save_dir_arg
+    args="--sys --hf-sys --hf-sys-freq 10 $args" # --pow --pow-freq 10
+
+elif [[ $level == 2 ]]; then
+    $(dirname $0)/benchmon-hardware $save_dir_arg
+    $(dirname $0)/benchmon-software $save_dir_arg
+    args="--sys --hf-sys --hf-sys-freq 100 $args" #  --pow --pow-freq 10 --call --call-prof-freq 100 $save_dir_arg" (to be added)
+
+fi
+
+$(dirname $0)/benchmon-run $args &

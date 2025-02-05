@@ -376,16 +376,24 @@ class DoolData():
         mem_unit = 1024 ** 3 # (GB)
 
         # Total memory
-        plt.fill_between(self._stamps, self.prof["mem-used"] / mem_unit, (self.prof["mem-used"] + self.prof["mem-cach"] + self.prof["mem-free"]) / mem_unit, alpha=alpha, label="dool: MemTotal", color="b")
+        memtotal = (self.prof["mem-used"] + self.prof["mem-cach"] + self.prof["mem-free"]) / mem_unit
+        plt.fill_between(self._stamps, memtotal, alpha=alpha, label="dool: MemTotal", color="b")
 
         # Used memory
-        plt.fill_between(self._stamps, 0, self.prof["mem-used"] / mem_unit, alpha=alpha*3, label="dool: MemUsed", color="b")
+        memused =  self.prof["mem-used"] / mem_unit
+        plt.fill_between(self._stamps, memused, alpha=alpha*3, label="dool: MemUsed", color="b")
+
+        # Cache memory
+        memcach = self.prof["mem-cach"] / mem_unit
+        plt.fill_between(self._stamps, memused, memused + memcach, alpha=alpha*2, label="dool: MemCach", color="g")
 
         # Total swap
-        plt.fill_between(self._stamps, 0, (self.prof["swp-used"] + self.prof["swp-free"]) / mem_unit, alpha=alpha, label="dool: SwapTotal", color="r")
+        swaptotal = (self.prof["swp-used"] + self.prof["swp-free"]) / mem_unit
+        plt.fill_between(self._stamps, swaptotal, alpha=alpha, label="dool: SwapTotal", color="r")
 
         # Used swap
-        plt.fill_between(self._stamps, 0, self.prof["swp-used"] / mem_unit, alpha=alpha*3, label="dool: SwapUsed", color="r")
+        swapused = self.prof["swp-used"] / mem_unit
+        plt.fill_between(self._stamps, swapused, alpha=alpha*3, label="dool: SwapUsed", color="r")
 
         plt.xticks(xticks[0], xticks[1])
         plt.xlim(xlim)
@@ -712,14 +720,14 @@ class HighFreqData():
         alpha = 0.3
         memunit = 1024 ** 2 # (GB)
 
-        mem_total =  self.hf_mem_prof["MemTotal"] / memunit
-        plt.fill_between(self.hf_mem_stamps, mem_total, alpha=alpha, label="MemTotal", color="b")
+        total =  self.hf_mem_prof["MemTotal"] / memunit
+        cached = (self.hf_mem_prof["Buffers"] + self.hf_mem_prof["Cached"] + self.hf_mem_prof["Slab"]) / memunit
+        used = - cached + (self.hf_mem_prof["MemTotal"] - self.hf_mem_prof["MemFree"]) / memunit
 
-        val_arr = (self.hf_mem_prof["MemTotal"] - self.hf_mem_prof["MemFree"]) / memunit
-        plt.fill_between(self.hf_mem_stamps, val_arr, alpha=alpha*3, label="MemUsed", color="b")
+        plt.fill_between(self.hf_mem_stamps, total, alpha=alpha, label="MemTotal", color="b")
+        plt.fill_between(self.hf_mem_stamps, used, alpha=alpha*3, label="MemUsed", color="b")
+        plt.fill_between(self.hf_mem_stamps, used, used + cached, alpha=alpha*2, label="Cach/Buff", color="g")
 
-        # val_arr = (self.hf_mem_prof["Buffers"] + self.hf_mem_prof["Cached"] + self.hf_mem_prof["Slab"]) / memunit
-        # plt.fill_between(self.hf_mem_stamps, val_arr, alpha=alpha*1.5, label="Cach/Buff", color="k")
         # val_arr = (self.hf_mem_prof["MemTotal"] - self.hf_mem_prof["MemFree"]) / memunit
         # plt.fill_between(self.hf_mem_stamps, (self.hf_mem_prof["Buffers"] + self.hf_mem_prof["Cached"] + self.hf_mem_prof["Slab"]) / memunit, val_arr, alpha=alpha*3, label="MemUsed", color="b")
 
@@ -733,7 +741,7 @@ class HighFreqData():
         plt.grid()
 
         if calls:
-            mem_max = max(mem_total)
+            mem_max = max(total)
             plot_inline_calls(calls=calls, ypos=-mem_max*.05, ylim=(-mem_max*.2, mem_max * 1.1))
 
         return 0
