@@ -1,6 +1,6 @@
 import os
 import glob
-from setuptools import setup
+from setuptools import setup, find_packages
 
 # Get version information
 version = {}
@@ -63,4 +63,9 @@ setup(
              'bin/benchmon-stop',
              'bin/benchmon-visu'],
     install_requires=reqs,
+    packages=find_packages(),
+    package_data={
+        "benchmon": ["run/*.sh"],
+    },
+    include_package_data=True, 
 )
