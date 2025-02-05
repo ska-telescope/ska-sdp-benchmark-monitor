@@ -53,7 +53,7 @@ setup(
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
     ],
-    packages=packages,
+    packages=find_packages(),
     scripts=['bin/benchmon-hardware',
              'bin/benchmon-software', 
              'bin/benchmon-run',
@@ -63,7 +63,6 @@ setup(
              'bin/benchmon-stop',
              'bin/benchmon-visu'],
     install_requires=reqs,
-    packages=find_packages(),
     package_data={
         "benchmon": ["run/*.sh"],
     },
