@@ -29,6 +29,21 @@ def read_sys_info(any_reportpath) -> int:
 
     return sys_info
 
+
+def plot_inline_calls(calls: dict, ymax: float = 100.):
+    """
+    Generic plot of call inline
+    """
+    cm = plt.cm.gist_earth(np.linspace(0, 1, len(calls)+1))
+
+    ypos = - 0.05 * ymax
+    ylim = (-0.2 * ymax, 1.1 * ymax)
+    for idx, call in enumerate(calls):
+        plt.plot(calls[call], ypos*np.ones(len(calls[call])), "o", c=cm[idx])
+        plt.text(np.mean(calls[call]), ypos*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
+    plt.ylim(ylim)
+
+
 class DoolData():
     """
     Dool database
@@ -193,7 +208,7 @@ class DoolData():
         return 0
 
 
-    def plot_cpu_average(self, xticks, xlim) -> int:
+    def plot_cpu_average(self, xticks, xlim, calls: dict = None) -> int:
         """
         Plot average cpu usage
         """
@@ -222,21 +237,17 @@ class DoolData():
         _handles, _labels = plt.gca().get_legend_handles_labels()
         plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
 
+        if calls:
+            plot_inline_calls(calls=calls)
+
         return 0
 
 
-    def plot_cpu_per_core(self, xticks, xlim, with_legend: bool = False, with_color_bar: bool = False,
-                          fig=None, nsbp: int = None, sbp: int = None, cores_in: str = "", cores_out: str = "") -> int:
+    def plot_cpu_per_core(self, xticks, xlim, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
         """
         Plot cpu per core
-
-        Args:
-            with_legend (bool): Plot cores usage with legend
-            with_color_bar (bool): Plot cores usage with colobar (color gardient)
-            fig (obj): Figure object (matplotlib)
-            nsbp (int): Total number of subplots
-            sbp (int): Number of current subplots
         """
+
         cores = [core for core in range(self.ncpu)]
         if len(cores_in) > 0:
             cores = [int(core) for core in cores_in.split(",")]
@@ -255,8 +266,10 @@ class DoolData():
         plt.ylabel(f"(Dool) CPU Cores (%)")
         plt.grid()
 
-        if with_legend:
-            plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
+        plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
+
+        if calls:
+            plot_inline_calls(calls=calls)
 
         return 0
 
@@ -299,17 +312,9 @@ class DoolData():
         return 0
 
 
-    def plot_cpu_freq(self, xticks, xlim, with_legend: bool = False, with_color_bar: bool = False,
-                          fig=None, nsbp: int = None, sbp: int = None, cores_in: str = "", cores_out: str = "") -> int:
+    def plot_cpu_freq(self, xticks, xlim, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
         """
         Plot cpu per core
-
-        Args:
-            with_legend (bool): Plot cores usage with legend
-            with_color_bar (bool): Plot cores usage with colobar (color gardient)
-            fig (obj): Figure object (matplotlib)
-            nsbp (int): Total number of subplots
-            sbp (int): Number of current subplots
         """
         cpu_freq_min = self.sys_info["cpu_freq_min"] / 1e6 # GHz
         cpu_freq_max = self.sys_info["cpu_freq_max"] / 1e6 # GHz
@@ -345,18 +350,15 @@ class DoolData():
         plt.ylabel(f" CPU frequencies (GHz)")
         plt.grid()
 
-        if with_legend:
-            plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
+        plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
 
-        if with_color_bar:
-            cax = fig.add_axes([0.955, 1 - (sbp-.2)/nsbp, fig.get_figwidth()/1e4, .7/nsbp]) # [left, bottom, width, height]
-            plt.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(vmin=1, vmax=self.ncpu), cmap=plt.cm.jet), \
-                         ticks=np.linspace(1, self.ncpu, min(self.ncpu, 5), dtype="i"), cax=cax)
+        if calls:
+            plot_inline_calls(calls=calls, ymax=cpu_freq_max)
 
         return 0
 
 
-    def plot_memory_usage(self, xticks, xlim) -> int:
+    def plot_memory_usage(self, xticks, xlim, calls: dict = None) -> int:
         """
         Plot memory usage
         """
@@ -385,10 +387,13 @@ class DoolData():
 
         plt.xticks(xticks[0], xticks[1])
         plt.xlim(xlim)
-        plt.yticks(np.linspace(0, max((self.prof["mem-used"] + self.prof["mem-cach"] + self.prof["mem-free"]) / mem_unit), 5, dtype="i"))
+        plt.yticks(np.linspace(0, max(memtotal), 8, dtype="i"))
         plt.ylabel("Memory (GB)")
         plt.legend(loc=1)
         plt.grid()
+
+        if calls:
+            plot_inline_calls(calls=calls, ymax=max(memtotal))
 
         return 0
 
@@ -589,7 +594,7 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_cpu(self, number="") -> int:
+    def plot_hf_cpu(self, number="", calls: dict = None) -> int:
         core = f"cpu{number}"
         alpha = .8
         prefix = f"{number}: " if number else ""
@@ -621,10 +626,13 @@ class HighFreqData():
         _handles, _labels = plt.gca().get_legend_handles_labels()
         plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
 
+        if calls:
+            plot_inline_calls(calls=calls)
+
         return 0
 
 
-    def plot_hf_cpu_per_core(self, cores_in: str = "", cores_out: str = "") -> int:
+    def plot_hf_cpu_per_core(self, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
         """
         Plot cpu per core
         """
@@ -651,6 +659,8 @@ class HighFreqData():
         plt.grid()
         plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
 
+        if calls:
+            plot_inline_calls(calls=calls)
         return 0
 
 
@@ -695,32 +705,36 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_memory_usage(self, xticks, xlim) -> int:
+    def plot_hf_memory_usage(self, xticks, xlim, calls: dict = None) -> int:
         """
         Plot memory/swap usage
         """
         alpha = 0.3
         memunit = 1024 ** 2 # (GB)
 
+        # Memory
         total =  self.hf_mem_prof["MemTotal"] / memunit
         cached = (self.hf_mem_prof["Buffers"] + self.hf_mem_prof["Cached"] + self.hf_mem_prof["Slab"]) / memunit
         used = - cached + (self.hf_mem_prof["MemTotal"] - self.hf_mem_prof["MemFree"]) / memunit
-
         plt.fill_between(self.hf_mem_stamps, total, alpha=alpha, label="MemTotal", color="b")
         plt.fill_between(self.hf_mem_stamps, used, alpha=alpha*3, label="MemUsed", color="b")
         plt.fill_between(self.hf_mem_stamps, used, used + cached, alpha=alpha*2, label="Cach/Buff", color="g")
 
-        # val_arr = (self.hf_mem_prof["MemTotal"] - self.hf_mem_prof["MemFree"]) / memunit
-        # plt.fill_between(self.hf_mem_stamps, (self.hf_mem_prof["Buffers"] + self.hf_mem_prof["Cached"] + self.hf_mem_prof["Slab"]) / memunit, val_arr, alpha=alpha*3, label="MemUsed", color="b")
-
-        plt.fill_between(self.hf_mem_stamps, self.hf_mem_prof["SwapTotal"] / memunit, alpha=alpha, label="SwapTotal", color="r")
-        plt.fill_between(self.hf_mem_stamps, (self.hf_mem_prof["SwapTotal"]-self.hf_mem_prof["SwapFree"]) / memunit, alpha=alpha*3, label="SwapUsed", color="r")
+        # Swap
+        swap_total = self.hf_mem_prof["SwapTotal"] / memunit
+        swap_used = swap_total - self.hf_mem_prof["SwapFree"] / memunit
+        plt.fill_between(self.hf_mem_stamps, swap_total, alpha=alpha, label="SwapTotal", color="r")
+        plt.fill_between(self.hf_mem_stamps, swap_used, alpha=alpha*3, label="SwapUsed", color="r")
 
         plt.xticks(xticks[0], xticks[1])
         plt.xlim(xlim)
+        plt.yticks(np.linspace(0, max(total), 8, dtype="i"))
         plt.ylabel("Memory (GB)")
         plt.legend(loc=1)
         plt.grid()
+
+        if calls:
+            plot_inline_calls(calls=calls, ymax=max(total))
 
         return 0
 
@@ -758,7 +772,7 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_cpufreq(self, cores_in: str = "", cores_out: str = "") -> int:
+    def plot_hf_cpufreq(self, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
         """
         Plot cpu frequency per core
         """
@@ -796,4 +810,10 @@ class HighFreqData():
         plt.grid()
         plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
 
+        if calls:
+            plot_inline_calls(calls=calls, ymax=cpu_freq_max)
+
         return 0
+
+
+
