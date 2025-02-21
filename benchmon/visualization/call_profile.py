@@ -71,7 +71,8 @@ class PerfCallRawData:
         t0 = time.time()
         samples = []
         for block in blocks:
-            if len(block) == 0: continue
+            if len(block) == 0: continue        # @hc avoid empty line
+            if "cycles" not in block[0] and block[0][-1] == "\n": continue   # @hc avoid line starting with kind of Warning:\n
             sample_info = block[0].split()
 
             # Hard-coded exceptions
@@ -128,7 +129,7 @@ class PerfCallRawData:
                 cmds[cmd] = 1
         cmds = {ky: val for ky, val in sorted(cmds.items(), key = lambda item: -item[1])}
 
-        list_filename = f"{os.path.dirname(self.filename)}/list_recorded_perf_cmds.txt"
+        list_filename = f"{os.path.realpath(os.path.dirname(self.filename))}/list_recorded_perf_cmds.txt"
         with open(list_filename, "w") as _file:
             for cmd in cmds.keys():
                 _file.write(f"{cmd}: {cmds[cmd]} samples\n")
