@@ -52,6 +52,7 @@ class RunMonitor:
         self.call_mode = args.call_mode
         self.call_profiling_frequency = args.call_profiling_frequency
         self.temp_perf_file = f'_temp_perf.data'
+        self.is_perf_datafile_kept = args.call_keep_datafile
 
         # Enable sudo-g5k (for Grid5000 clusters)
         self.sudo_g5k = "sudo-g5k" if args.sudo_g5k else ""
@@ -262,7 +263,8 @@ class RunMonitor:
             subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             process_stdout = self.perfcall_process.stdout.read() # @hc must be kept, otherwise it doesnt terminate properly
             if self.verbose:
-                print(f"Terminated perf (call) process on node \"{HOSTNAME}\".\nOutput: {process_stdout}")
+                print(f"Terminated perf (call) process on node \"{HOSTNAME}\".)")
+                if process_stdout: print(f"Output: {process_stdout}")
 
         # kill perf (power)
         if self.perfpow_process:
@@ -272,19 +274,24 @@ class RunMonitor:
             subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             process_stdout = self.perfpow_process.stdout.read() # @hc
             if self.verbose:
-                print(f"Terminated perf (pow) process on node \"{HOSTNAME}\".\nOutput: {process_stdout}")
+                print(f"Terminated perf (pow) process on node \"{HOSTNAME}\".)")
+                if process_stdout: print(f"Output: {process_stdout}")
 
         # kill dool process gracefully
         if self.dool_process and self.dool_process.poll() is None:
             self.dool_process.terminate()
+            process_stdout = self.dool_process.stdout.read()
             if self.verbose:
-                print(f"Terminated dool process on node \"{HOSTNAME}\".\nOutput: {self.dool_process.stdout.read()}")
+                print(f"Terminated dool process on node \"{HOSTNAME}\".)")
+                if process_stdout: print(f"Output: {process_stdout}")
             self.dool_process = None
 
         for process in self.hf_sys_process:
             process.terminate()
+            process_stdout = process.stdout.read()
             if self.verbose:
-                print(f"Terminated high-frequency monitoring process on node \"{HOSTNAME}\".\nOutput: {process.stdout.read()}")
+                print(f"Terminated high-frequency monitoring process on node \"{HOSTNAME}\".)")
+                if process_stdout: print(f"Output: {process_stdout}")
 
     def post_process(self):
         """
@@ -297,11 +304,17 @@ class RunMonitor:
         if self.perfcall_process:
             print("Post-processing perf.data file ...")
             perf_data_file = f"{self.save_dir}/{self.temp_perf_file}"
-            create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", perf_data_file]
+            create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", perf_data_file] # @dev "-F comm,pid,tid,cpu,time,event" could be used to lighten the file
             with open(f"{self.save_dir}/{self.call_filename}", "w") as redirect_stdout:
                 subprocess.run(create_callgraph_cmd, stdout=redirect_stdout, stderr=subprocess.STDOUT, text=True)
-            # os.remove(perf_data_file) # @hc
+
+            if not self.is_perf_datafile_kept:
+                print(f"\t Removing perf binany file: {perf_data_file}...")
+                os.remove(perf_data_file)
+                print(f"\t...done")
+
             print("...done")
+
 
         if self.is_benchmon_control_node:
             print("Control Node: Merging output...")

@@ -114,7 +114,7 @@ Default value is "benchmon-%%n".''',
     parser.add_argument(
         "--call-mode",
         type=str,
-        default="dwarf",
+        default="dwarf,32",
         help="Call graph collection mode (dwarf, lbr, fp). Default: dwarf"
     )
 
@@ -130,6 +130,12 @@ Default value is "benchmon-%%n".''',
         "--sudo-g5k",
         action="store_true",
         help="Use super user space on Grid5000 clusters to run perf"
+    )
+
+    parser.add_argument(
+        "--call-keep-datafile",
+        action="store_true",
+        help="Keep perf data file"
     )
 
     parser.add_argument(

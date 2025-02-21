@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import time
 import matplotlib.pyplot as plt
 
@@ -127,10 +128,17 @@ class PerfCallRawData:
                 cmds[cmd] = 1
         cmds = {ky: val for ky, val in sorted(cmds.items(), key = lambda item: -item[1])}
 
-        print("Recorded commands with perf " + 22 * "-")
-        for cmd in cmds.keys():
-            print(f"{cmd}: {cmds[cmd]} samples")
-        print(50 * "-")
+        list_filename = f"{os.path.dirname(self.filename)}/list_recorded_perf_cmds.txt"
+        with open(list_filename, "w") as _file:
+            for cmd in cmds.keys():
+                _file.write(f"{cmd}: {cmds[cmd]} samples\n")
+        print(f"List of recorded commands with perf: {list_filename}")
+
+        if DEBUG:
+            print("Recorded commands with perf " + 22 * "-")
+            for cmd in cmds.keys():
+                print(f"{cmd}: {cmds[cmd]} samples")
+            print(50 * "-")
 
         if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
 
