@@ -41,9 +41,9 @@ if [[ $level == 0 ]]; then
 
 elif [[ $level == 1 ]]; then
     for subrepo in $save_dir/*/; do
-        $(dirname $0)/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $subrepo & # --pow
-        $(dirname $0)/benchmon-visu --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $subrepo & # --pow
-        $(dirname $0)/benchmon-visu --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $subrepo & # --pow
+        $(dirname $0)/benchmon-visu --inline-call --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $subrepo & # --pow
+        $(dirname $0)/benchmon-visu --inline-call --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $subrepo & # --pow
+        $(dirname $0)/benchmon-visu --inline-call --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $subrepo & # --pow
     done
     wait
 

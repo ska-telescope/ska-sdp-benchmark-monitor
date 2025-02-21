@@ -29,7 +29,7 @@ if [[ $level == 0 ]]; then
 elif [[ $level == 1 ]]; then
     $(dirname $0)/benchmon-hardware $save_dir_arg
     $(dirname $0)/benchmon-software $save_dir_arg
-    args="--sys --hf-sys --hf-sys-freq 10 $args" # --pow --pow-freq 10
+    args="--sys --hf-sys --hf-sys-freq 10 --call --call-prof-freq 5 $args" # --pow --pow-freq 10
 
 elif [[ $level == 2 ]]; then
     $(dirname $0)/benchmon-hardware $save_dir_arg

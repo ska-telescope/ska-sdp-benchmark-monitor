@@ -72,7 +72,12 @@ class PerfCallRawData:
         for block in blocks:
             if len(block) == 0: continue
             sample_info = block[0].split()
+
+            # Hard-coded exceptions
             if ":Reg" in sample_info[1]: continue # @hc
+            try: float(sample_info[1]) # @hc Avoid second element not being a float
+            except ValueError: continue
+            if any(line[0] != "\t" for line in block[1:]): continue
 
             sample = {
                 "cmd": sample_info[0],
@@ -80,8 +85,17 @@ class PerfCallRawData:
                 "timestamp": float(sample_info[3].split(":")[0]),
                 "cycles": sample_info[4],
                 "callstack":
-                    [ {"depth": di, "addr": depth.split()[0], "call": depth.split()[1], "path": depth.split()[2]} for di, depth in enumerate(block[:0:-1])]
+                    [
+                        {
+                            "depth": di,
+                            "addr": depth.split()[0],
+                            "call": depth.split()[1],
+                            "path": depth.split()[2]
+                        }
+                        for di, depth in enumerate(block[:0:-1])
+                    ]
                 }
+
             try: # Sometimes, the pid is not provided is ("pid/tid")
                 sample["tid"] = int(sample_info[1].split("/")[1])
                 sample["pid"] = int(sample_info[1].split("/")[0])
