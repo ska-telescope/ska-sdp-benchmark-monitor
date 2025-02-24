@@ -20,12 +20,12 @@ This locally installs `dool`. The executable of `dool`, that will be used later,
 ###### _Python dependencies_
 Install the following Python packages within your Python environment
 ```bash
-pip install upgrade psutil ping3 numpy matplotlib
+pip install upgrade psutil ping3 numpy matplotlib requests
 ```
 ### Download
 - Git clone
 ```bash
-git clone -b scoop-352 https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor.git
+git clone https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor.git
 ```
 All scripts are available in `ska-sdp-benchmark-monitor/bin`.
 - You may add `ska-sdp-benchmark-monitor/bin` to your path
@@ -50,8 +50,22 @@ This mode allows background monitoring of resource usage and recording of energy
 - `--pow-g5k | --power-g5k`: Enable only G5K power monitoring
 #### Callstack recording
 - `--call`: Enable callstack tracing.
-- `--call-mode`: Call graph collection mode (`dwarf`; `lbr`; `fp`) (default: `dwarf`)
+- `--call-mode`: Call graph collection mode (`dwarf`; `lbr`; `fp`) (default: `dwarf,32`)
 - `--call-prof-freq | --call-profiling-frequency`: Profiling frequency (default: 10 Hz)
+#### Pre-defined levels
+Pre-defined levels gather a set of benchmarking aspects to cover. They could be used as follows
+```bash
+benchmon-start --level <level>
+<target-app>
+benchmon-stop --level <level>
+```
+That generates automatically the visualization figures.
+
+The pre-defined levels are set as follows:
+- `--level 0`: `--sys --hf-sys --hf-sys-freq 1`
+- `--level 1`: `--sys --hf-sys --hf-sys-freq 5 --call --call-prof-freq 2`
+- `--level 2`: `--sys --hf-sys --hf-sys-freq 100 --call --call-prof-freq 50`
+
 ## Visualization
 The visualization tool `benchmon-visu` allows for partial or complete display of monitoring and/or call tracing data. This tool accepts flags for the trace directory and information related to the desired metrics. It takes the traces repository as a positional arguments (if unset, it takes `./`). Here is the list of flags and options:
 ###### If native monitoring is enabled
@@ -77,16 +91,57 @@ The visualization tool `benchmon-visu` allows for partial or complete display of
 - `--fig-fmt`: Set the figure format (default: `svg`).
 - `--fig-name`: Set the figure name (default: `benchmonpsc_fig`)
 - `--fig-dpi` Set the quality of figure: `low`, `medium`, `high` (default: `medium`).
-## Example on AWS
+## Mono-node example
+```bash
+#!/usr/bin/bash
+
+# Benchmon executables
+benchmon=<path-to-benchmon-bin>
+
+# Traces repository
+traces_repo=./traces_$JOBID
+
+# Collect hw/sw context
+$benchmon/benchmon-hardware --save-dir $traces_repo
+$benchmon/benchmon-software --save-dir $traces_repo
+
+# Benchmon-run parameters
+benchmon_params="--save-dir $traces_repo"
+benchmon_params+=" --hf-sys --hf-sys-freq 5"                                    # Native monitoring enabled
+benchmon_params+=" --system --system-sampling-interval 1 --dool $HOME/bin/dool" # Dool monitoring enabled
+benchmon_params+=" --power --power-sampling-interval 100 "                      # Power profiling enabled
+benchmon_params+=" --call --call-prof-freq 5"                                   # Callstack recording enabled
+benchmon_params+=" --verbose"
+
+# Run benchmon
+$benchmon/benchmon-slurm-start $benchmon_params
+sleep 2
+
+# Target app
+mpirun -n $SLURM_NPROCS <target-app>
+
+# Stop benchmon
+sleep 2
+$benchmon/benchmon-slurm-stop
+
+# Create visualization plot
+for subrepo in $traces_repo/*/; do
+    $benchmon/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --hf-cpu-freq \ # Native
+			--mem --cpu --cpu-all --cpu-freq --mem --net \ # Dool
+			--cpu-cores-in 1,2,3,4 --fig-fmt png --fig-dpi medium $subrepo
+done
+```
+
+## Multi-node example on slurm
 ```bash
 #!/usr/bin/bash
 #SBATCH -N 2 -n 8 -t 10
 
 # Benchmon executables
-benchmon=/shared/fsx1/benchmark-monitor/bin
+benchmon=<path-to-benchmon-bin>
 
 # Traces repository
-traces_repo=./traces_${USER}_${SLURM_JOB_ID}
+traces_repo=./traces_${SLURM_JOB_ID}
 
 # Collect hw/sw context
 $benchmon/benchmon-hardware --save-dir $traces_repo
@@ -103,7 +158,7 @@ $benchmon/benchmon-slurm-start $benchmon_params
 sleep 2
 
 # Target app
-mpirun -n $SLURM_NPROCS /shared/fsx1/benchmark-monitor/mytest/nas-mpiomp/bin/ft.B.x
+mpirun -n $SLURM_NPROCS <target-app>
 
 # Stop benchmon
 sleep 2
@@ -112,7 +167,30 @@ $benchmon/benchmon-slurm-stop
 # Create visualization plot
 for subrepo in $traces_repo/*/; do
     $benchmon/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --hf-cpu-freq \ # Native
-						    --mem --cpu --cpu-all --cpu-freq --mem --net \ # Dool
-							--cpu-cores-in 1,2,3,4 --fig-fmt png --fig-dpi medium $subrepo
+			--mem --cpu --cpu-all --cpu-freq --mem --net \ # Dool
+			--cpu-cores-in 1,2,3,4 --fig-fmt png --fig-dpi medium $subrepo
 done
 ```
+## Example on AWS (with level)
+```bash
+#!/usr/bin/bash
+#SBATCH -N 2 -n 8 -t 10
+
+# Benchmon executables
+benchmon=/shared/fsx1/benchmark-monitor/bin
+
+# Run benchmon
+BENCHMON_LEVEL=1
+$benchmon/benchmon-slurm-start --level $BENCHMON_LEVEL
+sleep 2
+
+# Target app
+mpirun -n $SLURM_NPROCS /shared/fsx1/benchmark-monitor/mytest/nas-mpiomp/bin/ft.B.x
+
+# Stop benchmon
+sleep 2
+$benchmon/benchmon-slurm-stop --level $BENCHMON_LEVEL
+```
+
+## Visualization example
+![g5k_figure](./docs/images/g5k_figure.png)
