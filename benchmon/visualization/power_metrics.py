@@ -233,6 +233,7 @@ class G5KPowerData:
         vals = self.g5k_pow_prof[metric]["value"]
         plt.plot(ts, vals, color="C9", ls="-", marker=".", label="g5k:bmc")
 
-        _ymax = max(_ymax, max(vals))
+        if len(vals) > 1:
+            _ymax = max(_ymax, max(vals))
 
         return _ymax
