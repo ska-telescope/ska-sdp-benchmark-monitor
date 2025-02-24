@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import time
 import matplotlib.pyplot as plt
 
@@ -70,9 +71,15 @@ class PerfCallRawData:
         t0 = time.time()
         samples = []
         for block in blocks:
-            if len(block) == 0: continue
+            if len(block) == 0: continue        # @hc avoid empty line
+            if "cycles" not in block[0] and block[0][-1] == "\n": continue   # @hc avoid line starting with kind of Warning:\n
             sample_info = block[0].split()
+
+            # Hard-coded exceptions
             if ":Reg" in sample_info[1]: continue # @hc
+            try: float(sample_info[1]) # @hc Avoid second element not being a float
+            except ValueError: continue
+            if any(line[0] != "\t" for line in block[1:]): continue
 
             sample = {
                 "cmd": sample_info[0],
@@ -80,8 +87,17 @@ class PerfCallRawData:
                 "timestamp": float(sample_info[3].split(":")[0]),
                 "cycles": sample_info[4],
                 "callstack":
-                    [ {"depth": di, "addr": depth.split()[0], "call": depth.split()[1], "path": depth.split()[2]} for di, depth in enumerate(block[:0:-1])]
+                    [
+                        {
+                            "depth": di,
+                            "addr": depth.split()[0],
+                            "call": depth.split()[1],
+                            "path": depth.split()[2]
+                        }
+                        for di, depth in enumerate(block[:0:-1])
+                    ]
                 }
+
             try: # Sometimes, the pid is not provided is ("pid/tid")
                 sample["tid"] = int(sample_info[1].split("/")[1])
                 sample["pid"] = int(sample_info[1].split("/")[0])
@@ -113,10 +129,17 @@ class PerfCallRawData:
                 cmds[cmd] = 1
         cmds = {ky: val for ky, val in sorted(cmds.items(), key = lambda item: -item[1])}
 
-        print("Recorded commands with perf " + 22 * "-")
-        for cmd in cmds.keys():
-            print(f"{cmd}: {cmds[cmd]} samples")
-        print(50 * "-")
+        list_filename = f"{os.path.realpath(os.path.dirname(self.filename))}/list_recorded_perf_cmds.txt"
+        with open(list_filename, "w") as _file:
+            for cmd in cmds.keys():
+                _file.write(f"{cmd}: {cmds[cmd]} samples\n")
+        print(f"List of recorded commands with perf: {list_filename}")
+
+        if DEBUG:
+            print("Recorded commands with perf " + 22 * "-")
+            for cmd in cmds.keys():
+                print(f"{cmd}: {cmds[cmd]} samples")
+            print(50 * "-")
 
         if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
 

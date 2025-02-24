@@ -52,6 +52,7 @@ class RunMonitor:
         self.call_mode = args.call_mode
         self.call_profiling_frequency = args.call_profiling_frequency
         self.temp_perf_file = f'_temp_perf.data'
+        self.is_perf_datafile_kept = args.call_keep_datafile
 
         # Enable sudo-g5k (for Grid5000 clusters)
         self.sudo_g5k = "sudo-g5k" if args.sudo_g5k else ""
@@ -195,7 +196,8 @@ class RunMonitor:
             fn.write(f"# {time.time()}\n")
 
         # Perf power command
-        perf_pow_cmd = [self.sudo_g5k, "perf", "stat", "-A", "-a"] + event_flags + ["-I", f"{sampl_intv}"] + ["-x", ",", "--append", "-o", f"{filename}"]
+        perf_pow_cmd = ["perf", "stat", "-A", "-a"] + event_flags + ["-I", f"{sampl_intv}"] + ["-x", ",", "--append", "-o", f"{filename}"]
+        if self.sudo_g5k: perf_pow_cmd.insert(0, self.sudo_g5k)
 
         if self.verbose:
             print(f"Starting perf-pow with command \"{' '.join(perf_pow_cmd)}\"")
@@ -207,7 +209,8 @@ class RunMonitor:
         """
         Profile and get the call graph
         """
-        perf_call_cmd = [self.sudo_g5k, "perf", "record", "--running-time", "-T", "-a", "-F", f"{self.call_profiling_frequency}", "--call-graph", f"{self.call_mode}", "-o", f"{self.save_dir}/{self.temp_perf_file}"]
+        perf_call_cmd = ["perf", "record", "--running-time", "-T", "-a", "-F", f"{self.call_profiling_frequency}", "--call-graph", f"{self.call_mode}", "-o", f"{self.save_dir}/{self.temp_perf_file}"]
+        if self.sudo_g5k: perf_call_cmd.insert(0, self.sudo_g5k)
 
         if self.verbose:
             print(f"Starting perf-call with command \"{' '.join(perf_call_cmd)}\"")
@@ -219,7 +222,7 @@ class RunMonitor:
             file.write(f"{real - monotonic}\n")
 
         # Run perf (call)
-        self.perfcall_process = subprocess.Popen(perf_call_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.perfcall_process = subprocess.Popen(perf_call_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, shell=False, text=True)
 
 
     def download_g5k_pow(self):
@@ -255,30 +258,40 @@ class RunMonitor:
         # kill perf (call)
         if self.perfcall_process:
             perfcall_children = [f"{child.pid}" for child in psutil.Process(self.perfcall_process.pid).children()]
-            kill_perf_pow_cmd = [self.sudo_g5k, "kill", "-15", f"{self.perfcall_process.pid}"] + perfcall_children
+            kill_perf_pow_cmd = ["kill", "-15", f"{self.perfcall_process.pid}"] + perfcall_children
+            if self.sudo_g5k: kill_perf_pow_cmd.insert(0, self.sudo_g5k)
             subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            process_stdout = self.perfcall_process.stdout.read() # @hc must be kept, otherwise it doesnt terminate properly
             if self.verbose:
-                print(f"Terminated perf (call) process on node \"{HOSTNAME}\".\nOutput: {self.perfcall_process.stdout.read()}")
+                print(f"Terminated perf (call) process on node \"{HOSTNAME}\".)")
+                if process_stdout: print(f"Output: {process_stdout}")
 
         # kill perf (power)
         if self.perfpow_process:
             perfpow_children = [f"{child.pid}" for child in psutil.Process(self.perfpow_process.pid).children()]
-            kill_perf_pow_cmd = [self.sudo_g5k, "kill", "-15", f"{self.perfpow_process.pid}"] + perfpow_children
+            kill_perf_pow_cmd = ["kill", "-15", f"{self.perfpow_process.pid}"] + perfpow_children
+            if self.sudo_g5k: kill_perf_pow_cmd.insert(0, self.sudo_g5k)
             subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            process_stdout = self.perfpow_process.stdout.read() # @hc
             if self.verbose:
-                print(f"Terminated perf (pow) process on node \"{HOSTNAME}\".\nOutput: {self.perfpow_process.stdout.read()}")
+                print(f"Terminated perf (pow) process on node \"{HOSTNAME}\".)")
+                if process_stdout: print(f"Output: {process_stdout}")
 
         # kill dool process gracefully
         if self.dool_process and self.dool_process.poll() is None:
             self.dool_process.terminate()
+            process_stdout = self.dool_process.stdout.read()
             if self.verbose:
-                print(f"Terminated dool process on node \"{HOSTNAME}\".\nOutput: {self.dool_process.stdout.read()}")
+                print(f"Terminated dool process on node \"{HOSTNAME}\".)")
+                if process_stdout: print(f"Output: {process_stdout}")
             self.dool_process = None
 
         for process in self.hf_sys_process:
             process.terminate()
+            process_stdout = process.stdout.read()
             if self.verbose:
-                print(f"Terminated high-frequency monitoring process on node \"{HOSTNAME}\".\nOutput: {process.stdout.read()}")
+                print(f"Terminated high-frequency monitoring process on node \"{HOSTNAME}\".)")
+                if process_stdout: print(f"Output: {process_stdout}")
 
     def post_process(self):
         """
@@ -290,10 +303,18 @@ class RunMonitor:
         # Create callgraph file
         if self.perfcall_process:
             print("Post-processing perf.data file ...")
-            create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", f"{self.save_dir}/{self.temp_perf_file}"]
+            perf_data_file = f"{self.save_dir}/{self.temp_perf_file}"
+            create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", perf_data_file] # @dev "-F comm,pid,tid,cpu,time,event" could be used to lighten the file
             with open(f"{self.save_dir}/{self.call_filename}", "w") as redirect_stdout:
                 subprocess.run(create_callgraph_cmd, stdout=redirect_stdout, stderr=subprocess.STDOUT, text=True)
+
+            if not self.is_perf_datafile_kept:
+                print(f"\t Removing perf binany file: {perf_data_file}...")
+                os.remove(perf_data_file)
+                print(f"\t...done")
+
             print("...done")
+
 
         if self.is_benchmon_control_node:
             print("Control Node: Merging output...")

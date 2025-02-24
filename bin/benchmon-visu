@@ -8,6 +8,11 @@ import os
 import socket
 import sys
 import matplotlib.pyplot as plt
+import numpy as np
+
+# @dbg
+# import warnings
+# warnings.simplefilter('error', RuntimeWarning)
 
 # Add parent directory to PYTHONPATH
 parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -56,6 +61,7 @@ def parsing():
 
     # Callstack
     parser.add_argument("--inline-call", action="store_true", help="Visualize callstack inline within monitoring")
+    parser.add_argument("--inline-call-cmd", type=str, default="", help="Inline command to visualize")
     parser.add_argument("--call", action="store_true", help="Visualize callstack")
     parser.add_argument("--call-depth", type=int, default=1, help="Callstack depth level")
     parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
@@ -126,7 +132,7 @@ def main():
     # Load call data
     call_depths = []
     inline_calls_prof = None
-    if args.call or args.inline_call:
+    if args.call or args.inline_call or args.inline_call_cmd:
         with open(f"{args.traces_repo}/mono_to_real_file.txt", "r") as file:
             mono_to_real_val = float(file.readline())
         call_raw = call_profile.PerfCallRawData(filename=f"{args.traces_repo}/call_report.txt")
@@ -145,29 +151,44 @@ def main():
 
 
         # Hard-coded system command to remove
-        kernel_calls = ["swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "prometheus-node", "htop", "kworker", "dbus-daemon", "ipmitool"]
+        kernel_calls = ["swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "perf", "prometheus-node", "htop", "kworker", "dbus-daemon", "ipmitool", "slurmstepd", "rcu_sched", "ldlm_bl", "socknal", "systemd", "snapd", "apparmor"]
 
         # Create list of keys for user calls (remove command if less thant 5% of the larger command)
-        INLINE_CMDS_THRESHOLD = 0.01
-        user_calls_keys = []
-        for key in cmds:
-            if cmds[key] / cmds[cmd] > INLINE_CMDS_THRESHOLD:
-                user_calls_keys += [key]
+        if args.inline_call_cmd:
+            user_calls_keys = args.inline_call_cmd.split(",")
 
-        # print(f"{user_calls_keys = }")
-        user_calls_keys_raw = user_calls_keys.copy()
-        for command in user_calls_keys_raw:
-            for kcall in kernel_calls:
-                if kcall in command:
-                    user_calls_keys.remove(command)
-                    break
+        else:
+            INLINE_CMDS_THRESHOLD = 0.01
+            user_calls_keys = []
+            for key in cmds:
+                if cmds[key] / cmds[cmd] > INLINE_CMDS_THRESHOLD:
+                    user_calls_keys += [key]
+
+            # print(f"{user_calls_keys = }") # @dbg
+            user_calls_keys_raw = user_calls_keys.copy()
+            for command in user_calls_keys_raw:
+                for kcall in kernel_calls:
+                    if kcall in command:
+                        user_calls_keys.remove(command)
+                        break
 
         inline_calls_prof = {key: [] for key in user_calls_keys}
-        print(f"{inline_calls_prof = }")
+
+        # DEBUG
+        print("Inline commands")
+        for cmd in user_calls_keys:
+            print(f"\t {cmd}: {cmds[cmd]} samples")
+
         for sample in samples:
-            if sample["cmd"] in user_calls_keys and  sample["cpu"] == "[000]":
+            if sample["cmd"] in user_calls_keys: # and  sample["cpu"] == "[000]":
                 inline_calls_prof[sample["cmd"]] += [sample["timestamp"] + mono_to_real_val]
 
+        # Remove duplicated wrt decimal
+        ROUND_VAL = 2
+        print("Inline commands (Lightened)")
+        for cmd in user_calls_keys:
+            inline_calls_prof[cmd] = np.unique(np.array(inline_calls_prof[cmd]).round(ROUND_VAL))
+            print(f"\t {cmd}: {len(inline_calls_prof[cmd])} samples")
 
     # Figure and subplots
     nsbp = n_sys + n_hf_sys + (args.pow or is_pow_g5k) + args.call * (2 if len(call_depths) > 2 else 1)

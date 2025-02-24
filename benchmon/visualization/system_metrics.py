@@ -36,12 +36,12 @@ def plot_inline_calls(calls: dict, ymax: float = 100.):
     """
     cm = plt.cm.gist_earth(np.linspace(0, 1, len(calls)+1))
 
-    ypos = - 0.05 * ymax
-    ylim = (-0.2 * ymax, 1.1 * ymax)
+    ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
+    ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
     for idx, call in enumerate(calls):
-        plt.plot(calls[call], ypos*np.ones(len(calls[call])), "o", c=cm[idx])
-        plt.text(np.mean(calls[call]), ypos*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
-    plt.ylim(ylim)
+        plt.plot(calls[call], ypos(idx) * np.ones(len(calls[call])), ".", ms=4, c=cm[idx])
+        plt.text(np.mean(calls[call]), ypos(idx)*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
+    plt.ylim(ylim(idx))
 
 
 class DoolData():
