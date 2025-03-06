@@ -30,7 +30,7 @@ def read_sys_info(any_reportpath) -> int:
     return sys_info
 
 
-def plot_inline_calls(calls: dict, ymax: float = 100.):
+def plot_inline_calls(calls: dict, ymax: float = 100., xlim: list = []):
     """
     Generic plot of call inline
     """

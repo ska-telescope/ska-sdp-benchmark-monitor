@@ -67,6 +67,10 @@ def parsing():
     parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
     parser.add_argument('--call-cmd', type=str, default="", help="Command to visualize")
 
+    # Time limits
+    parser.add_argument("--start-time", type=str, help="Start time")
+    parser.add_argument("--end-time", type=str, help="Start time")
+
     # Figures
     parser.add_argument("--interactive", action="store_true", help="Interactive visualization")
     parser.add_argument("--fig-path", type=str, help="Figure format")
@@ -118,6 +122,13 @@ def main():
         )
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
+
+    fmt = "%Y-%m-%dT%H:%M:%S"
+    from datetime import datetime
+    if args.start_time:
+        _xlim[0] = datetime.strptime(args.start_time, fmt).timestamp()
+    if args.end_time:
+        _xlim[1] = datetime.strptime(args.end_time, fmt).timestamp()
 
     _n_cores_full = len(args.hf_cpu_cores_full.split(",")) if is_hf_cores_full else 0
     n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem
