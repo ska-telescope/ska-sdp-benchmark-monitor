@@ -5,7 +5,6 @@ Main Python script to visualize monitoring metrics
 
 import argparse
 import os
-import socket
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +22,6 @@ from benchmon.visualization import system_metrics
 from benchmon.visualization import power_metrics
 from benchmon.visualization import call_profile
 
-HOSTNAME = socket.getfqdn()
 
 def parsing():
     """
@@ -67,6 +65,10 @@ def parsing():
     parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
     parser.add_argument('--call-cmd', type=str, default="", help="Command to visualize")
 
+    # Time limits
+    parser.add_argument("--start-time", type=str, help="Start time")
+    parser.add_argument("--end-time", type=str, help="Start time")
+
     # Figures
     parser.add_argument("--interactive", action="store_true", help="Interactive visualization")
     parser.add_argument("--fig-path", type=str, help="Figure format")
@@ -103,14 +105,16 @@ def main():
     is_hf_mem = args.hf_mem or is_hf_sys
 
     # Dool data
-    if is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io:
+    is_any_sys = is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io
+    if is_any_sys:
         sys_trace = system_metrics.DoolData(csv_filename=f"{args.traces_repo}/sys_report.csv")
         _xticks = sys_trace._xticks
         _xlim = sys_trace._xlim
     n_sys = is_cpu + is_cpu_all + is_cpu_freq + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
 
     # High-frequency monitoring data
-    if is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem:
+    is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem
+    if is_any_hf_sys:
         hfsys_trace = system_metrics.HighFreqData(
             csv_mem_report=f"{args.traces_repo}/hf_mem_report.csv",
             csv_cpu_report=f"{args.traces_repo}/hf_cpu_report.csv",
@@ -119,10 +123,26 @@ def main():
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
 
+    # Resize x-axis limit
+    fmt = "%Y-%m-%dT%H:%M:%S"
+    from datetime import datetime
+    if args.start_time:
+        _xlim[0] = datetime.strptime(args.start_time, fmt).timestamp()
+    if args.end_time:
+        _xlim[1] = datetime.strptime(args.end_time, fmt).timestamp()
+    _xticks, _xlim = system_metrics.create_plt_params(*tuple(_xlim))
+    if is_any_hf_sys:
+        hfsys_trace._xticks = _xticks
+        hfsys_trace._xlim = _xlim
+    if is_any_sys:
+        sys_trace._xticks = _xticks
+        sys_trace._xlim = _xlim
+
     _n_cores_full = len(args.hf_cpu_cores_full.split(",")) if is_hf_cores_full else 0
     n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem
 
     # Load power data
+    HOSTNAME = os.path.basename(os.path.realpath(args.traces_repo))[16:] #socket.getfqdn()
     if args.pow:
         power_trace = power_metrics.PerfPowerData(csv_filename=f"{args.traces_repo}/pow_report.csv")
     is_pow_g5k = args.pow_g5k or (args.pow and HOSTNAME.split(".")[-2] == "grid5000")
@@ -271,7 +291,7 @@ def main():
         if is_pow_g5k:
             _ymax_pow += [power_g5k_trace.plot_g5k_pow_profiles(xticks=_xticks, xlim=_xlim)]
         if inline_calls_prof:
-            system_metrics.plot_inline_calls(inline_calls_prof, ymax=max(_ymax_pow))
+            system_metrics.plot_inline_calls(inline_calls_prof, ymax=max(_ymax_pow), xlim=_xlim)
         plt.xticks(_xticks[0], _xticks[1])
         plt.xlim(_xlim)
         plt.ylabel("Power (W)")
@@ -283,7 +303,6 @@ def main():
         plt.subplot(nsbp, 1, (sbp,sbp+1), sharex=ax)
         call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
 
-    plt.xlabel("Time (s)")
     fig.suptitle(f"{os.path.basename(os.path.realpath(args.traces_repo))[16:]}")
     plt.subplots_adjust(hspace=.5)
     plt.tight_layout()

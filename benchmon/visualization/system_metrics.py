@@ -6,8 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from math import ceil
 
-PLT_XLIM_COEF = 0.025
-PLT_XRANGE = 20
+PLT_XLIM_COEF = 0.02
+PLT_XRANGE = 21
 
 def read_sys_info(any_reportpath) -> int:
     """
@@ -30,7 +30,36 @@ def read_sys_info(any_reportpath) -> int:
     return sys_info
 
 
-def plot_inline_calls(calls: dict, ymax: float = 100.):
+def create_plt_params(t0, tf, xmargin=PLT_XLIM_COEF) -> tuple:
+    """
+    Create plot parameters
+    """
+    xticks_val = np.linspace(t0, tf, PLT_XRANGE)
+
+    t0_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(t0))
+    tlst = np.round(xticks_val - t0, 3)
+    tf_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(tf))
+
+    # xticks_label = [t0_fmt] + tlst[1:-1].astype("int").tolist() + [tf_fmt]
+
+    inbetween_labels = []
+    _days = [t0_fmt.split("\n")[1].split("-")[1]]
+    for idx, st in enumerate(xticks_val[1:-1]):
+        inbetween_labels += [time.strftime('%H:%M:%S', time.localtime(st))]
+        _days += [time.strftime('%d', time.localtime(st))]
+        if _days[-1] != _days[-2]:
+            inbetween_labels += ["\n" + time.strftime('%b:%d', time.localtime(st))]
+    xticks_label = [t0_fmt] + inbetween_labels + [tf_fmt]
+
+    xticks = (xticks_val, xticks_label)
+
+    dx = (tf - t0) * xmargin
+    xlim = [t0 - dx, tf + dx]
+
+    return xticks, xlim
+
+
+def plot_inline_calls(calls: dict, ymax: float = 100., xlim: list = []):
     """
     Generic plot of call inline
     """
@@ -39,9 +68,12 @@ def plot_inline_calls(calls: dict, ymax: float = 100.):
     ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
     ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
     for idx, call in enumerate(calls):
-        plt.plot(calls[call], ypos(idx) * np.ones(len(calls[call])), ".", ms=4, c=cm[idx])
-        plt.text(np.mean(calls[call]), ypos(idx)*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
+        call_ts_limited = calls[call][np.logical_and(calls[call] > xlim[0], calls[call] < xlim[1])]
+        if len(call_ts_limited) == 0: continue
+        plt.plot(call_ts_limited, ypos(idx) * np.ones(len(call_ts_limited)), ".", ms=4, c=cm[idx])
+        plt.text(np.mean(call_ts_limited), ypos(idx)*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
     plt.ylim(ylim(idx))
+    plt.xlim(xlim)
 
 
 class DoolData():
@@ -68,7 +100,11 @@ class DoolData():
         self.sys_info = read_sys_info(self.csv_filename)
         self.read_csv_report()
         self.create_profile()
-        self.create_plt_params()
+
+        self._stamps = self.prof["time"].astype(np.float64)
+        _ts_0 = self._stamps[0]
+        _ts_f = self._stamps[-1]
+        self._xticks, self._xlim = create_plt_params(t0=_ts_0, tf=_ts_f, xmargin=0)
 
 
     def read_csv_report(self) -> int:
@@ -183,31 +219,6 @@ class DoolData():
         return 0
 
 
-    def create_plt_params(self) -> int:
-        """
-        Create plot parameters
-        """
-        self._stamps = self.prof["time"].astype(np.float64)
-        nstamps = len(self._stamps)
-        xstride = max(1, nstamps // PLT_XRANGE)
-        val0 = self._stamps[0]
-        vallst = self._stamps[xstride: nstamps-xstride+1: xstride]
-        valf = self._stamps[-1]
-        xticks_val = [val0] + vallst.tolist() + [valf]
-
-        t0 = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self._stamps[0]))
-        tlst = np.round(self._stamps[xstride: nstamps-xstride+1: xstride] - self._stamps[0], 2)
-        tf = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self._stamps[-1]))
-        xticks_label = [t0] + tlst.astype("int").tolist() + [tf]
-
-        self._xticks = (xticks_val, xticks_label)
-
-        dx = (valf - val0) * PLT_XLIM_COEF
-        self._xlim = [val0 - dx, valf + dx]
-
-        return 0
-
-
     def plot_cpu_average(self, xticks, xlim, calls: dict = None) -> int:
         """
         Plot average cpu usage
@@ -238,7 +249,7 @@ class DoolData():
         plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
 
         if calls:
-            plot_inline_calls(calls=calls)
+            plot_inline_calls(calls=calls, xlim=xlim)
 
         return 0
 
@@ -269,7 +280,7 @@ class DoolData():
         plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
 
         if calls:
-            plot_inline_calls(calls=calls)
+            plot_inline_calls(calls=calls, xlim=xlim)
 
         return 0
 
@@ -353,7 +364,7 @@ class DoolData():
         plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
 
         if calls:
-            plot_inline_calls(calls=calls, ymax=cpu_freq_max)
+            plot_inline_calls(calls=calls, ymax=cpu_freq_max, xlim=xlim)
 
         return 0
 
@@ -393,7 +404,7 @@ class DoolData():
         plt.grid()
 
         if calls:
-            plot_inline_calls(calls=calls, ymax=max(memtotal))
+            plot_inline_calls(calls=calls, ymax=max(memtotal), xlim=xlim)
 
         return 0
 
@@ -480,31 +491,10 @@ class HighFreqData():
 
         self.get_hf_cpufreq_prof()
 
-        self.create_plt_params()
+        _ts_0 = self.hf_cpu_stamps[0]
+        _ts_f = self.hf_cpu_stamps[-1]
+        self._xticks, self._xlim = create_plt_params(t0=_ts_0, tf=_ts_f, xmargin=0)
 
-
-    def create_plt_params(self) -> int:
-        """
-        Create plot parameters
-        """
-        nstamps = len(self.hf_cpu_stamps)
-        xstride = max(1, nstamps // PLT_XRANGE)
-        val0 = self.hf_cpu_stamps[0]
-        vallst = self.hf_cpu_stamps[xstride: nstamps-xstride+1: xstride]
-        valf = self.hf_cpu_stamps[-1]
-        xticks_val = [val0] + vallst.tolist() + [valf]
-
-        t0 = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self.hf_cpu_stamps[0]))
-        tlst = np.round(self.hf_cpu_stamps[xstride: nstamps-xstride+1: xstride] - self.hf_cpu_stamps[0], 2)
-        tf = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self.hf_cpu_stamps[-1]))
-        xticks_label = [t0] + tlst.astype("int").tolist() + [tf]
-
-        self._xticks = (xticks_val, xticks_label)
-
-        dx = (valf - val0) * PLT_XLIM_COEF
-        self._xlim = [val0 - dx, valf + dx]
-
-        return 0
 
     def read_hf_cpu_csv_report(self):
         """
@@ -627,7 +617,7 @@ class HighFreqData():
         plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
 
         if calls:
-            plot_inline_calls(calls=calls)
+            plot_inline_calls(calls=calls, xlim=self._xlim)
 
         return 0
 
@@ -660,7 +650,7 @@ class HighFreqData():
         plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
 
         if calls:
-            plot_inline_calls(calls=calls)
+            plot_inline_calls(calls=calls, xlim=self._xlim)
         return 0
 
 
@@ -734,7 +724,7 @@ class HighFreqData():
         plt.grid()
 
         if calls:
-            plot_inline_calls(calls=calls, ymax=max(total))
+            plot_inline_calls(calls=calls, ymax=max(total), xlim=xlim)
 
         return 0
 
@@ -811,7 +801,7 @@ class HighFreqData():
         plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
 
         if calls:
-            plot_inline_calls(calls=calls, ymax=cpu_freq_max)
+            plot_inline_calls(calls=calls, ymax=cpu_freq_max, xlim=self._xlim)
 
         return 0
 
