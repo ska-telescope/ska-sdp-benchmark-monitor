@@ -68,9 +68,12 @@ def plot_inline_calls(calls: dict, ymax: float = 100., xlim: list = []):
     ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
     ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
     for idx, call in enumerate(calls):
-        plt.plot(calls[call], ypos(idx) * np.ones(len(calls[call])), ".", ms=4, c=cm[idx])
-        plt.text(np.mean(calls[call]), ypos(idx)*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
+        call_ts_limited = calls[call][np.logical_and(calls[call] > xlim[0], calls[call] < xlim[1])]
+        if len(call_ts_limited) == 0: continue
+        plt.plot(call_ts_limited, ypos(idx) * np.ones(len(call_ts_limited)), ".", ms=4, c=cm[idx])
+        plt.text(np.mean(call_ts_limited), ypos(idx)*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
     plt.ylim(ylim(idx))
+    plt.xlim(xlim)
 
 
 class DoolData():
@@ -246,7 +249,7 @@ class DoolData():
         plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
 
         if calls:
-            plot_inline_calls(calls=calls)
+            plot_inline_calls(calls=calls, xlim=xlim)
 
         return 0
 
@@ -277,7 +280,7 @@ class DoolData():
         plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
 
         if calls:
-            plot_inline_calls(calls=calls)
+            plot_inline_calls(calls=calls, xlim=xlim)
 
         return 0
 
@@ -361,7 +364,7 @@ class DoolData():
         plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
 
         if calls:
-            plot_inline_calls(calls=calls, ymax=cpu_freq_max)
+            plot_inline_calls(calls=calls, ymax=cpu_freq_max, xlim=xlim)
 
         return 0
 
@@ -401,7 +404,7 @@ class DoolData():
         plt.grid()
 
         if calls:
-            plot_inline_calls(calls=calls, ymax=max(memtotal))
+            plot_inline_calls(calls=calls, ymax=max(memtotal), xlim=xlim)
 
         return 0
 
@@ -614,7 +617,7 @@ class HighFreqData():
         plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
 
         if calls:
-            plot_inline_calls(calls=calls)
+            plot_inline_calls(calls=calls, xlim=self._xlim)
 
         return 0
 
@@ -647,7 +650,7 @@ class HighFreqData():
         plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
 
         if calls:
-            plot_inline_calls(calls=calls)
+            plot_inline_calls(calls=calls, xlim=self._xlim)
         return 0
 
 
@@ -721,7 +724,7 @@ class HighFreqData():
         plt.grid()
 
         if calls:
-            plot_inline_calls(calls=calls, ymax=max(total))
+            plot_inline_calls(calls=calls, ymax=max(total), xlim=xlim)
 
         return 0
 
@@ -798,7 +801,7 @@ class HighFreqData():
         plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
 
         if calls:
-            plot_inline_calls(calls=calls, ymax=cpu_freq_max)
+            plot_inline_calls(calls=calls, ymax=cpu_freq_max, xlim=self._xlim)
 
         return 0
 

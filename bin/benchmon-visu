@@ -291,7 +291,7 @@ def main():
         if is_pow_g5k:
             _ymax_pow += [power_g5k_trace.plot_g5k_pow_profiles(xticks=_xticks, xlim=_xlim)]
         if inline_calls_prof:
-            system_metrics.plot_inline_calls(inline_calls_prof, ymax=max(_ymax_pow))
+            system_metrics.plot_inline_calls(inline_calls_prof, ymax=max(_ymax_pow), xlim=_xlim)
         plt.xticks(_xticks[0], _xticks[1])
         plt.xlim(_xlim)
         plt.ylabel("Power (W)")

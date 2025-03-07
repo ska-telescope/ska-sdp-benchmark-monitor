@@ -87,6 +87,8 @@ The visualization tool `benchmon-visu` allows for partial or complete display of
 - `--io`: Display io.
 ##### Global visualization options
 - `--interactive`: Enable interactive visualization (with matplotlib).
+- `--start-time`: Optional start time (in format: `"YYYY-MM-DDTHH:MM:SS"`.
+- `--end-time`: Optional end time (in format: `"YYYY-MM-DDTHH:MM:SS"`).
 - `--fig-path`: Set the directory where to save the fig (default: same as traces)
 - `--fig-fmt`: Set the figure format (default: `svg`).
 - `--fig-name`: Set the figure name (default: `benchmonpsc_fig`)
