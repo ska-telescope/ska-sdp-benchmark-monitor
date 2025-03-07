@@ -6,8 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from math import ceil
 
-PLT_XLIM_COEF = 0.025
-PLT_XRANGE = 20
+PLT_XLIM_COEF = 0.02
+PLT_XRANGE = 21
 
 def read_sys_info(any_reportpath) -> int:
     """
@@ -30,26 +30,31 @@ def read_sys_info(any_reportpath) -> int:
     return sys_info
 
 
-def create_plt_params(stamps) -> tuple:
+def create_plt_params(t0, tf, xmargin=PLT_XLIM_COEF) -> tuple:
     """
     Create plot parameters
     """
-    nstamps = len(stamps)
-    xstride = max(1, nstamps // PLT_XRANGE)
-    val0 = stamps[0]
-    vallst = stamps[xstride: nstamps-xstride+1: xstride]
-    valf = stamps[-1]
-    xticks_val = [val0] + vallst.tolist() + [valf]
+    xticks_val = np.linspace(t0, tf, PLT_XRANGE)
 
-    t0 = time.strftime("%b-%d\n%H:%M:%S", time.localtime(stamps[0]))
-    tlst = np.round(stamps[xstride: nstamps-xstride+1: xstride] - stamps[0], 2)
-    tf = time.strftime("%b-%d\n%H:%M:%S", time.localtime(stamps[-1]))
-    xticks_label = [t0] + tlst.astype("int").tolist() + [tf]
+    t0_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(t0))
+    tlst = np.round(xticks_val - t0, 3)
+    tf_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(tf))
+
+    # xticks_label = [t0_fmt] + tlst[1:-1].astype("int").tolist() + [tf_fmt]
+
+    inbetween_labels = []
+    _days = [t0_fmt.split("\n")[1].split("-")[1]]
+    for idx, st in enumerate(xticks_val[1:-1]):
+        inbetween_labels += [time.strftime('%H:%M:%S', time.localtime(st))]
+        _days += [time.strftime('%d', time.localtime(st))]
+        if _days[-1] != _days[-2]:
+            inbetween_labels += ["\n" + time.strftime('%b:%d', time.localtime(st))]
+    xticks_label = [t0_fmt] + inbetween_labels + [tf_fmt]
 
     xticks = (xticks_val, xticks_label)
 
-    dx = (valf - val0) * PLT_XLIM_COEF
-    xlim = [val0 - dx, valf + dx]
+    dx = (tf - t0) * xmargin
+    xlim = [t0 - dx, tf + dx]
 
     return xticks, xlim
 
@@ -93,7 +98,10 @@ class DoolData():
         self.read_csv_report()
         self.create_profile()
 
-        self._xticks, self._xlim = create_plt_params(self.prof["time"].astype(np.float64))
+        self._stamps = self.prof["time"].astype(np.float64)
+        _ts_0 = self._stamps[0]
+        _ts_f = self._stamps[-1]
+        self._xticks, self._xlim = create_plt_params(t0=_ts_0, tf=_ts_f, xmargin=0)
 
 
     def read_csv_report(self) -> int:
@@ -480,7 +488,9 @@ class HighFreqData():
 
         self.get_hf_cpufreq_prof()
 
-        self._xticks, self._xlim = create_plt_params(self.hf_cpu_stamps)
+        _ts_0 = self.hf_cpu_stamps[0]
+        _ts_f = self.hf_cpu_stamps[-1]
+        self._xticks, self._xlim = create_plt_params(t0=_ts_0, tf=_ts_f, xmargin=0)
 
 
     def read_hf_cpu_csv_report(self):
