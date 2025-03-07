@@ -5,7 +5,6 @@ Main Python script to visualize monitoring metrics
 
 import argparse
 import os
-import socket
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,7 +22,6 @@ from benchmon.visualization import system_metrics
 from benchmon.visualization import power_metrics
 from benchmon.visualization import call_profile
 
-HOSTNAME = socket.getfqdn()
 
 def parsing():
     """
@@ -123,6 +121,7 @@ def main():
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
 
+    # Resize x-axis limit
     fmt = "%Y-%m-%dT%H:%M:%S"
     from datetime import datetime
     if args.start_time:
@@ -134,6 +133,7 @@ def main():
     n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem
 
     # Load power data
+    HOSTNAME = os.path.basename(os.path.realpath(args.traces_repo))[16:] #socket.getfqdn()
     if args.pow:
         power_trace = power_metrics.PerfPowerData(csv_filename=f"{args.traces_repo}/pow_report.csv")
     is_pow_g5k = args.pow_g5k or (args.pow and HOSTNAME.split(".")[-2] == "grid5000")

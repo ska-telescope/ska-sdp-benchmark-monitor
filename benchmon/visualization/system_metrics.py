@@ -30,6 +30,30 @@ def read_sys_info(any_reportpath) -> int:
     return sys_info
 
 
+def create_plt_params(stamps) -> tuple:
+    """
+    Create plot parameters
+    """
+    nstamps = len(stamps)
+    xstride = max(1, nstamps // PLT_XRANGE)
+    val0 = stamps[0]
+    vallst = stamps[xstride: nstamps-xstride+1: xstride]
+    valf = stamps[-1]
+    xticks_val = [val0] + vallst.tolist() + [valf]
+
+    t0 = time.strftime("%b-%d\n%H:%M:%S", time.localtime(stamps[0]))
+    tlst = np.round(stamps[xstride: nstamps-xstride+1: xstride] - stamps[0], 2)
+    tf = time.strftime("%b-%d\n%H:%M:%S", time.localtime(stamps[-1]))
+    xticks_label = [t0] + tlst.astype("int").tolist() + [tf]
+
+    xticks = (xticks_val, xticks_label)
+
+    dx = (valf - val0) * PLT_XLIM_COEF
+    xlim = [val0 - dx, valf + dx]
+
+    return xticks, xlim
+
+
 def plot_inline_calls(calls: dict, ymax: float = 100., xlim: list = []):
     """
     Generic plot of call inline
@@ -68,7 +92,8 @@ class DoolData():
         self.sys_info = read_sys_info(self.csv_filename)
         self.read_csv_report()
         self.create_profile()
-        self.create_plt_params()
+
+        self._xticks, self._xlim = create_plt_params(self.prof["time"].astype(np.float64))
 
 
     def read_csv_report(self) -> int:
@@ -179,31 +204,6 @@ class DoolData():
         # Convert list to numpy array
         for key in self.prof_keys:
             self.prof[key] = np.array(self.prof[key])
-
-        return 0
-
-
-    def create_plt_params(self) -> int:
-        """
-        Create plot parameters
-        """
-        self._stamps = self.prof["time"].astype(np.float64)
-        nstamps = len(self._stamps)
-        xstride = max(1, nstamps // PLT_XRANGE)
-        val0 = self._stamps[0]
-        vallst = self._stamps[xstride: nstamps-xstride+1: xstride]
-        valf = self._stamps[-1]
-        xticks_val = [val0] + vallst.tolist() + [valf]
-
-        t0 = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self._stamps[0]))
-        tlst = np.round(self._stamps[xstride: nstamps-xstride+1: xstride] - self._stamps[0], 2)
-        tf = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self._stamps[-1]))
-        xticks_label = [t0] + tlst.astype("int").tolist() + [tf]
-
-        self._xticks = (xticks_val, xticks_label)
-
-        dx = (valf - val0) * PLT_XLIM_COEF
-        self._xlim = [val0 - dx, valf + dx]
 
         return 0
 
@@ -480,31 +480,8 @@ class HighFreqData():
 
         self.get_hf_cpufreq_prof()
 
-        self.create_plt_params()
+        self._xticks, self._xlim = create_plt_params(self.hf_cpu_stamps)
 
-
-    def create_plt_params(self) -> int:
-        """
-        Create plot parameters
-        """
-        nstamps = len(self.hf_cpu_stamps)
-        xstride = max(1, nstamps // PLT_XRANGE)
-        val0 = self.hf_cpu_stamps[0]
-        vallst = self.hf_cpu_stamps[xstride: nstamps-xstride+1: xstride]
-        valf = self.hf_cpu_stamps[-1]
-        xticks_val = [val0] + vallst.tolist() + [valf]
-
-        t0 = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self.hf_cpu_stamps[0]))
-        tlst = np.round(self.hf_cpu_stamps[xstride: nstamps-xstride+1: xstride] - self.hf_cpu_stamps[0], 2)
-        tf = time.strftime("%b-%d\n%H:%M:%S", time.localtime(self.hf_cpu_stamps[-1]))
-        xticks_label = [t0] + tlst.astype("int").tolist() + [tf]
-
-        self._xticks = (xticks_val, xticks_label)
-
-        dx = (valf - val0) * PLT_XLIM_COEF
-        self._xlim = [val0 - dx, valf + dx]
-
-        return 0
 
     def read_hf_cpu_csv_report(self):
         """
