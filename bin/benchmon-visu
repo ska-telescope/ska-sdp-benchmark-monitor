@@ -21,7 +21,10 @@ sys.path.insert(0, parent_dir)
 from benchmon.visualization import system_metrics
 from benchmon.visualization import power_metrics
 from benchmon.visualization import call_profile
+from benchmon.visualization import utils
 
+FIGURE_WIDTH = 25.6 # 34.4 # 19.2 #
+FIGURE_HEIGHT_UNIT = 3
 
 def parsing():
     """
@@ -64,6 +67,7 @@ def parsing():
     parser.add_argument("--call-depth", type=int, default=1, help="Callstack depth level")
     parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
     parser.add_argument('--call-cmd', type=str, default="", help="Command to visualize")
+    parser.add_argument("--with-ical-log", action="store_true")
 
     # Time limits
     parser.add_argument("--start-time", type=str, help="Start time")
@@ -74,7 +78,7 @@ def parsing():
     parser.add_argument("--fig-path", type=str, help="Figure format")
     parser.add_argument("--fig-fmt", type=str, default="svg", help="Figure format")
     parser.add_argument("--fig-name", type=str, default="benchmon_fig", help="Figure name")
-    parser.add_argument("--fig-dpi", type=str, default="medium", help="Quality of figure: low, medium, high")
+    parser.add_argument("--fig-dpi", type=str, default="unset", help="Quality of figure: low, medium, high")
     parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
 
     return parser.parse_args()
@@ -85,6 +89,7 @@ def main():
     Main of benchmonspc_visu
     """
     args = parsing()
+    traces_repo = args.traces_repo
 
     # Load dool data
     is_sys = args.sys
@@ -107,7 +112,7 @@ def main():
     # Dool data
     is_any_sys = is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io
     if is_any_sys:
-        sys_trace = system_metrics.DoolData(csv_filename=f"{args.traces_repo}/sys_report.csv")
+        sys_trace = system_metrics.DoolData(csv_filename=f"{traces_repo}/sys_report.csv")
         _xticks = sys_trace._xticks
         _xlim = sys_trace._xlim
     n_sys = is_cpu + is_cpu_all + is_cpu_freq + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
@@ -116,9 +121,9 @@ def main():
     is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem
     if is_any_hf_sys:
         hfsys_trace = system_metrics.HighFreqData(
-            csv_mem_report=f"{args.traces_repo}/hf_mem_report.csv",
-            csv_cpu_report=f"{args.traces_repo}/hf_cpu_report.csv",
-            csv_cpufreq_report=f"{args.traces_repo}/hf_cpufreq_report.csv"
+            csv_mem_report=f"{traces_repo}/hf_mem_report.csv",
+            csv_cpu_report=f"{traces_repo}/hf_cpu_report.csv",
+            csv_cpufreq_report=f"{traces_repo}/hf_cpufreq_report.csv"
         )
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
@@ -142,20 +147,20 @@ def main():
     n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem
 
     # Load power data
-    HOSTNAME = os.path.basename(os.path.realpath(args.traces_repo))[16:] #socket.getfqdn()
+    HOSTNAME = os.path.basename(os.path.realpath(traces_repo))[16:] #socket.getfqdn()
     if args.pow:
-        power_trace = power_metrics.PerfPowerData(csv_filename=f"{args.traces_repo}/pow_report.csv")
+        power_trace = power_metrics.PerfPowerData(csv_filename=f"{traces_repo}/pow_report.csv")
     is_pow_g5k = args.pow_g5k or (args.pow and HOSTNAME.split(".")[-2] == "grid5000")
     if is_pow_g5k:
-        power_g5k_trace = power_metrics.G5KPowerData(traces_dir=args.traces_repo)
+        power_g5k_trace = power_metrics.G5KPowerData(traces_dir=traces_repo)
 
     # Load call data
     call_depths = []
     inline_calls_prof = None
     if args.call or args.inline_call or args.inline_call_cmd:
-        with open(f"{args.traces_repo}/mono_to_real_file.txt", "r") as file:
+        with open(f"{traces_repo}/mono_to_real_file.txt", "r") as file:
             mono_to_real_val = float(file.readline())
-        call_raw = call_profile.PerfCallRawData(filename=f"{args.traces_repo}/call_report.txt")
+        call_raw = call_profile.PerfCallRawData(filename=f"{traces_repo}/call_report.txt")
         samples, cmds = call_raw.cmds_list()
 
         if args.call_cmd:
@@ -210,20 +215,23 @@ def main():
             inline_calls_prof[cmd] = np.unique(np.array(inline_calls_prof[cmd]).round(ROUND_VAL))
             print(f"\t {cmd}: {len(inline_calls_prof[cmd])} samples")
 
+    # Read ical logs
+    ical_major_stages = None
+    if args.with_ical_log:
+        ical_major_stages = utils.read_ical_log_file(traces_repo=traces_repo)
+
     # Figure and subplots
     nsbp = n_sys + n_hf_sys + (args.pow or is_pow_g5k) + args.call * (2 if len(call_depths) > 2 else 1)
     sbp = 1
-    wid, hei = 19.2, nsbp * 3 #10.8
-    # fig = plt.figure(figsize=(wid,hei))
 
     fig, axs = plt.subplots(nsbp, sharex=True)
-    fig.set_size_inches(wid, hei)
+    fig.set_size_inches(FIGURE_WIDTH, nsbp * FIGURE_HEIGHT_UNIT)
     fig.add_gridspec(nsbp, hspace=0)
 
     # (HF) CPU plot
     if is_hf_cpu:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_cpu(calls=inline_calls_prof)
+        hfsys_trace.plot_hf_cpu(calls=inline_calls_prof, ical_stages=ical_major_stages)
 
     # (HF) Full individual core plot
     if is_hf_cores_full:
@@ -239,7 +247,7 @@ def main():
     # (HF) CPU per core plot
     if is_hf_cpu_all:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
+        hfsys_trace.plot_hf_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof, ical_stages=ical_major_stages)
 
     # (dool) CPU per core plot
     if is_cpu_all:
@@ -255,7 +263,7 @@ def main():
     # (HF) CPU cores frequency plot
     if is_hf_cpu_freq:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_cpufreq(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
+        hfsys_trace.plot_hf_cpufreq(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof, ical_stages=ical_major_stages)
 
     # (dool) CPU cores frequency plot
     if is_cpu_freq:
@@ -265,7 +273,7 @@ def main():
     # (HF) Memory/swap plot
     if is_hf_mem:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
+        hfsys_trace.plot_hf_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, ical_stages=ical_major_stages)
 
     # (dool) Memory plot
     if is_mem:
@@ -292,6 +300,8 @@ def main():
             _ymax_pow += [power_g5k_trace.plot_g5k_pow_profiles(xticks=_xticks, xlim=_xlim)]
         if inline_calls_prof:
             system_metrics.plot_inline_calls(inline_calls_prof, ymax=max(_ymax_pow), xlim=_xlim)
+        if ical_major_stages:
+            utils.plot_ical_stages(major_stages=ical_major_stages, ymax=max(_ymax_pow))
         plt.xticks(_xticks[0], _xticks[1])
         plt.xlim(_xlim)
         plt.ylabel("Power (W)")
@@ -303,7 +313,7 @@ def main():
         plt.subplot(nsbp, 1, (sbp,sbp+1), sharex=ax)
         call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
 
-    fig.suptitle(f"{os.path.basename(os.path.realpath(args.traces_repo))[16:]}")
+    fig.suptitle(f"{os.path.basename(os.path.realpath(traces_repo))[16:]}")
     plt.subplots_adjust(hspace=.5)
     plt.tight_layout()
 
@@ -312,8 +322,8 @@ def main():
         plt.show()
 
     # Figure saving parameters
-    dpi = {"low": 200, "medium": 600, "high": 1200}
-    figpath = f"{args.traces_repo}" if args.fig_path is None else args.fig_path
+    dpi = {"unset": "figure", "low": 200, "medium": 600, "high": 1200}
+    figpath = f"{traces_repo}" if args.fig_path is None else args.fig_path
     for fmt in args.fig_fmt.split(","):
         figname = f"{figpath}/{args.fig_name}.{fmt}"
         fig.savefig(figname, format=fmt, dpi=dpi[args.fig_dpi])

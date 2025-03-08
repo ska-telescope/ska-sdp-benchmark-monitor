@@ -6,8 +6,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from math import ceil
 
+from .utils import plot_ical_stages
+
 PLT_XLIM_COEF = 0.02
-PLT_XRANGE = 21
+PLT_XRANGE = 31
 
 def read_sys_info(any_reportpath) -> int:
     """
@@ -584,7 +586,7 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_cpu(self, number="", calls: dict = None) -> int:
+    def plot_hf_cpu(self, number="", calls: dict = None, ical_stages: dict = None) -> int:
         core = f"cpu{number}"
         alpha = .8
         prefix = f"{number}: " if number else ""
@@ -619,10 +621,13 @@ class HighFreqData():
         if calls:
             plot_inline_calls(calls=calls, xlim=self._xlim)
 
+        if ical_stages:
+            plot_ical_stages(major_stages=ical_stages)
+
         return 0
 
 
-    def plot_hf_cpu_per_core(self, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
+    def plot_hf_cpu_per_core(self, cores_in: str = "", cores_out: str = "", calls: dict = None, ical_stages: dict = None) -> int:
         """
         Plot cpu per core
         """
@@ -651,6 +656,10 @@ class HighFreqData():
 
         if calls:
             plot_inline_calls(calls=calls, xlim=self._xlim)
+
+        if ical_stages:
+            plot_ical_stages(major_stages=ical_stages)
+
         return 0
 
 
@@ -695,7 +704,7 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_memory_usage(self, xticks, xlim, calls: dict = None) -> int:
+    def plot_hf_memory_usage(self, xticks, xlim, calls: dict = None, ical_stages: dict = None) -> int:
         """
         Plot memory/swap usage
         """
@@ -725,6 +734,9 @@ class HighFreqData():
 
         if calls:
             plot_inline_calls(calls=calls, ymax=max(total), xlim=xlim)
+
+        if ical_stages:
+            plot_ical_stages(major_stages=ical_stages, ymax=max(total))
 
         return 0
 
@@ -762,7 +774,7 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_cpufreq(self, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
+    def plot_hf_cpufreq(self, cores_in: str = "", cores_out: str = "", calls: dict = None, ical_stages: dict = None) -> int:
         """
         Plot cpu frequency per core
         """
@@ -802,6 +814,9 @@ class HighFreqData():
 
         if calls:
             plot_inline_calls(calls=calls, ymax=cpu_freq_max, xlim=self._xlim)
+
+        if ical_stages:
+            plot_ical_stages(major_stages=ical_stages, ymax=cpu_freq_max)
 
         return 0
 
