@@ -44,11 +44,11 @@ def create_plt_params(t0, tf, xmargin=PLT_XLIM_COEF) -> tuple:
 
     inbetween_labels = []
     _days = [t0_fmt.split("\n")[1].split("-")[1]]
-    for idx, st in enumerate(xticks_val[1:-1]):
+    for st in xticks_val[1:-1]:
         inbetween_labels += [time.strftime('%H:%M:%S', time.localtime(st))]
         _days += [time.strftime('%d', time.localtime(st))]
         if _days[-1] != _days[-2]:
-            inbetween_labels += ["\n" + time.strftime('%b:%d', time.localtime(st))]
+            inbetween_labels[-1] += "\n" + time.strftime('%b-%d', time.localtime(st))
     xticks_label = [t0_fmt] + inbetween_labels + [tf_fmt]
 
     xticks = (xticks_val, xticks_label)
