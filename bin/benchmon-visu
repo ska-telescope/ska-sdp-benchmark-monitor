@@ -55,6 +55,10 @@ def parsing():
     parser.add_argument("--hf-mem", action="store_true", help="Visualize memory")
     parser.add_argument("--hf-net", action="store_true", help="Visualize network activity")
     parser.add_argument("--hf-net-all", action="store_true", help="Visualize network activity of all interfaces ")
+    parser.add_argument("--hf-net-rx-only", action="store_true", help="Visualize rx network only")
+    parser.add_argument("--hf-net-tx-only", action="store_true", help="Visualize tx network only")
+    parser.add_argument("--hf-net-data", action="store_true", help="Label network plot with total size of networked data")
+
     parser.add_argument("--hf-sys", action="store_true", help="Visualize all system data")
 
     # Power profile
@@ -285,7 +289,8 @@ def main():
     # (HF) Network plot
     if is_hf_net:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        hfsys_trace.plot_hf_network(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, all_interfaces=is_hf_net_all)
+        hfsys_trace.plot_hf_network(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, all_interfaces=is_hf_net_all,
+                                    is_rx_only=args.hf_net_rx_only, is_tx_only=args.hf_net_tx_only, is_netdata_label=args.hf_net_data)
 
     # (dool) Network plot
     if is_net:

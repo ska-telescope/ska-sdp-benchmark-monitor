@@ -494,6 +494,7 @@ class HighFreqData():
         self.get_hf_cpufreq_prof()
 
         self.hf_net_prof = {}
+        self.hf_net_data = {}
         self.hf_net_metric_keys = {}
         self.hf_net_intrfs = []
         self.hf_net_stamps = np.array([])
@@ -822,25 +823,26 @@ class HighFreqData():
 
         nnet_intrf = int(net_report_lines[0][0])
 
-        self.hf_net_metric_keys = {
+        self.hf_net_metric_keys = { # https://www.kernel.org/doc/html/v6.7/networking/statistics.html
             "rx-bytes": 2, "rx-packets": 3, "rx-errs": 4, "rx-drop": 5,
             "rx-fifo": 6, "rx-frame": 7, "rx-compressed": 8, "rx-multicast": 9,
             "tx-bytes": 10, "tx-packets": 11, "tx-errs": 12, "tx-drop": 13,
             "tx-fifo": 14, "tx-colls": 15, "tx-compressed": 16
         }
 
-        self.hf_net_intrfs = [net_report_lines[1 + idx][1] for idx in range(nnet_intrf)]
+        _intrf_idx = 1
+        self.hf_net_intrfs = [net_report_lines[1 + idx][_intrf_idx] for idx in range(nnet_intrf)]
 
         net_ts_raw = {}
         for intrf in self.hf_net_intrfs:
             net_ts_raw[intrf] = {key: [] for key in self.hf_net_metric_keys}
 
-        intrf_idx = 1
-        for report_line in net_report_lines[1:]:
+        _samples_idx = 1
+        for report_line in net_report_lines[_samples_idx:]:
             for key in self.hf_net_metric_keys:
-                net_ts_raw[report_line[intrf_idx]][key] += [float(report_line[self.hf_net_metric_keys[key]])]
+                net_ts_raw[report_line[_intrf_idx]][key] += [float(report_line[self.hf_net_metric_keys[key]])]
 
-        timestamps_raw = [float(item[0]) for item in net_report_lines[1:][::nnet_intrf]]
+        timestamps_raw = [float(item[0]) for item in net_report_lines[_samples_idx:][::nnet_intrf]]
 
         return net_ts_raw, timestamps_raw
 
@@ -862,42 +864,69 @@ class HighFreqData():
         # Init network profile
         for intrf in self.hf_net_intrfs:
             self.hf_net_prof[intrf] = {key: np.zeros(nstamps) for key in self.hf_net_metric_keys}
+            self.hf_net_data[intrf] = {key: 0 for key in self.hf_net_metric_keys}
 
         # Fill in
         for key in net_ts_raw:
             for metric_key in self.hf_net_metric_keys:
+                self.hf_net_data[key][metric_key] = net_ts_raw[key][metric_key][-1] - net_ts_raw[key][metric_key][0]
                 for stamp in range(nstamps):
                     self.hf_net_prof[key][metric_key][stamp] = (net_ts_raw[key][metric_key][stamp + 1] - net_ts_raw[key][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
 
 
-    def plot_hf_network(self, xticks, xlim, calls: dict = None, all_interfaces=False) -> int:
+
+    def plot_hf_network(self, xticks, xlim, calls: dict = None, all_interfaces=False,
+                        total_network=True, is_rx_only=False, is_tx_only=False, is_netdata_label=True) -> int:
         """
         Plot high-frequency network activity
         """
         BYTES_UNIT = 1024 ** 2 # MB
+        ALPHA = .5
+        MRKSZ = 3.5
+
         rx_total = 0
         tx_total = 0
         for intrf in self.hf_net_intrfs:
             rx_total = rx_total + self.hf_net_prof[intrf]["rx-bytes"] / BYTES_UNIT
             tx_total = tx_total + self.hf_net_prof[intrf]["tx-bytes"] / BYTES_UNIT
 
-        # plt.plot(self.hf_net_stamps, rx_total) #, label="rx:total")
-        # plt.plot(self.hf_net_stamps, tx_total) #, label="tx:total")
+        # RX
+        if not is_tx_only:
+            if total_network:
+                label = f"rx:total"
+                if is_netdata_label:
+                    _rd = int(sum([self.hf_net_data[intrf]["rx-bytes"] / BYTES_UNIT for intrf in self.hf_net_intrfs]))
+                    label +=  f" ({_rd} MB)"
+                plt.fill_between(self.hf_net_stamps, rx_total, label=label, color="b", alpha=ALPHA)
 
-        alpha = .5
-        plt.fill_between(self.hf_net_stamps, rx_total, label="rx:total", color="b", alpha=alpha)
-        plt.fill_between(self.hf_net_stamps, tx_total, label="tx:total", color="r", alpha=alpha)
+            if all_interfaces:
+                for intrf in self.hf_net_intrfs:
+                    rx_arr = self.hf_net_prof[intrf]["rx-bytes"] / BYTES_UNIT
+                    if np.linalg.norm(rx_arr) > 1:
+                        label = f"rx:{intrf[:-1]}"
+                        if is_netdata_label:
+                            _rd = int(self.hf_net_data[intrf]["rx-bytes"] / BYTES_UNIT)
+                            label += f" ({_rd} MB)"
+                        plt.plot(self.hf_net_stamps, rx_arr, label=label, ls="-", alpha=ALPHA, marker="v", markersize=MRKSZ)
 
-        if all_interfaces:
-            for intrf in self.hf_net_intrfs:
-                rx_arr = self.hf_net_prof[intrf]["rx-bytes"] / BYTES_UNIT
-                tx_arr = self.hf_net_prof[intrf]["tx-bytes"] / BYTES_UNIT
+        # TX
+        if not is_rx_only:
+            if total_network:
+                label = f"tx:total"
+                if is_netdata_label:
+                    _tr = int(sum([self.hf_net_data[intrf]["tx-bytes"] / BYTES_UNIT for intrf in self.hf_net_intrfs]))
+                    label +=  f" ({_tr} MB)"
+                plt.fill_between(self.hf_net_stamps, tx_total, label=label, color="r", alpha=ALPHA)
 
-                if np.linalg.norm(rx_arr) > 1:
-                    plt.plot(self.hf_net_stamps, rx_arr, label=f"rx:{intrf[:-1]}", ls="-", marker="x", alpha=alpha * 3/4)
-
-                if np.linalg.norm(tx_arr) > 1:
-                    plt.plot(self.hf_net_stamps, tx_arr, label=f"tx:{intrf[:-1]}", ls="-", marker="+", alpha=alpha * 3/4)
+            if all_interfaces:
+                for intrf in self.hf_net_intrfs:
+                    tx_arr = self.hf_net_prof[intrf]["tx-bytes"] / BYTES_UNIT
+                    if np.linalg.norm(tx_arr) > 1:
+                        label = f"tx:{intrf[:-1]}"
+                        if is_netdata_label:
+                            _tr = int(self.hf_net_data[intrf]["tx-bytes"] / BYTES_UNIT)
+                            label += f" ({_tr} MB)"
+                        plt.plot(self.hf_net_stamps, tx_arr, label=label, ls="-", alpha=ALPHA, marker="^", markersize=MRKSZ)
 
         _ymax = max(max(rx_total), max(tx_total))
         plt.xticks(xticks[0], xticks[1])
