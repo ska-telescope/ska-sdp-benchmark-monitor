@@ -22,6 +22,8 @@ from benchmon.visualization import system_metrics
 from benchmon.visualization import power_metrics
 from benchmon.visualization import call_profile
 
+FIGURE_WIDTH = 25.6 # 34.4 # 19.2 #
+FIGURE_HEIGHT_UNIT = 3
 
 def parsing():
     """
@@ -51,6 +53,8 @@ def parsing():
     parser.add_argument("--hf-cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")
     parser.add_argument("--hf-cpu-cores-full", type=str, default="", help="CPU cores to display")
     parser.add_argument("--hf-mem", action="store_true", help="Visualize memory")
+    parser.add_argument("--hf-net", action="store_true", help="Visualize network activity")
+    parser.add_argument("--hf-net-all", action="store_true", help="Visualize network activity of all interfaces ")
     parser.add_argument("--hf-sys", action="store_true", help="Visualize all system data")
 
     # Power profile
@@ -74,7 +78,7 @@ def parsing():
     parser.add_argument("--fig-path", type=str, help="Figure format")
     parser.add_argument("--fig-fmt", type=str, default="svg", help="Figure format")
     parser.add_argument("--fig-name", type=str, default="benchmon_fig", help="Figure name")
-    parser.add_argument("--fig-dpi", type=str, default="medium", help="Quality of figure: low, medium, high")
+    parser.add_argument("--fig-dpi", type=str, default="unset", help="Quality of figure: low, medium, high")
     parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
 
     return parser.parse_args()
@@ -85,6 +89,7 @@ def main():
     Main of benchmonspc_visu
     """
     args = parsing()
+    traces_repo = args.traces_repo
 
     # Load dool data
     is_sys = args.sys
@@ -103,22 +108,25 @@ def main():
     is_hf_cpu_freq = args.hf_cpu_freq or is_hf_sys
     is_hf_cores_full = bool(args.hf_cpu_cores_full)
     is_hf_mem = args.hf_mem or is_hf_sys
+    is_hf_net_all = args.hf_net_all or is_hf_sys
+    is_hf_net = args.hf_net or is_hf_net_all or is_hf_sys
 
     # Dool data
     is_any_sys = is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io
     if is_any_sys:
-        sys_trace = system_metrics.DoolData(csv_filename=f"{args.traces_repo}/sys_report.csv")
+        sys_trace = system_metrics.DoolData(csv_filename=f"{traces_repo}/sys_report.csv")
         _xticks = sys_trace._xticks
         _xlim = sys_trace._xlim
     n_sys = is_cpu + is_cpu_all + is_cpu_freq + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
 
     # High-frequency monitoring data
-    is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem
+    is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem or is_hf_net
     if is_any_hf_sys:
         hfsys_trace = system_metrics.HighFreqData(
-            csv_mem_report=f"{args.traces_repo}/hf_mem_report.csv",
-            csv_cpu_report=f"{args.traces_repo}/hf_cpu_report.csv",
-            csv_cpufreq_report=f"{args.traces_repo}/hf_cpufreq_report.csv"
+            csv_mem_report=f"{traces_repo}/hf_mem_report.csv",
+            csv_cpu_report=f"{traces_repo}/hf_cpu_report.csv",
+            csv_cpufreq_report=f"{traces_repo}/hf_cpufreq_report.csv",
+            csv_net_report=f"{traces_repo}/hf_net_report.csv"
         )
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
@@ -139,23 +147,23 @@ def main():
         sys_trace._xlim = _xlim
 
     _n_cores_full = len(args.hf_cpu_cores_full.split(",")) if is_hf_cores_full else 0
-    n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem
+    n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem + is_hf_net
 
     # Load power data
-    HOSTNAME = os.path.basename(os.path.realpath(args.traces_repo))[16:] #socket.getfqdn()
+    HOSTNAME = os.path.basename(os.path.realpath(traces_repo))[16:] #socket.getfqdn()
     if args.pow:
-        power_trace = power_metrics.PerfPowerData(csv_filename=f"{args.traces_repo}/pow_report.csv")
+        power_trace = power_metrics.PerfPowerData(csv_filename=f"{traces_repo}/pow_report.csv")
     is_pow_g5k = args.pow_g5k or (args.pow and HOSTNAME.split(".")[-2] == "grid5000")
     if is_pow_g5k:
-        power_g5k_trace = power_metrics.G5KPowerData(traces_dir=args.traces_repo)
+        power_g5k_trace = power_metrics.G5KPowerData(traces_dir=traces_repo)
 
     # Load call data
     call_depths = []
     inline_calls_prof = None
     if args.call or args.inline_call or args.inline_call_cmd:
-        with open(f"{args.traces_repo}/mono_to_real_file.txt", "r") as file:
+        with open(f"{traces_repo}/mono_to_real_file.txt", "r") as file:
             mono_to_real_val = float(file.readline())
-        call_raw = call_profile.PerfCallRawData(filename=f"{args.traces_repo}/call_report.txt")
+        call_raw = call_profile.PerfCallRawData(filename=f"{traces_repo}/call_report.txt")
         samples, cmds = call_raw.cmds_list()
 
         if args.call_cmd:
@@ -171,7 +179,11 @@ def main():
 
 
         # Hard-coded system command to remove
-        kernel_calls = ["swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "perf", "prometheus-node", "htop", "kworker", "dbus-daemon", "ipmitool", "slurmstepd", "rcu_sched", "ldlm_bl", "socknal", "systemd", "snapd", "apparmor"]
+        kernel_calls = [
+            "swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "perf", "prometheus-node",
+            "htop", "kworker", "dbus-daemon", "ipmitool", "slurmstepd", "rcu_sched", "ldlm_bl", "socknal",
+            "systemd", "snapd", "apparmor", "sed", "kswap"
+        ]
 
         # Create list of keys for user calls (remove command if less thant 5% of the larger command)
         if args.inline_call_cmd:
@@ -213,11 +225,9 @@ def main():
     # Figure and subplots
     nsbp = n_sys + n_hf_sys + (args.pow or is_pow_g5k) + args.call * (2 if len(call_depths) > 2 else 1)
     sbp = 1
-    wid, hei = 19.2, nsbp * 3 #10.8
-    # fig = plt.figure(figsize=(wid,hei))
 
     fig, axs = plt.subplots(nsbp, sharex=True)
-    fig.set_size_inches(wid, hei)
+    fig.set_size_inches(FIGURE_WIDTH, nsbp * FIGURE_HEIGHT_UNIT)
     fig.add_gridspec(nsbp, hspace=0)
 
     # (HF) CPU plot
@@ -272,6 +282,11 @@ def main():
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
+    # (HF) Network plot
+    if is_hf_net:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        hfsys_trace.plot_hf_network(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, all_interfaces=is_hf_net_all)
+
     # (dool) Network plot
     if is_net:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
@@ -303,7 +318,7 @@ def main():
         plt.subplot(nsbp, 1, (sbp,sbp+1), sharex=ax)
         call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
 
-    fig.suptitle(f"{os.path.basename(os.path.realpath(args.traces_repo))[16:]}")
+    fig.suptitle(f"{os.path.basename(os.path.realpath(traces_repo))[16:]}")
     plt.subplots_adjust(hspace=.5)
     plt.tight_layout()
 
@@ -312,8 +327,8 @@ def main():
         plt.show()
 
     # Figure saving parameters
-    dpi = {"low": 200, "medium": 600, "high": 1200}
-    figpath = f"{args.traces_repo}" if args.fig_path is None else args.fig_path
+    dpi = {"unset": "figure", "low": 200, "medium": 600, "high": 1200}
+    figpath = f"{traces_repo}" if args.fig_path is None else args.fig_path
     for fmt in args.fig_fmt.split(","):
         figname = f"{figpath}/{args.fig_name}.{fmt}"
         fig.savefig(figname, format=fmt, dpi=dpi[args.fig_dpi])

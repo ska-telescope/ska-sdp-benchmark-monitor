@@ -76,6 +76,8 @@ The visualization tool `benchmon-visu` allows for partial or complete display of
 - `--hf-cpu-cores-full` Display core usage per space (comma-separated list)
 - `--cpu-cores-in`: List of comma-separated CPU cores to display.
 - `--cpu-cores-out`: List of comma-separated CPU cores to exclude.
+- `--hf-net`: Visualize the network activity.
+- `--hf-net-all`: Visualize all active network interfaces.
 ###### If dool monitoring is enabled
 - `--cpu`: Display total CPU usage (usr, sys, wait, idle).
 - `--cpu-all`: Display all CPU cores.
@@ -168,7 +170,7 @@ $benchmon/benchmon-slurm-stop
 
 # Create visualization plot
 for subrepo in $traces_repo/*/; do
-    $benchmon/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --hf-cpu-freq \ # Native
+    $benchmon/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-net \ # Native
 			--mem --cpu --cpu-all --cpu-freq --mem --net \ # Dool
 			--cpu-cores-in 1,2,3,4 --fig-fmt png --fig-dpi medium $subrepo
 done

@@ -426,8 +426,8 @@ class DoolData():
         alpha = .5
         mem_unit = 1024 ** 2
         pltt = plt.twinx()
-        pltt.fill_between(self._stamps, 0, self.prof["net-recv"] / mem_unit, alpha=alpha, color="b", label="Recv")
-        pltt.fill_between(self._stamps, 0, self.prof["net-send"] / mem_unit, alpha=alpha, color="r", label="Send")
+        pltt.fill_between(self._stamps, 0, self.prof["net-recv"] / mem_unit, alpha=alpha, color="b", label="dool: rx:total")
+        pltt.fill_between(self._stamps, 0, self.prof["net-send"] / mem_unit, alpha=alpha, color="r", label="dool: tx:total")
         pltt.grid()
         pltt.set_ylabel("Network (MB/s)")
         pltt.legend(loc=1)
@@ -468,15 +468,18 @@ class HighFreqData():
     """
     High-frequency monitoring database
     """
-    def __init__(self, csv_mem_report, csv_cpu_report, csv_cpufreq_report):
+    def __init__(self, csv_mem_report: str, csv_cpu_report: str, csv_cpufreq_report: str, csv_net_report: str):
         """
         Constructor
         """
         self.csv_mem_report = csv_mem_report
         self.csv_cpu_report = csv_cpu_report
         self.csv_cpufreq_report = csv_cpufreq_report
+        self.csv_net_report = csv_net_report
 
         self.sys_info = read_sys_info(self.csv_cpu_report)
+
+        self.ncpu = 0
 
         self.hf_cpu_prof = {}
         self.hf_cpu_stamps = np.array([])
@@ -488,8 +491,13 @@ class HighFreqData():
 
         self.hf_cpufreq_prof = {}
         self.hf_cpufreq_stamps = np.array([])
-
         self.get_hf_cpufreq_prof()
+
+        self.hf_net_prof = {}
+        self.hf_net_metric_keys = {}
+        self.hf_net_intrfs = []
+        self.hf_net_stamps = np.array([])
+        self.get_hf_net_prof()
 
         _ts_0 = self.hf_cpu_stamps[0]
         _ts_f = self.hf_cpu_stamps[-1]
@@ -508,7 +516,6 @@ class HighFreqData():
                 cpu_report_lines.append(row)
 
         # Number of CPU cores + global @hc
-        self.ncpu = 0
         cnt = 0
         for line in cpu_report_lines:
             nb = line[1][3:]
@@ -516,23 +523,20 @@ class HighFreqData():
             cnt +=1
             if cnt > 10000: break
         self.ncpu += 1
-        self.ncpu_glob = self.ncpu + 1
+        ncpu_glob = self.ncpu + 1
 
         # Number of reported samples
         nsamples = len(cpu_report_lines)
-
-        # Number of timestamp
-        ntimestamps_raw = nsamples // self.ncpu_glob
 
         # CPU metric keys (to read lines)
         cpu_metric_keys = {"User": 2, "Nice": 3, "System": 4, "Idle": 5, "IOwait": 6, "Irq": 7, "Sotfirq": 8, "Steal": 9, "Guest": 10, "GuestNice": 11}
 
         # Init cpu time series
         cpu_ts_raw = {}
-        for cpu_nb in range(self.ncpu_glob):
+        for cpu_nb in range(ncpu_glob):
             cpu_ts_raw[f"cpu{cpu_nb}"] = {key: [] for key in cpu_metric_keys.keys()}
-        cpu_ts_raw["cpu"] = cpu_ts_raw[f"cpu{self.ncpu_glob-1}"]
-        del cpu_ts_raw[f"cpu{self.ncpu_glob-1}"]
+        cpu_ts_raw["cpu"] = cpu_ts_raw[f"cpu{ncpu_glob-1}"]
+        del cpu_ts_raw[f"cpu{ncpu_glob-1}"]
 
         # Read lines
         time_index = 0
@@ -806,4 +810,104 @@ class HighFreqData():
         return 0
 
 
+    def read_hf_net_csv_report(self):
+        """
+        Read high-frequency native network csv report
+        """
+        net_report_lines = []
+        with open(self.csv_net_report, newline="") as csvfile:
+            csvreader = csv.reader(csvfile)
+            for row in csvreader:
+                net_report_lines.append(row)
 
+        nnet_intrf = int(net_report_lines[0][0])
+
+        self.hf_net_metric_keys = {
+            "rx-bytes": 2, "rx-packets": 3, "rx-errs": 4, "rx-drop": 5,
+            "rx-fifo": 6, "rx-frame": 7, "rx-compressed": 8, "rx-multicast": 9,
+            "tx-bytes": 10, "tx-packets": 11, "tx-errs": 12, "tx-drop": 13,
+            "tx-fifo": 14, "tx-colls": 15, "tx-compressed": 16
+        }
+
+        self.hf_net_intrfs = [net_report_lines[1 + idx][1] for idx in range(nnet_intrf)]
+
+        net_ts_raw = {}
+        for intrf in self.hf_net_intrfs:
+            net_ts_raw[intrf] = {key: [] for key in self.hf_net_metric_keys}
+
+        intrf_idx = 1
+        for report_line in net_report_lines[1:]:
+            for key in self.hf_net_metric_keys:
+                net_ts_raw[report_line[intrf_idx]][key] += [float(report_line[self.hf_net_metric_keys[key]])]
+
+        timestamps_raw = [float(item[0]) for item in net_report_lines[1:][::nnet_intrf]]
+
+        return net_ts_raw, timestamps_raw
+
+
+    def get_hf_net_prof(self):
+        """
+        Get high-frequency native network profile
+        """
+        net_ts_raw, timestamps_raw = self.read_hf_net_csv_report()
+
+        time_interval = 1
+        time_interval_step = 1 if time_interval == 0 else int(time_interval / (timestamps_raw[1] - timestamps_raw[0]))
+
+        nstamps = len(timestamps_raw) - 1
+        self.hf_net_stamps = np.zeros(nstamps)
+        for stamp in range(nstamps):
+            self.hf_net_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+
+        # Init network profile
+        for intrf in self.hf_net_intrfs:
+            self.hf_net_prof[intrf] = {key: np.zeros(nstamps) for key in self.hf_net_metric_keys}
+
+        # Fill in
+        for key in net_ts_raw:
+            for metric_key in self.hf_net_metric_keys:
+                for stamp in range(nstamps):
+                    self.hf_net_prof[key][metric_key][stamp] = (net_ts_raw[key][metric_key][stamp + 1] - net_ts_raw[key][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+
+
+    def plot_hf_network(self, xticks, xlim, calls: dict = None, all_interfaces=False) -> int:
+        """
+        Plot high-frequency network activity
+        """
+        BYTES_UNIT = 1024 ** 2 # MB
+        rx_total = 0
+        tx_total = 0
+        for intrf in self.hf_net_intrfs:
+            rx_total = rx_total + self.hf_net_prof[intrf]["rx-bytes"] / BYTES_UNIT
+            tx_total = tx_total + self.hf_net_prof[intrf]["tx-bytes"] / BYTES_UNIT
+
+        # plt.plot(self.hf_net_stamps, rx_total) #, label="rx:total")
+        # plt.plot(self.hf_net_stamps, tx_total) #, label="tx:total")
+
+        alpha = .5
+        plt.fill_between(self.hf_net_stamps, rx_total, label="rx:total", color="b", alpha=alpha)
+        plt.fill_between(self.hf_net_stamps, tx_total, label="tx:total", color="r", alpha=alpha)
+
+        if all_interfaces:
+            for intrf in self.hf_net_intrfs:
+                rx_arr = self.hf_net_prof[intrf]["rx-bytes"] / BYTES_UNIT
+                tx_arr = self.hf_net_prof[intrf]["tx-bytes"] / BYTES_UNIT
+
+                if np.linalg.norm(rx_arr) > 1:
+                    plt.plot(self.hf_net_stamps, rx_arr, label=f"rx:{intrf[:-1]}", ls="-", marker="x", alpha=alpha * 3/4)
+
+                if np.linalg.norm(tx_arr) > 1:
+                    plt.plot(self.hf_net_stamps, tx_arr, label=f"tx:{intrf[:-1]}", ls="-", marker="+", alpha=alpha * 3/4)
+
+        _ymax = max(max(rx_total), max(tx_total))
+        plt.xticks(xticks[0], xticks[1])
+        plt.xlim(xlim)
+        # plt.yticks(np.linspace(0, _ymax, 11, dtype="i"))
+        plt.ylabel("Network (MB/s)")
+        plt.legend(loc=1)
+        plt.grid()
+
+        if calls:
+            plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
+
+        return 0
