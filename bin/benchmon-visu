@@ -58,6 +58,11 @@ def parsing():
     parser.add_argument("--hf-net-rx-only", action="store_true", help="Visualize rx network only")
     parser.add_argument("--hf-net-tx-only", action="store_true", help="Visualize tx network only")
     parser.add_argument("--hf-net-data", action="store_true", help="Label network plot with total size of networked data")
+    parser.add_argument("--hf-disk", action="store_true", help="Visualize disk activity")
+    parser.add_argument("--hf-disk-iops", action="store_true", help="Visualize disk iops")
+    parser.add_argument("--hf-disk-rd-only", action="store_true", help="Visualize disk read activity only")
+    parser.add_argument("--hf-disk-wr-only", action="store_true", help="Visualize disk write activity only")
+    parser.add_argument("--hf-disk-data", action="store_true", help="Label disk plot with total size of operated data")
 
     parser.add_argument("--hf-sys", action="store_true", help="Visualize all system data")
 
@@ -114,6 +119,7 @@ def main():
     is_hf_mem = args.hf_mem or is_hf_sys
     is_hf_net_all = args.hf_net_all or is_hf_sys
     is_hf_net = args.hf_net or is_hf_net_all or is_hf_sys
+    is_hf_disk = args.hf_disk or is_hf_sys
 
     # Dool data
     is_any_sys = is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io
@@ -124,13 +130,14 @@ def main():
     n_sys = is_cpu + is_cpu_all + is_cpu_freq + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
 
     # High-frequency monitoring data
-    is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem or is_hf_net
+    is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem or is_hf_net or is_hf_disk
     if is_any_hf_sys:
         hfsys_trace = system_metrics.HighFreqData(
             csv_mem_report=f"{traces_repo}/hf_mem_report.csv",
             csv_cpu_report=f"{traces_repo}/hf_cpu_report.csv",
             csv_cpufreq_report=f"{traces_repo}/hf_cpufreq_report.csv",
-            csv_net_report=f"{traces_repo}/hf_net_report.csv"
+            csv_net_report=f"{traces_repo}/hf_net_report.csv",
+            csv_disk_report=f"{traces_repo}/hf_disk_report.csv"
         )
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
@@ -151,7 +158,7 @@ def main():
         sys_trace._xlim = _xlim
 
     _n_cores_full = len(args.hf_cpu_cores_full.split(",")) if is_hf_cores_full else 0
-    n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem + is_hf_net
+    n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem + is_hf_net + is_hf_disk
 
     # Load power data
     HOSTNAME = os.path.basename(os.path.realpath(traces_repo))[16:] #socket.getfqdn()
@@ -186,7 +193,7 @@ def main():
         kernel_calls = [
             "swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "perf", "prometheus-node",
             "htop", "kworker", "dbus-daemon", "ipmitool", "slurmstepd", "rcu_sched", "ldlm_bl", "socknal",
-            "systemd", "snapd", "apparmor", "sed", "kswap"
+            "systemd", "snapd", "apparmor", "sed", "kswap", "queue"
         ]
 
         # Create list of keys for user calls (remove command if less thant 5% of the larger command)
@@ -296,6 +303,12 @@ def main():
     if is_net:
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_network()
+
+    # (HF) Disk plot
+    if is_hf_disk:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        hfsys_trace.plot_hf_disk(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, is_with_iops=args.hf_disk_iops,
+                                 is_rd_only=args.hf_disk_rd_only, is_wr_only=args.hf_disk_wr_only, is_diskdata_label=args.hf_disk_data)
 
     # (dool) IO plot
     if is_io and sys_trace.with_io:
