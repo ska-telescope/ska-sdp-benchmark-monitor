@@ -78,6 +78,9 @@ The visualization tool `benchmon-visu` allows for partial or complete display of
 - `--cpu-cores-out`: List of comma-separated CPU cores to exclude.
 - `--hf-net`: Visualize the network activity.
 - `--hf-net-all`: Visualize all active network interfaces.
+- `--hf-net-rx-only`: Visualize only rx activity.
+- `--hf-net-tx-only`: Visualize only tx activity.
+- `--hf-net-data`: Label network plot with the total networked data.
 ###### If dool monitoring is enabled
 - `--cpu`: Display total CPU usage (usr, sys, wait, idle).
 - `--cpu-all`: Display all CPU cores.
