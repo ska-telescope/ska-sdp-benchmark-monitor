@@ -297,7 +297,7 @@ class RunMonitor:
         """
         Post-process data
         """
-        if self.is_power_g5k or (self.is_power and HOSTNAME.split(".")[-2] == "grid5000"):
+        if self.is_power_g5k:
             self.download_g5k_pow()
 
         # Create callgraph file
