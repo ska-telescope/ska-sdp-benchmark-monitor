@@ -4,9 +4,9 @@ from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 
-def compute_totat_energy(time_stamps: list, power_stamps: list) -> float:
+def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     """
-    Compute the total energy
+    Compute the total energy (Wh), based on the trapezoid rule.
     """
     energy = 0
     for idx in range(len(time_stamps) - 1):
@@ -146,7 +146,7 @@ class PerfPowerData:
 
         for event in self.events:
             power_array = np.append(pow_total[event], pow_total[event][-1])
-            energy = compute_totat_energy(time_stamps=self._stamps, power_stamps=power_array)
+            energy = compute_total_energy(time_stamps=self._stamps, power_stamps=power_array)
             plt.step(self._stamps, power_array, where="post",
                      label=self.events_table[event] + f" ({round(energy, 1)} Wh)",
                      color=events_style[event]["color"],
@@ -239,7 +239,7 @@ class G5KPowerData:
         for metric in metrics:
             ts = self.g5k_pow_prof[metric]["timestamps"]
             vals = self.g5k_pow_prof[metric]["value"]
-            energy = compute_totat_energy(time_stamps=ts, power_stamps=vals)
+            energy = compute_total_energy(time_stamps=ts, power_stamps=vals)
             plt.plot(ts, vals,
                      color=metrics_style[metric]["color"],
                      ls=metrics_style[metric]["ls"],
