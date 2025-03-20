@@ -4,6 +4,17 @@ from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 
+def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
+    """
+    Compute the total energy (Wh), based on the trapezoid rule.
+    """
+    energy = 0
+    for idx in range(len(time_stamps) - 1):
+        energy += 0.5 * (power_stamps[idx + 1] + power_stamps[idx]) * (time_stamps[idx + 1] - time_stamps[idx]) / 3600
+
+    return energy
+
+
 class PerfPowerData:
     """
     Perf power database
@@ -126,31 +137,21 @@ class PerfPowerData:
             for event in self.events:
                 pow_total[event] += self.prof[cpu][event]
 
-        alpha = 0.4
+        events_style = {}
+        events_style["power/energy-cores/"] = {"color": "C4", "ls": "--"}
+        events_style["power/energy-ram/"] = {"color": "C1", "ls": "-."}
+        events_style["power/energy-pkg/"] = {"color": "k", "ls": "-"}
+        events_style["power/energy-psys/"] = {"color": "b", "ls": "-"}
         ymax = 0
 
-        event = "power/energy-cores/"
-        if event in self.events:
-            array = np.append(pow_total[event], pow_total[event][-1])
-            plt.step(self._stamps, array, where="post", label=self.events_table[event], color="C4", ls="--")
-            ymax = max(ymax, max(array))
-
-        event = "power/energy-ram/"
-        if event in self.events:
-            array = np.append(pow_total[event], pow_total[event][-1])
-            plt.step(self._stamps, array, where="post", label=self.events_table[event], color="C1", ls="-.")
-            ymax = max(ymax, max(array))
-
-        event = "power/energy-pkg/"
-        if event in self.events:
-            array = np.append(pow_total[event], pow_total[event][-1])
-            plt.step(self._stamps, array, where="post", label=self.events_table[event], color="k")
-            ymax = max(ymax, max(array))
-
-        # @todo
-        # event = "power/energy-psys/"
-        # if event in self.events:
-        #     plt.plot(self._stamps, pow_total[event], label=self.events_table[event], color="b")
+        for event in self.events:
+            power_array = np.append(pow_total[event], pow_total[event][-1])
+            energy = compute_total_energy(time_stamps=self._stamps, power_stamps=power_array)
+            plt.step(self._stamps, power_array, where="post",
+                     label=self.events_table[event] + f" ({round(energy, 1)} Wh)",
+                     color=events_style[event]["color"],
+                     ls=events_style[event]["ls"])
+            ymax = max(ymax, max(power_array))
 
         return ymax
 
@@ -221,19 +222,29 @@ class G5KPowerData:
         _ymax = 0
         metrics = ["wattmetre_power_watt", "bmc_node_power_watt"]
 
-        metric = "wattmetre_power_watt"
-        ts = self.g5k_pow_prof[metric]["timestamps"]
-        vals = self.g5k_pow_prof[metric]["value"]
-        plt.plot(ts, vals, color="C2", ls="-", marker=".", label="g5k:wm")
+        metrics_style = {}
+        metrics_style["wattmetre_power_watt"] = {
+            "ls": "-",
+            "color": "C2",
+            "marker": ".",
+            "label": "g5k:wm"
+        }
+        metrics_style["bmc_node_power_watt"] = {
+            "ls": "-",
+            "marker": ".",
+            "color": "C9",
+            "label": "g5k:bmc"
+        }
 
-        _ymax = max(_ymax, max(vals))
-
-        metric = "bmc_node_power_watt"
-        ts = self.g5k_pow_prof[metric]["timestamps"]
-        vals = self.g5k_pow_prof[metric]["value"]
-        plt.plot(ts, vals, color="C9", ls="-", marker=".", label="g5k:bmc")
-
-        if len(vals) > 1:
-            _ymax = max(_ymax, max(vals))
+        for metric in metrics:
+            ts = self.g5k_pow_prof[metric]["timestamps"]
+            vals = self.g5k_pow_prof[metric]["value"]
+            energy = compute_total_energy(time_stamps=ts, power_stamps=vals)
+            plt.plot(ts, vals,
+                     color=metrics_style[metric]["color"],
+                     ls=metrics_style[metric]["ls"],
+                     marker=metrics_style[metric]["marker"],
+                     label=f"{metrics_style[metric]['label']} ({round(energy,1)} Wh)")
+            if len(vals) > 1: _ymax = max(_ymax, max(vals))
 
         return _ymax
