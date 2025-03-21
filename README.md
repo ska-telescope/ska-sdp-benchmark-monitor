@@ -81,6 +81,11 @@ The visualization tool `benchmon-visu` allows for partial or complete display of
 - `--hf-net-rx-only`: Visualize only rx activity.
 - `--hf-net-tx-only`: Visualize only tx activity.
 - `--hf-net-data`: Label network plot with the total networked data.
+- `--hf-disk`: Visualize disk activity (bandwidth).
+- `--hf-disk-iops`: Visualize the IOPS of the disks.
+- `--hf-disk-data`: Label plots with the total size of date operated by the disks.
+- `--hf-disk-rd-only`: Visualize disk reads only.
+- `--hf-disk-wr-only`: Visualize disk writes only.
 ###### If dool monitoring is enabled
 - `--cpu`: Display total CPU usage (usr, sys, wait, idle).
 - `--cpu-all`: Display all CPU cores.
@@ -173,7 +178,7 @@ $benchmon/benchmon-slurm-stop
 
 # Create visualization plot
 for subrepo in $traces_repo/*/; do
-    $benchmon/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-net \ # Native
+    $benchmon/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-net --hf-disk \ # Native
 			--mem --cpu --cpu-all --cpu-freq --mem --net \ # Dool
 			--cpu-cores-in 1,2,3,4 --fig-fmt png --fig-dpi medium $subrepo
 done

@@ -133,20 +133,6 @@ class RunMonitor:
 
         exec_sh_file = lambda device:  f"{os.path.dirname(os.path.realpath(__file__))}/hf_{device}_mon.sh"
 
-        # Memory monitoring process
-        self.hf_sys_process += [
-            subprocess.Popen(
-                [
-                    "bash", exec_sh_file("mem"),
-                    f"{freq}",
-                    f"{self.save_dir}/{self.hfsys_filename('mem')}"
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-        ]
-
         # CPU monitoring process
         self.hf_sys_process += [
             subprocess.Popen(
@@ -162,19 +148,20 @@ class RunMonitor:
             )
         ]
 
-        # Network monitoring process
-        self.hf_sys_process += [
-            subprocess.Popen(
-                [
-                    "bash", exec_sh_file("net"),
-                    f"{freq}",
-                    f"{self.save_dir}/{self.hfsys_filename('net')}"
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-        ]
+        # Memory + Network + Disk monitoring processes
+        for device in ("mem", "net", "disk"):
+            self.hf_sys_process += [
+                subprocess.Popen(
+                    [
+                        "bash", exec_sh_file(device),
+                        f"{freq}",
+                        f"{self.save_dir}/{self.hfsys_filename(device)}"
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True
+                )
+            ]
 
 
     def run_dool(self):
