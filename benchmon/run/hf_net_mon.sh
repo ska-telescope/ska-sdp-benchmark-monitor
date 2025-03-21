@@ -6,10 +6,18 @@ delay=$(bc <<< "scale=6; 1/$freq")
 report_net_stat=$2
 echo -n "" > $report_net_stat
 
-echo "$(ls /sys/class/net | wc -l)" > $report_net_stat # or ip link show | grep -c '^[0-9]'
+echo "$(ls /sys/class/net | wc -l)" > $report_net_stat
 
 while true
 do
-    awk 'NR>2 {gsub(/ +/, ","); print}' /proc/net/dev | sed 's/^,//' | awk -v timestamp="$(date +'%s.%N')" '{print timestamp","$0}' >> $report_net_stat
+    awk -v timestamp="$(date +'%s.%N')" 'NR>2 {
+        $1 = $1;
+        printf "%s", timestamp;
+        for (i=1; i<=NF; i++) {
+            printf ",%s", $i;
+        }
+        print "";
+    }' /proc/net/dev >> $report_net_stat
+
     sleep $delay
 done
