@@ -164,7 +164,7 @@ def main():
     HOSTNAME = os.path.basename(os.path.realpath(traces_repo))[16:] #socket.getfqdn()
     if args.pow:
         power_trace = power_metrics.PerfPowerData(csv_filename=f"{traces_repo}/pow_report.csv")
-    is_pow_g5k = args.pow_g5k or (args.pow and HOSTNAME.split(".")[-2] == "grid5000")
+    is_pow_g5k = args.pow_g5k
     if is_pow_g5k:
         power_g5k_trace = power_metrics.G5KPowerData(traces_dir=traces_repo)
 
