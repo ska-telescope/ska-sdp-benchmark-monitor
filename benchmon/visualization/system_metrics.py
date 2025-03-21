@@ -468,7 +468,7 @@ class HighFreqData():
     """
     High-frequency monitoring database
     """
-    def __init__(self, csv_mem_report: str, csv_cpu_report: str, csv_cpufreq_report: str, csv_net_report: str):
+    def __init__(self, csv_mem_report: str, csv_cpu_report: str, csv_cpufreq_report: str, csv_net_report: str, csv_disk_report: str):
         """
         Constructor
         """
@@ -476,6 +476,7 @@ class HighFreqData():
         self.csv_cpu_report = csv_cpu_report
         self.csv_cpufreq_report = csv_cpufreq_report
         self.csv_net_report = csv_net_report
+        self.csv_disk_report = csv_disk_report
 
         self.sys_info = read_sys_info(self.csv_cpu_report)
 
@@ -499,6 +500,14 @@ class HighFreqData():
         self.hf_net_intrfs = []
         self.hf_net_stamps = np.array([])
         self.get_hf_net_prof()
+
+        self.hf_disk_prof = {}
+        self.hf_disk_data = {}
+        self.hf_disk_field_keys = {}
+        self.hf_maj_blks_sects = {}
+        self.hf_disk_blks = []
+        self.hf_disk_stamps = np.array([])
+        self.get_hf_disk_prof()
 
         _ts_0 = self.hf_cpu_stamps[0]
         _ts_f = self.hf_cpu_stamps[-1]
@@ -940,3 +949,164 @@ class HighFreqData():
             plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
 
         return 0
+
+
+    def read_hf_disk_csv_report(self):
+        """
+        Read high-frequency native disk monitoring csv report
+        """
+        disk_report_lines = []
+        with open(self.csv_disk_report, newline="") as csvfile:
+            csvreader = csv.reader(csvfile)
+            for row in csvreader:
+                disk_report_lines.append(row)
+
+        self.hf_disk_field_keys = { # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
+            "#rd-cd": 4, "#rd-md": 5, "sect-rd": 6, "time-rd": 7,
+            "#wr-cd": 8, "#wr-md": 9, "sect-wr": 10, "time-wr": 11,
+            "#io-ip": 12, "time-io": 13, "time-wei-io": 14,
+            "#disc-cd": 15, "#disc-md": 16, "sect-disc": 17, "time-disc": 18,
+            "#flush-req": 19, "time-flush": 20
+        }
+
+        # useful indexes for the csv report
+        _samples_idx = 3
+        _blk_idx = 3
+        _maj_blk_indx = 0
+        _all_blk_indx = 1
+        _sect_blk_indx = 2
+
+        # get major blocks and associated sector size
+        self.hf_maj_blks_sects = dict(zip(
+                            disk_report_lines[_sect_blk_indx][0::2],
+                            [int(sect) for sect in disk_report_lines[_sect_blk_indx][1::2]]
+                        ))
+
+        # all disk blocks
+        ndisk_blk = int(disk_report_lines[_all_blk_indx][0])
+        self.hf_disk_blks = [disk_report_lines[_samples_idx + idx][_blk_idx] for idx in range(ndisk_blk)]
+
+        # raw disk measure stamps
+        disk_ts_raw = {}
+        for blk in self.hf_disk_blks:
+            disk_ts_raw[blk] = {key: [] for key in self.hf_disk_field_keys}
+
+        for idx in range(ndisk_blk):
+            disk_ts_raw[self.hf_disk_blks[idx]]["major"] = int(disk_report_lines[_samples_idx + idx][1]) # major index: 1
+            disk_ts_raw[self.hf_disk_blks[idx]]["minor"] = int(disk_report_lines[_samples_idx + idx][2]) # minor index: 2
+
+        for report_line in disk_report_lines[_samples_idx:]:
+            for key in self.hf_disk_field_keys:
+                disk_ts_raw[report_line[_blk_idx]][key] += [float(report_line[self.hf_disk_field_keys[key]])]
+
+        # raw time stamps
+        timestamps_raw = [float(item[0]) for item in disk_report_lines[_samples_idx:][::ndisk_blk]]
+
+        return disk_ts_raw, timestamps_raw
+
+    def get_hf_disk_prof(self):
+        """
+        Get high-frequency native disk profile
+        """
+        disk_ts_raw, timestamps_raw = self.read_hf_disk_csv_report()
+
+        # final time stamps
+        nstamps = len(timestamps_raw) - 1
+        self.hf_disk_stamps = np.zeros(nstamps)
+        for stamp in range(nstamps):
+            self.hf_disk_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+
+        # Init disk profile
+        self.hf_disk_prof = {}
+        self.hf_disk_data = {}
+        for blk in self.hf_disk_blks:
+            self.hf_disk_prof[blk] = {key: np.zeros(nstamps) for key in self.hf_disk_field_keys}
+            self.hf_disk_data[blk] = {key: -999.999 for key in self.hf_disk_field_keys}
+
+        # Fill in
+        for blk in self.hf_disk_blks:
+            self.hf_disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
+            self.hf_disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
+            # for field_key in self.hf_disk_field_keys:
+            #     for stamp in range(nstamps):
+            #         self.hf_disk_prof[blk][field_key][stamp] = (disk_ts_raw[blk][field_key][stamp + 1] - disk_ts_raw[blk][field_key][stamp])
+
+        # Sectors and data n bytes
+        BYTES_UNIT = 1024 ** 2
+        fields = ["sect-rd", "sect-wr", "sect-disc"]
+        for blk in self.hf_disk_blks:
+            bytes_by_sector = self.hf_maj_blks_sects[[item for item in self.hf_maj_blks_sects if item in blk][0]]
+            for field in fields:
+                for stamp in range(nstamps):
+                    self.hf_disk_prof[blk][field][stamp] = \
+                        (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]) \
+                        / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) \
+                        * bytes_by_sector / BYTES_UNIT
+                self.hf_disk_data[blk][field] = int((disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]) \
+                                               * bytes_by_sector / BYTES_UNIT)
+
+        # Number of operations
+        fields = ["#rd-cd", "#rd-md", "#wr-cd", "#wr-md", "#io-ip", "#disc-cd", "#disc-md", "#flush-req"]
+        for blk in self.hf_disk_blks:
+            for field in fields:
+                for stamp in range(nstamps):
+                    self.hf_disk_prof[blk][field][stamp] = (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]) \
+                                                    / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+                self.hf_disk_data[blk][field] = int(disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0])
+
+
+    def plot_hf_disk(self, xticks, xlim, calls: dict = None,
+                     is_rd_only=False, is_wr_only=False, is_with_iops=False,
+                     is_diskdata_label=True) -> int:
+        """
+        Plot high-frequency disk activity
+        """
+        alpha = 0.5
+        _ymax = 0.
+
+        # Read/WRite bandwdith
+        fields = ["sect-rd", "sect-wr"]
+        if is_rd_only: fields.remove("sect-wr")
+        if is_wr_only: fields.remove("sect-rd")
+        for field in fields:
+            for blk in self.hf_disk_blks:
+                if blk in self.hf_maj_blks_sects:
+                    array = self.hf_disk_prof[blk][field]
+                    label = f"{field[-2:]}:{blk}"
+                    if is_diskdata_label:
+                        label += f" ({self.hf_disk_data[blk][field]} MB)"
+                    if np.linalg.norm(array) > 1:
+                        plt.fill_between(self.hf_disk_stamps, array, label=label, alpha=alpha)
+                        _ymax = max(_ymax, max(array))
+        plt.ylabel("Disk bandwidth (MB/s)")
+        plt.grid()
+        hand, lab = plt.gca().get_legend_handles_labels()
+
+        # Read/Write iops
+        if is_with_iops:
+            pltt = plt.twinx()
+            fields = ["#rd-cd", "#wr-cd"]
+            if is_rd_only: fields.remove("#wr-cd")
+            if is_wr_only: fields.remove("#rd-cd")
+            for field in fields:
+                for blk in self.hf_disk_blks:
+                    if blk in self.hf_maj_blks_sects:
+                        array = self.hf_disk_prof[blk][field]
+                        label = f"{field[:3]}:{blk}"
+                        if is_diskdata_label:
+                            label += f" ({self.hf_disk_data[blk][field]:.3e} op)"
+                        if np.linalg.norm(array) > 1:
+                            pltt.plot(self.hf_disk_stamps, array, label=label, ls="-")
+            pltt.set_ylabel("Disk operations per second (IOPS)")
+            pltt.grid()
+            hand_twin, lab_twin = pltt.get_legend_handles_labels()
+
+        plt.xticks(xticks[0], xticks[1])
+        plt.xlim(xlim)
+        if is_with_iops:
+            plt.legend(hand + hand_twin, lab + lab_twin, loc=1)
+        else:
+            plt.legend(loc=1)
+
+        if calls and not is_with_iops: # @todo
+            plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
