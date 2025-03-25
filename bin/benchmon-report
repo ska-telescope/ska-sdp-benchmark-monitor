@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""
+Main Python script to generate a report from monitoring metrics
+"""
+
+import argparse
+import os
+import sys
+
+parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, parent_dir)
+from benchmon.report import report_generator
+
+def parsing():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--software-report", type=str, required=True,  help="Path to the software report from benchmon-software")
+    parser.add_argument("--hardware-report", type=str, required=True,  help="Path to the software report from benchmon-hardware")
+    parser.add_argument("--output", type=str, required=True, help="Output file path")
+    parser.add_argument("--template", type=str, default=parent_dir+"/benchmon/report/template.md", help="Path to the report Markdown template")
+
+    return parser.parse_args()
+
+
+def main():
+    args = parsing()
+
+    sw_report_path = args.software_report
+    hw_report_path = args.hardware_report
+    template_path = args.template
+    output_path = args.output
+
+    rg = report_generator.ReportGenerator(template_file_path=template_path)
+    rg.write(hw_report_path, sw_report_path, output_path)
+
+    return 0
+
+
+if __name__ == "__main__":
+    main()
