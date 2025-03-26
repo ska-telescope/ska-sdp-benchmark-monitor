@@ -477,63 +477,61 @@ class HighFreqData():
         """
         Constructor
         """
-        self.csv_mem_report = csv_mem_report
-        self.csv_cpu_report = csv_cpu_report
-        self.csv_cpufreq_report = csv_cpufreq_report
-        self.csv_net_report = csv_net_report
-        self.csv_disk_report = csv_disk_report
-        self.csv_ib_report = csv_ib_report
-
-        self.sys_info = read_sys_info(self.csv_cpu_report)
 
         self.ncpu = 0
+        self.sys_info = read_sys_info(any_reportpath=csv_cpu_report)
 
         self.hf_cpu_prof = {}
         self.hf_cpu_stamps = np.array([])
-        self.get_hf_cpu_profile()
+        self.get_hf_cpu_profile(csv_cpu_report=csv_cpu_report)
 
-        self.hf_mem_prof = {}
-        self.hf_mem_stamps = np.array([])
-        self.get_hf_mem_profile()
+        if csv_cpufreq_report:
+            self.hf_cpufreq_prof = {}
+            self.hf_cpufreq_stamps = np.array([])
+            self.get_hf_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report)
 
-        self.hf_cpufreq_prof = {}
-        self.hf_cpufreq_stamps = np.array([])
-        self.get_hf_cpufreq_prof()
+        if csv_mem_report:
+            self.hf_mem_prof = {}
+            self.hf_mem_stamps = np.array([])
+            self.get_hf_mem_profile(csv_mem_report=csv_mem_report)
 
-        self.hf_net_prof = {}
-        self.hf_net_data = {}
-        self.hf_net_metric_keys = {}
-        self.hf_net_intrfs = []
-        self.hf_net_stamps = np.array([])
-        self.get_hf_net_prof()
+        if csv_net_report:
+            self.hf_net_prof = {}
+            self.hf_net_data = {}
+            self.hf_net_metric_keys = {}
+            self.hf_net_intrfs = []
+            self.hf_net_stamps = np.array([])
+            self.get_hf_net_prof(csv_net_report=csv_net_report)
 
-        self.hf_disk_prof = {}
-        self.hf_disk_data = {}
-        self.hf_disk_field_keys = {}
-        self.hf_maj_blks_sects = {}
-        self.hf_disk_blks = []
-        self.hf_disk_stamps = np.array([])
-        self.get_hf_disk_prof()
+        if csv_disk_report:
+            self.hf_disk_prof = {}
+            self.hf_disk_data = {}
+            self.hf_disk_field_keys = {}
+            self.hf_maj_blks_sects = {}
+            self.hf_disk_blks = []
+            self.hf_disk_stamps = np.array([])
+            self.get_hf_disk_prof(csv_disk_report=csv_disk_report)
 
-        self.hf_ib_prof = {}
-        self.hf_ib_data = {}
-        self.ib_metric_keys = []
-        self.ib_interfs = []
-        self.hf_ib_stamps = np.array([])
-        self.get_hf_ib_prof()
+        if csv_ib_report:
+            self.hf_ib_prof = {}
+            self.hf_ib_data = {}
+            self.ib_metric_keys = []
+            self.ib_interfs = []
+            self.hf_ib_stamps = np.array([])
+            self.get_hf_ib_prof(csv_ib_report=csv_ib_report)
 
         _ts_0 = self.hf_cpu_stamps[0]
         _ts_f = self.hf_cpu_stamps[-1]
         self._xticks, self._xlim = create_plt_params(t0=_ts_0, tf=_ts_f, xmargin=0)
 
 
-    def read_hf_cpu_csv_report(self):
+    def read_hf_cpu_csv_report(self, csv_cpu_report: str):
         """
         Read high-frequency cpu report
         """
         # Read line of cpu csv report
         cpu_report_lines = []
-        with open(self.csv_cpu_report, newline="") as csvfile:
+        with open(csv_cpu_report, newline="") as csvfile:
             csvreader = csv.reader(csvfile)
             for row in csvreader:
                 cpu_report_lines.append(row)
@@ -575,11 +573,11 @@ class HighFreqData():
         return cpu_ts_raw, timestamps_raw
 
 
-    def get_hf_cpu_profile(self) -> int:
+    def get_hf_cpu_profile(self, csv_cpu_report = str) -> int:
         """
         Get high-frequency cpu profile
         """
-        cpu_ts_raw, timestamps_raw = self.read_hf_cpu_csv_report()
+        cpu_ts_raw, timestamps_raw = self.read_hf_cpu_csv_report(csv_cpu_report=csv_cpu_report)
 
         nstamps = len(timestamps_raw) - 1
 
@@ -681,12 +679,12 @@ class HighFreqData():
         return 0
 
 
-    def read_hf_mem_csv_report(self):
+    def read_hf_mem_csv_report(self, csv_mem_report: str):
         """
         Read high-frequency memory report
         """
         mem_report_lines = []
-        with open(self.csv_mem_report, newline="") as csvfile:
+        with open(csv_mem_report, newline="") as csvfile:
             csvreader = csv.reader(csvfile)
             for row in csvreader:
                 mem_report_lines.append(row)
@@ -697,7 +695,7 @@ class HighFreqData():
         return mem_report_lines, keys_with_idx
 
 
-    def get_hf_mem_profile(self) -> int:
+    def get_hf_mem_profile(self, csv_mem_report: str) -> int:
         """
         Get memory profile
         """
@@ -705,7 +703,7 @@ class HighFreqData():
 
         _chosen_keys = ["Time", "MemTotal", "MemFree", "Buffers", "Cached", "Slab", "SwapTotal", "SwapFree", "SwapCached"]
 
-        mem_report_lines, keys_with_idx = self.read_hf_mem_csv_report()
+        mem_report_lines, keys_with_idx = self.read_hf_mem_csv_report(csv_mem_report=csv_mem_report)
 
         memory_dict = {key: [] for key in _chosen_keys}
 
@@ -756,13 +754,13 @@ class HighFreqData():
         return 0
 
 
-    def get_hf_cpufreq_prof(self):
+    def get_hf_cpufreq_prof(self, csv_cpufreq_report: str):
         """
         Read HF cpu frequency csv report
         Get profile
         """
         cpufreq_report_lines = []
-        with open(self.csv_cpufreq_report, newline="") as csvfile:
+        with open(csv_cpufreq_report, newline="") as csvfile:
             csvreader = csv.reader(csvfile)
             for row in csvreader:
                 if int(row[1][3:]) in self.sys_info["online_cores"]:
@@ -833,12 +831,12 @@ class HighFreqData():
         return 0
 
 
-    def read_hf_net_csv_report(self):
+    def read_hf_net_csv_report(self, csv_net_report: str):
         """
         Read high-frequency native network csv report
         """
         net_report_lines = []
-        with open(self.csv_net_report, newline="") as csvfile:
+        with open(csv_net_report, newline="") as csvfile:
             csvreader = csv.reader(csvfile)
             for row in csvreader:
                 net_report_lines.append(row)
@@ -869,11 +867,11 @@ class HighFreqData():
         return net_ts_raw, timestamps_raw
 
 
-    def get_hf_net_prof(self):
+    def get_hf_net_prof(self, csv_net_report: str):
         """
         Get high-frequency native network profile
         """
-        net_ts_raw, timestamps_raw = self.read_hf_net_csv_report()
+        net_ts_raw, timestamps_raw = self.read_hf_net_csv_report(csv_net_report=csv_net_report)
 
         time_interval = 1
         time_interval_step = 1 if time_interval == 0 else int(time_interval / (timestamps_raw[1] - timestamps_raw[0]))
@@ -964,12 +962,12 @@ class HighFreqData():
         return 0
 
 
-    def read_hf_disk_csv_report(self):
+    def read_hf_disk_csv_report(self, csv_disk_report: str):
         """
         Read high-frequency native disk monitoring csv report
         """
         disk_report_lines = []
-        with open(self.csv_disk_report, newline="") as csvfile:
+        with open(csv_disk_report, newline="") as csvfile:
             csvreader = csv.reader(csvfile)
             for row in csvreader:
                 disk_report_lines.append(row)
@@ -1017,11 +1015,11 @@ class HighFreqData():
 
         return disk_ts_raw, timestamps_raw
 
-    def get_hf_disk_prof(self):
+    def get_hf_disk_prof(self, csv_disk_report: str):
         """
         Get high-frequency native disk profile
         """
-        disk_ts_raw, timestamps_raw = self.read_hf_disk_csv_report()
+        disk_ts_raw, timestamps_raw = self.read_hf_disk_csv_report(csv_disk_report=csv_disk_report)
 
         # final time stamps
         nstamps = len(timestamps_raw) - 1
@@ -1125,7 +1123,7 @@ class HighFreqData():
             plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
 
 
-    def read_hf_ib_csv_report(self):
+    def read_hf_ib_csv_report(self, csv_ib_report: str):
         """
         Read high-frequency native infiniband monitoring csv report
         """
@@ -1162,11 +1160,11 @@ class HighFreqData():
         return ib_ts_raw, timestamps_raw
 
 
-    def get_hf_ib_prof(self):
+    def get_hf_ib_prof(self, csv_ib_report: str):
         """
         Get high-frequency native infiniband profile
         """
-        ib_ts_raw, timestamps_raw = self.read_hf_ib_csv_report()
+        ib_ts_raw, timestamps_raw = self.read_hf_ib_csv_report(csv_ib_report=csv_ib_report)
         nstamps = len(timestamps_raw) - 1
 
         self.hf_ib_stamps = np.zeros(nstamps)
