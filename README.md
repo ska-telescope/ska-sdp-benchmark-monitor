@@ -86,6 +86,7 @@ The visualization tool `benchmon-visu` allows for partial or complete display of
 - `--hf-disk-data`: Label plots with the total size of date operated by the disks.
 - `--hf-disk-rd-only`: Visualize disk reads only.
 - `--hf-disk-wr-only`: Visualize disk writes only.
+- `--hf-ib`: Visualize infiniband activity
 ###### If dool monitoring is enabled
 - `--cpu`: Display total CPU usage (usr, sys, wait, idle).
 - `--cpu-all`: Display all CPU cores.
