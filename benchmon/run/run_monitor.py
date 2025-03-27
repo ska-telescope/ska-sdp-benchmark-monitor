@@ -149,7 +149,7 @@ class RunMonitor:
         ]
 
         # Memory + Network + Disk monitoring processes
-        for device in ("mem", "net", "disk"):
+        for device in ("mem", "net", "disk", "ib"):
             self.hf_sys_process += [
                 subprocess.Popen(
                     [

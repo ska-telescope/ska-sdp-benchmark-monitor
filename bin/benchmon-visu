@@ -63,6 +63,7 @@ def parsing():
     parser.add_argument("--hf-disk-rd-only", action="store_true", help="Visualize disk read activity only")
     parser.add_argument("--hf-disk-wr-only", action="store_true", help="Visualize disk write activity only")
     parser.add_argument("--hf-disk-data", action="store_true", help="Label disk plot with total size of operated data")
+    parser.add_argument("--hf-ib", action="store_true", help="Visualize infiniband activity")
 
     parser.add_argument("--hf-sys", action="store_true", help="Visualize all system data")
 
@@ -120,6 +121,7 @@ def main():
     is_hf_net_all = args.hf_net_all or is_hf_sys
     is_hf_net = args.hf_net or is_hf_net_all or is_hf_sys
     is_hf_disk = args.hf_disk or is_hf_sys
+    is_hf_ib = args.hf_ib or is_hf_ib
 
     # Dool data
     is_any_sys = is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io
@@ -137,7 +139,8 @@ def main():
             csv_cpu_report=f"{traces_repo}/hf_cpu_report.csv",
             csv_cpufreq_report=f"{traces_repo}/hf_cpufreq_report.csv",
             csv_net_report=f"{traces_repo}/hf_net_report.csv",
-            csv_disk_report=f"{traces_repo}/hf_disk_report.csv"
+            csv_disk_report=f"{traces_repo}/hf_disk_report.csv",
+            csv_ib_report=f"{traces_repo}/hf_ib_report.csv"
         )
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
@@ -158,7 +161,7 @@ def main():
         sys_trace._xlim = _xlim
 
     _n_cores_full = len(args.hf_cpu_cores_full.split(",")) if is_hf_cores_full else 0
-    n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem + is_hf_net + is_hf_disk
+    n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem + is_hf_net + is_hf_disk + is_hf_ib
 
     # Load power data
     HOSTNAME = os.path.basename(os.path.realpath(traces_repo))[16:] #socket.getfqdn()
@@ -298,6 +301,11 @@ def main():
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_network(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, all_interfaces=is_hf_net_all,
                                     is_rx_only=args.hf_net_rx_only, is_tx_only=args.hf_net_tx_only, is_netdata_label=args.hf_net_data)
+
+    # (HF) Infiniband plot
+    if is_hf_ib:
+        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
+        hfsys_trace.plot_hf_ib(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (dool) Network plot
     if is_net:

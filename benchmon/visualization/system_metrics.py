@@ -468,7 +468,12 @@ class HighFreqData():
     """
     High-frequency monitoring database
     """
-    def __init__(self, csv_mem_report: str, csv_cpu_report: str, csv_cpufreq_report: str, csv_net_report: str, csv_disk_report: str):
+    def __init__(self, csv_mem_report: str,
+                 csv_cpu_report: str,
+                 csv_cpufreq_report: str,
+                 csv_net_report: str,
+                 csv_disk_report: str,
+                 csv_ib_report: str):
         """
         Constructor
         """
@@ -477,6 +482,7 @@ class HighFreqData():
         self.csv_cpufreq_report = csv_cpufreq_report
         self.csv_net_report = csv_net_report
         self.csv_disk_report = csv_disk_report
+        self.csv_ib_report = csv_ib_report
 
         self.sys_info = read_sys_info(self.csv_cpu_report)
 
@@ -508,6 +514,13 @@ class HighFreqData():
         self.hf_disk_blks = []
         self.hf_disk_stamps = np.array([])
         self.get_hf_disk_prof()
+
+        self.hf_ib_prof = {}
+        self.hf_ib_data = {}
+        self.ib_metric_keys = []
+        self.ib_interfs = []
+        self.hf_ib_stamps = np.array([])
+        self.get_hf_ib_prof()
 
         _ts_0 = self.hf_cpu_stamps[0]
         _ts_f = self.hf_cpu_stamps[-1]
@@ -1109,4 +1122,106 @@ class HighFreqData():
             plt.legend(loc=1)
 
         if calls and not is_with_iops: # @todo
+            plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
+
+
+    def read_hf_ib_csv_report(self):
+        """
+        Read high-frequency native infiniband monitoring csv report
+        """
+        ib_report_lines = []
+        with open(self.csv_ib_report, newline="") as csvfile:
+            csvreader = csv.reader(csvfile)
+            for row in csvreader:
+                ib_report_lines.append(row)
+
+        self.ib_metric_keys = ["port_rcv_data", "port_xmit_data"]
+
+        ts_0 = ib_report_lines[1][0]
+        ts = ts_0
+        line_idx = 1
+        while ts == ts_0:
+            self.ib_interfs += [ib_report_lines[line_idx][1]]
+
+            line_idx += 1
+            ts = ib_report_lines[line_idx][0]
+        self.ib_interfs = set(self.ib_interfs)
+
+        ib_ts_raw = {}
+        for intrf in self.ib_interfs:
+            ib_ts_raw[intrf] = {key: [] for key in self.ib_metric_keys}
+
+        for line in ib_report_lines[1:]:
+            interf = line[1]
+            metric_key = line[2]
+            metric_val = line[3]
+            ib_ts_raw[interf][metric_key] += [float(metric_val)]
+
+        timestamps_raw = [float(item[0]) for item in ib_report_lines[1:][::len(self.ib_interfs)*len(self.ib_metric_keys)]]
+
+        return ib_ts_raw, timestamps_raw
+
+
+    def get_hf_ib_prof(self):
+        """
+        Get high-frequency native infiniband profile
+        """
+        ib_ts_raw, timestamps_raw = self.read_hf_ib_csv_report()
+        nstamps = len(timestamps_raw) - 1
+
+        self.hf_ib_stamps = np.zeros(nstamps)
+        for stamp in range(nstamps):
+            self.hf_ib_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+
+        # Init network profile
+        for intrf in self.ib_interfs:
+            self.hf_ib_prof[intrf] = {key: np.zeros(nstamps) for key in self.ib_metric_keys}
+            self.hf_ib_data[intrf] = {key: 0 for key in self.ib_metric_keys}
+
+        # Fill in
+        BYTES_UNIT = (1/4) * 1024 ** 2 # MB
+        for interf in self.ib_interfs:
+            for metric_key in self.ib_metric_keys:
+                for stamp in range(nstamps):
+                    self.hf_ib_prof[interf][metric_key][stamp] = (ib_ts_raw[interf][metric_key][stamp + 1] - ib_ts_raw[interf][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) / BYTES_UNIT
+                self.hf_ib_data[interf][metric_key] = int((ib_ts_raw[interf][metric_key][-1] - ib_ts_raw[interf][metric_key][0]) / BYTES_UNIT)
+
+
+    def plot_hf_ib(self, xticks, xlim, calls: dict = None):
+        """
+        Plot high-frequency infiniband activity
+        """
+        rx_total = 0
+        tx_total = 0
+        for intrf in self.ib_interfs:
+            rx_total = rx_total + self.hf_ib_prof[intrf]["port_rcv_data"]
+            tx_total = tx_total + self.hf_ib_prof[intrf]["port_xmit_data"]
+        alpha = .5
+        plt.fill_between(self.hf_ib_stamps, rx_total, label="rx:total", color="b", alpha=alpha/2)
+        plt.fill_between(self.hf_ib_stamps, tx_total, label="tx:total", color="r", alpha=alpha/2)
+
+
+        alpha = 1.
+        for intrf in self.ib_interfs:
+            rx_arr = self.hf_ib_prof[intrf]["port_rcv_data"]
+            rx_data_label = self.hf_ib_data[intrf]["port_rcv_data"]
+            tx_arr = self.hf_ib_prof[intrf]["port_xmit_data"]
+            tx_data_label = self.hf_ib_data[intrf]["port_xmit_data"]
+
+
+            if np.linalg.norm(rx_arr) > 1:
+                plt.plot(self.hf_ib_stamps, rx_arr, label=f"rx:(ib){intrf} ({rx_data_label} MB)", ls="-", marker="v", alpha=alpha/2)
+
+            if np.linalg.norm(tx_arr) > 1:
+                plt.plot(self.hf_ib_stamps, tx_arr, label=f"tx:(ib){intrf} ({tx_data_label} MB)", ls="-", marker="^", alpha=alpha/2)
+
+        plt.ylabel("Infiniband bandwidth (MB/s)")
+        plt.xticks(xticks[0], xticks[1])
+        plt.xlim(xlim)
+        plt.grid()
+        plt.legend(loc=1)
+
+
+        _ymax = max(max(rx_total), max(tx_total))
+        if calls:
             plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
