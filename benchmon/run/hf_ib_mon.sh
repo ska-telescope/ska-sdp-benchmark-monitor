@@ -3,6 +3,15 @@
 freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
 
+# Check if Infiband is available
+cat /sys/class/infiniband/*/ports/1/counters/port*data
+retval=$?
+if [ $retval != 0 ]; then
+    echo "Infiniband is not available"
+    exit 0
+fi
+
+# Init report file
 report_ib_stat=$2
 echo -n "" > $report_ib_stat
 

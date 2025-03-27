@@ -121,7 +121,7 @@ def main():
     is_hf_net_all = args.hf_net_all or is_hf_sys
     is_hf_net = args.hf_net or is_hf_net_all or is_hf_sys
     is_hf_disk = args.hf_disk or is_hf_sys
-    is_hf_ib = args.hf_ib or is_hf_ib
+    is_hf_ib = args.hf_ib or is_hf_sys
 
     # Dool data
     is_any_sys = is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io
@@ -133,14 +133,21 @@ def main():
 
     # High-frequency monitoring data
     is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem or is_hf_net or is_hf_disk
+    csv_mem_report = f"{traces_repo}/hf_mem_report.csv" if is_hf_mem else None
+    csv_cpu_report = f"{traces_repo}/hf_cpu_report.csv" if is_hf_cpu or is_hf_cpu_all or is_hf_cores_full else None
+    csv_cpufreq_report= f"{traces_repo}/hf_cpufreq_report.csv" if is_hf_cpu_freq else None
+    csv_net_report=f"{traces_repo}/hf_net_report.csv" if is_hf_net else None
+    csv_disk_report=f"{traces_repo}/hf_disk_report.csv" if is_hf_disk else None
+    csv_ib_report=f"{traces_repo}/hf_ib_report.csv" if is_hf_ib else None
+
     if is_any_hf_sys:
         hfsys_trace = system_metrics.HighFreqData(
-            csv_mem_report=f"{traces_repo}/hf_mem_report.csv",
-            csv_cpu_report=f"{traces_repo}/hf_cpu_report.csv",
-            csv_cpufreq_report=f"{traces_repo}/hf_cpufreq_report.csv",
-            csv_net_report=f"{traces_repo}/hf_net_report.csv",
-            csv_disk_report=f"{traces_repo}/hf_disk_report.csv",
-            csv_ib_report=f"{traces_repo}/hf_ib_report.csv"
+            csv_mem_report=csv_mem_report,
+            csv_cpu_report=csv_cpu_report,
+            csv_cpufreq_report=csv_cpufreq_report,
+            csv_net_report=csv_net_report,
+            csv_disk_report=csv_disk_report,
+            csv_ib_report=csv_ib_report
         )
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
