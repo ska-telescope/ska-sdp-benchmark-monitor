@@ -520,13 +520,6 @@ class HighFreqData():
             self.hf_ib_stamps = np.array([])
             self.get_hf_ib_prof(csv_ib_report=csv_ib_report)
 
-        self.hf_ib_prof = {}
-        self.hf_ib_data = {}
-        self.ib_metric_keys = []
-        self.ib_interfs = []
-        self.hf_ib_stamps = np.array([])
-        self.get_hf_ib_prof()
-
         _ts_0 = self.hf_cpu_stamps[0]
         _ts_f = self.hf_cpu_stamps[-1]
         self._xticks, self._xlim = create_plt_params(t0=_ts_0, tf=_ts_f, xmargin=0)
