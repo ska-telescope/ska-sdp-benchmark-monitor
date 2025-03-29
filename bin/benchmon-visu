@@ -4,8 +4,10 @@ Main Python script to visualize monitoring metrics
 """
 
 import argparse
+import logging
 import os
 import sys
+from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -91,7 +93,33 @@ def parsing():
     parser.add_argument("--fig-dpi", type=str, default="unset", help="Quality of figure: low, medium, high")
     parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
 
+    parser.add_argument("--verbose", action="store_true", help="Enable debug information")
+
     return parser.parse_args()
+
+
+def create_logger(traces_repo: str, verbose: bool):
+    """
+    Create logging manager
+    """
+    logger = logging.getLogger("benchmon_logger")
+    logger.setLevel(logging.DEBUG)
+    fmt = f"<%(filename)s::%(funcName)s> [%(asctime)s] [%(levelname)s] %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+    fmtter = logging.Formatter(fmt=fmt, datefmt=datefmt)
+
+    file_handler = logging.FileHandler(f"{traces_repo}/benchmon-visu_{int(datetime.now().timestamp())}.log")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(fmtter)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+    stream_handler.setFormatter(fmtter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+
+    return logger
 
 
 def main():
@@ -100,6 +128,13 @@ def main():
     """
     args = parsing()
     traces_repo = args.traces_repo
+
+    logger = create_logger(traces_repo=traces_repo, verbose=args.verbose)
+    logger.info(f"benchmon-visu processes traces on {traces_repo}")
+    args_str = "benchmon-visu arguments: \n"
+    for key, value in vars(args).items():
+        args_str += f"\t--{key} {value}\n"
+    logger.debug(f"{args_str}")
 
     # Load dool data
     is_sys = args.sys
@@ -228,9 +263,11 @@ def main():
         inline_calls_prof = {key: [] for key in user_calls_keys}
 
         # DEBUG
-        print("Inline commands")
+        msg = "Inline commands:\n"
         for cmd in user_calls_keys:
-            print(f"\t {cmd}: {cmds[cmd]} samples")
+            msg += f"\t{cmd}: {cmds[cmd]} samples\n"
+        logger.debug(msg)
+
 
         for sample in samples:
             if sample["cmd"] in user_calls_keys: # and  sample["cpu"] == "[000]":
@@ -238,10 +275,11 @@ def main():
 
         # Remove duplicated wrt decimal
         ROUND_VAL = 2
-        print("Inline commands (Lightened)")
+        msg = "Inline commands (Lightened):\n"
         for cmd in user_calls_keys:
             inline_calls_prof[cmd] = np.unique(np.array(inline_calls_prof[cmd]).round(ROUND_VAL))
-            print(f"\t {cmd}: {len(inline_calls_prof[cmd])} samples")
+            msg += f"\t{cmd}: {len(inline_calls_prof[cmd])} samples\n"
+        logger.debug(msg)
 
     # Figure and subplots
     nsbp = n_sys + n_hf_sys + (args.pow or is_pow_g5k) + args.call * (2 if len(call_depths) > 2 else 1)
@@ -253,85 +291,101 @@ def main():
 
     # (HF) CPU plot
     if is_hf_cpu:
+        logger.debug("Plotting (hf) cpu")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_cpu(calls=inline_calls_prof)
 
     # (HF) Full individual core plot
     if is_hf_cores_full:
         for core_number in args.hf_cpu_cores_full.split(","):
+            logger.debug(f"Plotting (hf) full cpu core {core_number}")
             ax = plt.subplot(nsbp, 1, sbp); sbp += 1
             hfsys_trace.plot_hf_cpu(core_number)
 
     # (dool) CPU plot
     if is_cpu:
+        logger.debug("Plotting (dool) cpu")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_average(_xticks, _xlim, calls=inline_calls_prof)
 
     # (HF) CPU per core plot
     if is_hf_cpu_all:
+        logger.debug("Plotting (hf) cpu per core")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
 
     # (dool) CPU per core plot
     if is_cpu_all:
+        logger.debug("Plotting (dool) cpu per core")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out,
                                     xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (dool) CPU per core (accumulated) plot
     if is_cpu_all_acc:
+        logger.debug("Plotting (dool) accumulated cpu per core")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_per_core_acc(xticks=_xticks, xlim=_xlim, with_color_bar=True, with_legend=False, fig=fig, nsbp=nsbp, sbp=sbp-1)
 
     # (HF) CPU cores frequency plot
     if is_hf_cpu_freq:
+        logger.debug("Plotting (hf) cpu cores frequency")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_cpufreq(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
 
     # (dool) CPU cores frequency plot
     if is_cpu_freq:
+        logger.debug("Plotting (dool) cpu cores frequency")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_cpu_freq(xticks=_xticks, xlim=_xlim, cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
 
     # (HF) Memory/swap plot
     if is_hf_mem:
+        logger.debug("Plotting (hf) memory/swap")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (dool) Memory plot
     if is_mem:
+        logger.debug("Plotting (dool) memory/swap")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (HF) Network plot
     if is_hf_net:
+        logger.debug("Plotting (hf) network")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_network(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, all_interfaces=is_hf_net_all,
                                     is_rx_only=args.hf_net_rx_only, is_tx_only=args.hf_net_tx_only, is_netdata_label=args.hf_net_data)
 
     # (HF) Infiniband plot
     if is_hf_ib:
+        logger.debug("Plotting (hf) infiniband")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_ib(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (dool) Network plot
     if is_net:
+        logger.debug("Plotting (dool) network")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_network()
 
     # (HF) Disk plot
     if is_hf_disk:
+        logger.debug("Plotting (hf) disk")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_disk(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, is_with_iops=args.hf_disk_iops,
                                  is_rd_only=args.hf_disk_rd_only, is_wr_only=args.hf_disk_wr_only, is_diskdata_label=args.hf_disk_data)
 
     # (dool) IO plot
     if is_io and sys_trace.with_io:
+        logger.debug("Plotting (hf) cpu")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         sys_trace.plot_io()
 
     # (perf) Power plot
     if args.pow or is_pow_g5k:
+        logger.debug("Plotting perf power")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         _ymax_pow = [0]
         if args.pow:
@@ -348,6 +402,7 @@ def main():
 
     # (perf) Calltrace plot
     if args.call:
+        logger.debug("Plotting perf call graph")
         plt.subplot(nsbp, 1, (sbp,sbp+1), sharex=ax)
         call_trace.plot(call_depths, xticks=_xticks, xlim=_xlim, legend_ncol=args.fig_call_legend_ncol)
 
@@ -357,6 +412,7 @@ def main():
 
     # Enable interactive plot
     if args.interactive:
+        logger.debug("Start interactive session with matplotlib")
         plt.show()
 
     # Figure saving parameters
@@ -365,7 +421,9 @@ def main():
     for fmt in args.fig_fmt.split(","):
         figname = f"{figpath}/{args.fig_name}.{fmt}"
         fig.savefig(figname, format=fmt, dpi=dpi[args.fig_dpi])
-        print(f"Figure saved: {os.path.realpath(figname)}")
+        logger.info(f"Figure saved: {os.path.realpath(figname)}")
+
+    logger.info("benchmon-visu closes")
 
     return 0
 

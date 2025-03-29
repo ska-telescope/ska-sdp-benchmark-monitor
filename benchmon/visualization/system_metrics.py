@@ -117,10 +117,6 @@ class DoolData():
             for row in csvreader:
                 self.csv_report.append(row)
 
-        version = self.csv_report[0]
-        host = self.csv_report[2]
-        command = self.csv_report[3]
-
         if not ("read" in self.csv_report[5] and "writ" in self.csv_report[5]):
             self.with_io = False
 
