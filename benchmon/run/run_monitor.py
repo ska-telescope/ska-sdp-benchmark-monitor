@@ -137,23 +137,9 @@ class RunMonitor:
 
         exec_sh_file = lambda device:  f"{os.path.dirname(os.path.realpath(__file__))}/hf_{device}_mon.sh"
 
-        # CPU monitoring process
-        self.hf_sys_process += [
-            subprocess.Popen(
-                [
-                    "bash", exec_sh_file("cpu"),
-                    f"{freq}",
-                    f"{self.save_dir}/{self.hfsys_filename('cpu')}",
-                    f"{self.save_dir}/{self.hfsys_filename('cpufreq')}"
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-        ]
-
-        # Memory + Network + Disk monitoring processes
-        for device in ("mem", "net", "disk", "ib"):
+        # CPU + CPUfreq + Memory + Network + Disk monitoring processes
+        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):
+            self.logger.debug(f"Starting: {exec_sh_file(device)} {freq} {self.save_dir}/{self.hfsys_filename(device)}")
             self.hf_sys_process += [
                 subprocess.Popen(
                     [
