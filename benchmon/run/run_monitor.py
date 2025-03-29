@@ -14,7 +14,9 @@ HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
 
 class RunMonitor:
-    def __init__(self, args):
+    def __init__(self, args, logger):
+        self.logger = logger
+
         self.should_run = True
 
         self.save_dir = args.save_dir
@@ -131,6 +133,8 @@ class RunMonitor:
         """
         freq = self.hf_sys_freq
 
+        self.logger.debug("Starting native high-frequency monitoring")
+
         exec_sh_file = lambda device:  f"{os.path.dirname(os.path.realpath(__file__))}/hf_{device}_mon.sh"
 
         # CPU monitoring process
@@ -172,8 +176,7 @@ class RunMonitor:
         # dool --time --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --output save_dir/sys_report.csv
         dool_cmd = [self.dool, "--epoch", "--mem", "--swap", "--io", "--aio", "--disk", "--fs", "--net", "--cpu", "--cpu-use", "--cpufreq", "--bytes", "--output", f"{self.save_dir}{os.path.sep}{self.filename}", f"{self.system_sampling_interval}"]
 
-        if self.verbose:
-            print(f"Starting dool with command \"{' '.join(dool_cmd)}\"")
+        self.logger.debug(f"Starting dool:\n\t{' '.join(dool_cmd)}")
 
         self.dool_process = subprocess.Popen(dool_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
@@ -200,11 +203,11 @@ class RunMonitor:
         perf_pow_cmd = ["perf", "stat", "-A", "-a"] + event_flags + ["-I", f"{sampl_intv}"] + ["-x", ",", "--append", "-o", f"{filename}"]
         if self.sudo_g5k: perf_pow_cmd.insert(0, self.sudo_g5k)
 
-        if self.verbose:
-            print(f"Starting perf-pow with command \"{' '.join(perf_pow_cmd)}\"")
+        self.logger.debug(f"Starting perf (power):\n\t{' '.join(perf_pow_cmd)}")
 
         # Run perf (power)
         self.perfpow_process = subprocess.Popen(perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
 
     def run_perf_call(self):
         """
@@ -213,8 +216,7 @@ class RunMonitor:
         perf_call_cmd = ["perf", "record", "--running-time", "-T", "-a", "-F", f"{self.call_profiling_frequency}", "--call-graph", f"{self.call_mode}", "-o", f"{self.save_dir}/{self.temp_perf_file}"]
         if self.sudo_g5k: perf_call_cmd.insert(0, self.sudo_g5k)
 
-        if self.verbose:
-            print(f"Starting perf-call with command \"{' '.join(perf_call_cmd)}\"")
+        self.logger.debug(f"Starting perf (call graph):\n\t{' '.join(perf_call_cmd)}")
 
         # Get the conversion from monotonic to real time
         monotonic = time.clock_gettime(time.CLOCK_MONOTONIC)
@@ -242,17 +244,14 @@ class RunMonitor:
             suffix = f"stable/sites/{_site}/metrics?metrics={metric}&nodes={_cluster}&start_time={math.floor(self.t0)}&end_time={math.ceil(self.t1)}"
             url = f"https://api.grid5000.fr/{suffix}"
 
-            if self.verbose:
-                print(f"Downloading ...: {url}")
+            self.logger.debug(f"Downloading ...: {url}")
 
             req = requests.get(url, verify=False)
             filepath = f"{self.save_dir}/g5k_pow_report_{metric}.json"
             with open (filepath, "w") as jsfile:
                 json.dump(req.json(), jsfile)
 
-            if self.verbose:
-                print(f"File saved in: {filepath}")
-
+            self.logger.debug(f"File saved in: {filepath}")
 
 
     def terminate(self, signum=None, frame=None):
@@ -263,9 +262,8 @@ class RunMonitor:
             if self.sudo_g5k: kill_perf_pow_cmd.insert(0, self.sudo_g5k)
             subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             process_stdout = self.perfcall_process.stdout.read() # @hc must be kept, otherwise it doesnt terminate properly
-            if self.verbose:
-                print(f"Terminated perf (call) process on node \"{HOSTNAME}\".)")
-                if process_stdout: print(f"Output: {process_stdout}")
+
+            self.logger.debug(f"Terminated perf (call graph) with stdout: {process_stdout}")
 
         # kill perf (power)
         if self.perfpow_process:
@@ -274,25 +272,25 @@ class RunMonitor:
             if self.sudo_g5k: kill_perf_pow_cmd.insert(0, self.sudo_g5k)
             subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             process_stdout = self.perfpow_process.stdout.read() # @hc
-            if self.verbose:
-                print(f"Terminated perf (pow) process on node \"{HOSTNAME}\".)")
-                if process_stdout: print(f"Output: {process_stdout}")
+
+            self.logger.debug(f"Terminated perf (power) with stdout: {process_stdout}")
+
 
         # kill dool process gracefully
         if self.dool_process and self.dool_process.poll() is None:
             self.dool_process.terminate()
             process_stdout = self.dool_process.stdout.read()
-            if self.verbose:
-                print(f"Terminated dool process on node \"{HOSTNAME}\".)")
-                if process_stdout: print(f"Output: {process_stdout}")
+
+            self.logger.debug(f"Terminated dool with stdout: {process_stdout}")
+
             self.dool_process = None
 
         for process in self.hf_sys_process:
             process.terminate()
             process_stdout = process.stdout.read()
-            if self.verbose:
-                print(f"Terminated high-frequency monitoring process on node \"{HOSTNAME}\".)")
-                if process_stdout: print(f"Output: {process_stdout}")
+
+            self.logger.debug(f"Terminated high-frequency monitoring with stdout: {process_stdout}")
+
 
     def post_process(self):
         """
@@ -303,22 +301,22 @@ class RunMonitor:
 
         # Create callgraph file
         if self.perfcall_process:
-            print("Post-processing perf.data file ...")
+            self.logger.debug("Post-processing perf.data file ...")
             perf_data_file = f"{self.save_dir}/{self.temp_perf_file}"
             create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", perf_data_file] # @dev "-F comm,pid,tid,cpu,time,event" could be used to lighten the file
             with open(f"{self.save_dir}/{self.call_filename}", "w") as redirect_stdout:
                 subprocess.run(create_callgraph_cmd, stdout=redirect_stdout, stderr=subprocess.STDOUT, text=True)
 
             if not self.is_perf_datafile_kept:
-                print(f"\t Removing perf binany file: {perf_data_file}...")
+                self.logger.debug(f"Removing perf binany file: {perf_data_file}...")
                 os.remove(perf_data_file)
-                print(f"\t...done")
+                self.logger.debug(f"...done")
 
-            print("...done")
+            self.logger.debug("...done")
 
 
         if self.is_benchmon_control_node:
-            print("Control Node: Merging output...")
+            self.logger.debug("Control Node: Merging output...")
 
             """
             Files:
@@ -363,8 +361,6 @@ class RunMonitor:
                 for file in hwmon_files:
                     os.remove(file)
 
-            print("Control Node: Output Merged.")
+            self.logger.debug("Control Node: Output Merged.")
 
-        # print("Benchmon-Run (dool) done. Exiting...")
-        # sys.exit(0)
         return 0
