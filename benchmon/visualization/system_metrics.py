@@ -972,20 +972,24 @@ class HighFreqData():
             for row in csvreader:
                 disk_report_lines.append(row)
 
-        self.hf_disk_field_keys = { # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
-            "#rd-cd": 4, "#rd-md": 5, "sect-rd": 6, "time-rd": 7,
-            "#wr-cd": 8, "#wr-md": 9, "sect-wr": 10, "time-wr": 11,
-            "#io-ip": 12, "time-io": 13, "time-wei-io": 14,
-            "#disc-cd": 15, "#disc-md": 16, "sect-disc": 17, "time-disc": 18,
-            "#flush-req": 19, "time-flush": 20
-        }
-
         # useful indexes for the csv report
-        _samples_idx = 3
-        _blk_idx = 3
         _maj_blk_indx = 0
         _all_blk_indx = 1
         _sect_blk_indx = 2
+        _header_indx = 3
+        _samples_idx = 4
+
+        _blk_idx = 3 # Horizontal
+
+        # self.hf_disk_field_keys = { # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
+        #     "#rd-cd": 4, "#rd-md": 5, "sect-rd": 6, "time-rd": 7,
+        #     "#wr-cd": 8, "#wr-md": 9, "sect-wr": 10, "time-wr": 11,
+        #     "#io-ip": 12, "time-io": 13, "time-wei-io": 14,
+        #     "#disc-cd": 15, "#disc-md": 16, "sect-disc": 17, "time-disc": 18,
+        #     "#flush-req": 19, "time-flush": 20
+        # }
+        _sidx = 4
+        self.hf_disk_field_keys = {key: idx + _sidx for idx,key in enumerate(disk_report_lines[_header_indx][_sidx:])}
 
         # get major blocks and associated sector size
         self.hf_maj_blks_sects = dict(zip(
