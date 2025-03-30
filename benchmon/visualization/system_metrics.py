@@ -527,37 +527,36 @@ class HighFreqData():
             for row in csvreader:
                 cpu_report_lines.append(row)
 
-        # Number of CPU cores + global @hc
-        cnt = 0
-        for line in cpu_report_lines:
-            nb = line[1][3:]
-            self.ncpu = max(int(nb) if len(nb) > 1 else 0, self.ncpu)
-            cnt +=1
-            if cnt > 10000: break
-        self.ncpu += 1
-        ncpu_glob = self.ncpu + 1
+        # Get cpus, number of cpu cores + global
+        ts_0 = cpu_report_lines[1][0]
+        ts = ts_0
+        line_idx = 1
+        self.hf_cpus = []
+        while ts == ts_0:
+            self.hf_cpus += [cpu_report_lines[line_idx][1]]
+            line_idx += 1
+            ts = cpu_report_lines[line_idx][0]
+        ncpu_glob = len(self.hf_cpus)
+        self.ncpu = ncpu_glob - 1
 
-        # Number of reported samples
-        nsamples = len(cpu_report_lines)
-
-        # CPU metric keys (to read lines)
-        cpu_metric_keys = {"User": 2, "Nice": 3, "System": 4, "Idle": 5, "IOwait": 6, "Irq": 7, "Sotfirq": 8, "Steal": 9, "Guest": 10, "GuestNice": 11}
+        # CPU metric keys {"user": 2, "nice": 3, "system": 4, "idle": 5, "iowait": 6, "irq": 7, "softirq": 8, "steal": 9, "guest": 10, "guestnice": 11}
+        _sidx = 2
+        cpu_metric_keys = {key: idx + _sidx for idx,key in enumerate(cpu_report_lines[0][_sidx:])}
 
         # Init cpu time series
         cpu_ts_raw = {}
-        for cpu_nb in range(ncpu_glob):
-            cpu_ts_raw[f"cpu{cpu_nb}"] = {key: [] for key in cpu_metric_keys.keys()}
-        cpu_ts_raw["cpu"] = cpu_ts_raw[f"cpu{ncpu_glob-1}"]
-        del cpu_ts_raw[f"cpu{ncpu_glob-1}"]
+        for cpu in self.hf_cpus:
+            cpu_ts_raw[cpu] = {key: [] for key in cpu_metric_keys.keys()}
 
         # Read lines
         time_index = 0
         cpu_index = 1
         timestamps_raw = []
-        for line in cpu_report_lines:
+
+        for line in cpu_report_lines[1:]:
             for key in cpu_metric_keys:
                 cpu_ts_raw[line[cpu_index]][key] += [float(line[cpu_metric_keys[key]])]
-            timestamps_raw += [line[time_index]]
+        timestamps_raw = [float(line[time_index]) for line in cpu_report_lines[1::ncpu_glob]]
 
         timestamps_raw = np.sort(np.array(list(set(timestamps_raw))).astype(np.float64))
 
@@ -605,10 +604,10 @@ class HighFreqData():
         alpha = .8
         prefix = f"{number}: " if number else ""
 
-        cpu_usr = self.hf_cpu_prof[core]["User"] + self.hf_cpu_prof[core]["Nice"]
-        cpu_sys = self.hf_cpu_prof[core]["System"] + self.hf_cpu_prof[core]["Irq"] + self.hf_cpu_prof[core]["Sotfirq"]
-        cpu_wai = self.hf_cpu_prof[core]["IOwait"]
-        cpu_stl = self.hf_cpu_prof[core]["Steal"] + self.hf_cpu_prof[core]["Guest"] + self.hf_cpu_prof[core]["GuestNice"]
+        cpu_usr = self.hf_cpu_prof[core]["user"] + self.hf_cpu_prof[core]["nice"]
+        cpu_sys = self.hf_cpu_prof[core]["system"] + self.hf_cpu_prof[core]["irq"] + self.hf_cpu_prof[core]["softirq"]
+        cpu_wai = self.hf_cpu_prof[core]["iowait"]
+        cpu_stl = self.hf_cpu_prof[core]["steal"] + self.hf_cpu_prof[core]["guest"] + self.hf_cpu_prof[core]["guestnice"]
 
         plt.fill_between(self.hf_cpu_stamps, 100, color="C7", alpha=alpha/3, label=f"{prefix}idle")
         plt.fill_between(self.hf_cpu_stamps, cpu_stl, color="C5", alpha=alpha, label=f"{prefix}virt")
@@ -653,9 +652,9 @@ class HighFreqData():
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu+1))
         for idx, core in enumerate(cores):
             core_name = f"cpu{core}"
-            cpu_usr = self.hf_cpu_prof[core_name]["User"] + self.hf_cpu_prof[core_name]["Nice"]
-            cpu_sys = self.hf_cpu_prof[core_name]["System"] + self.hf_cpu_prof[core_name]["Irq"] + self.hf_cpu_prof[core_name]["Sotfirq"]
-            cpu_wai = self.hf_cpu_prof[core_name]["IOwait"]
+            cpu_usr = self.hf_cpu_prof[core_name]["user"] + self.hf_cpu_prof[core_name]["nice"]
+            cpu_sys = self.hf_cpu_prof[core_name]["system"] + self.hf_cpu_prof[core_name]["irq"] + self.hf_cpu_prof[core_name]["softirq"]
+            cpu_wai = self.hf_cpu_prof[core_name]["iowait"]
             plt.plot(self.hf_cpu_stamps, cpu_usr+cpu_sys+cpu_wai, color=cm[idx], label=f"core-{core}")
         plt.xticks(self._xticks[0], self._xticks[1])
         _yrange = 10
