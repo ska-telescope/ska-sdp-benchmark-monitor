@@ -838,12 +838,14 @@ class HighFreqData():
             ts = net_report_lines[line_idx][0]
         nnet_interf = len(self.hf_net_interfs)
 
-        self.hf_net_metric_keys = { # https://www.kernel.org/doc/html/v6.7/networking/statistics.html
-            "rx-bytes": 2, "rx-packets": 3, "rx-errs": 4, "rx-drop": 5,
-            "rx-fifo": 6, "rx-frame": 7, "rx-compressed": 8, "rx-multicast": 9,
-            "tx-bytes": 10, "tx-packets": 11, "tx-errs": 12, "tx-drop": 13,
-            "tx-fifo": 14, "tx-colls": 15, "tx-compressed": 16
-        }
+        # self.hf_net_metric_keys = { # https://www.kernel.org/doc/html/v6.7/networking/statistics.html
+        #     "rx-bytes": 2, "rx-packets": 3, "rx-errs": 4, "rx-drop": 5,
+        #     "rx-fifo": 6, "rx-frame": 7, "rx-compressed": 8, "rx-multicast": 9,
+        #     "tx-bytes": 10, "tx-packets": 11, "tx-errs": 12, "tx-drop": 13,
+        #     "tx-fifo": 14, "tx-colls": 15, "tx-carrier": 16, "tx-compressed": 17
+        # }
+        _sidx = 2
+        self.hf_net_metric_keys = {key: idx + _sidx for idx,key in enumerate(net_report_lines[0][_sidx:])}
 
         _interf_idx = 1
         net_ts_raw = {}
@@ -1018,6 +1020,7 @@ class HighFreqData():
         timestamps_raw = [float(item[0]) for item in disk_report_lines[_samples_idx:][::ndisk_blk]]
 
         return disk_ts_raw, timestamps_raw
+
 
     def get_hf_disk_prof(self, csv_disk_report: str):
         """
