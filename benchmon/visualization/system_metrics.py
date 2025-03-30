@@ -753,8 +753,7 @@ class HighFreqData():
         with open(csv_cpufreq_report, newline="") as csvfile:
             csvreader = csv.reader(csvfile)
             for row in csvreader:
-                if int(row[1][3:]) in self.sys_info["online_cores"]:
-                    cpufreq_report_lines.append(row)
+                cpufreq_report_lines.append(row)
 
         # Init cpu time series
         cpufreq_ts = {}
@@ -762,17 +761,15 @@ class HighFreqData():
             cpufreq_ts[f"cpu{cpu_nb}"] = []
 
         # Read lines
-        timestamps = []
-        for line in cpufreq_report_lines:
+        for line in cpufreq_report_lines[1:]:
             cpufreq_ts[line[1]] += [float(line[2])]
-            timestamps += [line[0]]
-        timestamps = np.sort(np.array(list(set(timestamps))).astype(np.float64))
 
+        HZ_UNIT = 1e6
         for cpu_nb in range(self.ncpu):
-            cpufreq_ts[f"cpu{cpu_nb}"] = np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / 1e6
+            cpufreq_ts[f"cpu{cpu_nb}"] = np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / HZ_UNIT
 
         self.hf_cpufreq_prof = cpufreq_ts
-        self.hf_cpufreq_stamps = timestamps
+        self.hf_cpufreq_stamps = [float(line[0]) for line in cpufreq_report_lines[1::self.ncpu]]
 
         return 0
 
