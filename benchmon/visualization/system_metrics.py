@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
-
+"""
+Python script to read and plot system resources measurements
+"""
 import csv
 import os
 import time

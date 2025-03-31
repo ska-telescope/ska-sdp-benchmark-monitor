@@ -95,7 +95,9 @@ def parsing():
 
     parser.add_argument("--verbose", action="store_true", help="Enable debug information")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    return args
 
 
 def create_logger(traces_repo: str, verbose: bool):
@@ -168,22 +170,14 @@ def main():
 
     # High-frequency monitoring data
     is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem or is_hf_net or is_hf_disk
-    csv_mem_report = f"{traces_repo}/hf_mem_report.csv" if is_hf_mem else None
-    csv_cpu_report = f"{traces_repo}/hf_cpu_report.csv" if is_hf_cpu or is_hf_cpu_all or is_hf_cores_full else None
-    csv_cpufreq_report= f"{traces_repo}/hf_cpufreq_report.csv" if is_hf_cpu_freq else None
-    csv_net_report=f"{traces_repo}/hf_net_report.csv" if is_hf_net else None
-    csv_disk_report=f"{traces_repo}/hf_disk_report.csv" if is_hf_disk else None
-    csv_ib_report=f"{traces_repo}/hf_ib_report.csv" if is_hf_ib else None
+    csv_reports = {}
+    conds = {"mem": is_hf_mem, "cpu": is_hf_cpu or is_hf_cpu_all or is_hf_cores_full,
+            "cpufreq": is_hf_cpu_freq, "net": is_hf_net, "disk": is_hf_disk, "ib": is_hf_ib}
+    for key in conds.keys():
+        csv_reports[f"csv_{key}_report"] = f"{traces_repo}/hf_{key}_report.csv" if conds[key] else None
 
     if is_any_hf_sys:
-        hfsys_trace = system_metrics.HighFreqData(
-            csv_mem_report=csv_mem_report,
-            csv_cpu_report=csv_cpu_report,
-            csv_cpufreq_report=csv_cpufreq_report,
-            csv_net_report=csv_net_report,
-            csv_disk_report=csv_disk_report,
-            csv_ib_report=csv_ib_report
-        )
+        hfsys_trace = system_metrics.HighFreqData(**csv_reports)
         _xticks = hfsys_trace._xticks
         _xlim = hfsys_trace._xlim
 
