@@ -4,7 +4,7 @@ freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
 
 report_cpu_stat=$2
-echo -n "" > $report_cpu_stat
+echo "timestamp,cpu_core,user,nice,system,idle,iowait,irq,softirq,steal,guest,guestnice" > $report_cpu_stat
 
 while true
 do

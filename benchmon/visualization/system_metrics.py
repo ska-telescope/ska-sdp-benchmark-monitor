@@ -527,37 +527,36 @@ class HighFreqData():
             for row in csvreader:
                 cpu_report_lines.append(row)
 
-        # Number of CPU cores + global @hc
-        cnt = 0
-        for line in cpu_report_lines:
-            nb = line[1][3:]
-            self.ncpu = max(int(nb) if len(nb) > 1 else 0, self.ncpu)
-            cnt +=1
-            if cnt > 10000: break
-        self.ncpu += 1
-        ncpu_glob = self.ncpu + 1
+        # Get cpus, number of cpu cores + global
+        ts_0 = cpu_report_lines[1][0]
+        ts = ts_0
+        line_idx = 1
+        self.hf_cpus = []
+        while ts == ts_0:
+            self.hf_cpus += [cpu_report_lines[line_idx][1]]
+            line_idx += 1
+            ts = cpu_report_lines[line_idx][0]
+        ncpu_glob = len(self.hf_cpus)
+        self.ncpu = ncpu_glob - 1
 
-        # Number of reported samples
-        nsamples = len(cpu_report_lines)
-
-        # CPU metric keys (to read lines)
-        cpu_metric_keys = {"User": 2, "Nice": 3, "System": 4, "Idle": 5, "IOwait": 6, "Irq": 7, "Sotfirq": 8, "Steal": 9, "Guest": 10, "GuestNice": 11}
+        # CPU metric keys {"user": 2, "nice": 3, "system": 4, "idle": 5, "iowait": 6, "irq": 7, "softirq": 8, "steal": 9, "guest": 10, "guestnice": 11}
+        _sidx = 2
+        cpu_metric_keys = {key: idx + _sidx for idx,key in enumerate(cpu_report_lines[0][_sidx:])}
 
         # Init cpu time series
         cpu_ts_raw = {}
-        for cpu_nb in range(ncpu_glob):
-            cpu_ts_raw[f"cpu{cpu_nb}"] = {key: [] for key in cpu_metric_keys.keys()}
-        cpu_ts_raw["cpu"] = cpu_ts_raw[f"cpu{ncpu_glob-1}"]
-        del cpu_ts_raw[f"cpu{ncpu_glob-1}"]
+        for cpu in self.hf_cpus:
+            cpu_ts_raw[cpu] = {key: [] for key in cpu_metric_keys.keys()}
 
         # Read lines
         time_index = 0
         cpu_index = 1
         timestamps_raw = []
-        for line in cpu_report_lines:
+
+        for line in cpu_report_lines[1:]:
             for key in cpu_metric_keys:
                 cpu_ts_raw[line[cpu_index]][key] += [float(line[cpu_metric_keys[key]])]
-            timestamps_raw += [line[time_index]]
+        timestamps_raw = [float(line[time_index]) for line in cpu_report_lines[1::ncpu_glob]]
 
         timestamps_raw = np.sort(np.array(list(set(timestamps_raw))).astype(np.float64))
 
@@ -605,10 +604,10 @@ class HighFreqData():
         alpha = .8
         prefix = f"{number}: " if number else ""
 
-        cpu_usr = self.hf_cpu_prof[core]["User"] + self.hf_cpu_prof[core]["Nice"]
-        cpu_sys = self.hf_cpu_prof[core]["System"] + self.hf_cpu_prof[core]["Irq"] + self.hf_cpu_prof[core]["Sotfirq"]
-        cpu_wai = self.hf_cpu_prof[core]["IOwait"]
-        cpu_stl = self.hf_cpu_prof[core]["Steal"] + self.hf_cpu_prof[core]["Guest"] + self.hf_cpu_prof[core]["GuestNice"]
+        cpu_usr = self.hf_cpu_prof[core]["user"] + self.hf_cpu_prof[core]["nice"]
+        cpu_sys = self.hf_cpu_prof[core]["system"] + self.hf_cpu_prof[core]["irq"] + self.hf_cpu_prof[core]["softirq"]
+        cpu_wai = self.hf_cpu_prof[core]["iowait"]
+        cpu_stl = self.hf_cpu_prof[core]["steal"] + self.hf_cpu_prof[core]["guest"] + self.hf_cpu_prof[core]["guestnice"]
 
         plt.fill_between(self.hf_cpu_stamps, 100, color="C7", alpha=alpha/3, label=f"{prefix}idle")
         plt.fill_between(self.hf_cpu_stamps, cpu_stl, color="C5", alpha=alpha, label=f"{prefix}virt")
@@ -653,9 +652,9 @@ class HighFreqData():
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu+1))
         for idx, core in enumerate(cores):
             core_name = f"cpu{core}"
-            cpu_usr = self.hf_cpu_prof[core_name]["User"] + self.hf_cpu_prof[core_name]["Nice"]
-            cpu_sys = self.hf_cpu_prof[core_name]["System"] + self.hf_cpu_prof[core_name]["Irq"] + self.hf_cpu_prof[core_name]["Sotfirq"]
-            cpu_wai = self.hf_cpu_prof[core_name]["IOwait"]
+            cpu_usr = self.hf_cpu_prof[core_name]["user"] + self.hf_cpu_prof[core_name]["nice"]
+            cpu_sys = self.hf_cpu_prof[core_name]["system"] + self.hf_cpu_prof[core_name]["irq"] + self.hf_cpu_prof[core_name]["softirq"]
+            cpu_wai = self.hf_cpu_prof[core_name]["iowait"]
             plt.plot(self.hf_cpu_stamps, cpu_usr+cpu_sys+cpu_wai, color=cm[idx], label=f"core-{core}")
         plt.xticks(self._xticks[0], self._xticks[1])
         _yrange = 10
@@ -754,8 +753,7 @@ class HighFreqData():
         with open(csv_cpufreq_report, newline="") as csvfile:
             csvreader = csv.reader(csvfile)
             for row in csvreader:
-                if int(row[1][3:]) in self.sys_info["online_cores"]:
-                    cpufreq_report_lines.append(row)
+                cpufreq_report_lines.append(row)
 
         # Init cpu time series
         cpufreq_ts = {}
@@ -763,17 +761,15 @@ class HighFreqData():
             cpufreq_ts[f"cpu{cpu_nb}"] = []
 
         # Read lines
-        timestamps = []
-        for line in cpufreq_report_lines:
+        for line in cpufreq_report_lines[1:]:
             cpufreq_ts[line[1]] += [float(line[2])]
-            timestamps += [line[0]]
-        timestamps = np.sort(np.array(list(set(timestamps))).astype(np.float64))
 
+        HZ_UNIT = 1e6
         for cpu_nb in range(self.ncpu):
-            cpufreq_ts[f"cpu{cpu_nb}"] = np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / 1e6
+            cpufreq_ts[f"cpu{cpu_nb}"] = np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / HZ_UNIT
 
         self.hf_cpufreq_prof = cpufreq_ts
-        self.hf_cpufreq_stamps = timestamps
+        self.hf_cpufreq_stamps = [float(line[0]) for line in cpufreq_report_lines[1::self.ncpu]]
 
         return 0
 
@@ -842,12 +838,14 @@ class HighFreqData():
             ts = net_report_lines[line_idx][0]
         nnet_interf = len(self.hf_net_interfs)
 
-        self.hf_net_metric_keys = { # https://www.kernel.org/doc/html/v6.7/networking/statistics.html
-            "rx-bytes": 2, "rx-packets": 3, "rx-errs": 4, "rx-drop": 5,
-            "rx-fifo": 6, "rx-frame": 7, "rx-compressed": 8, "rx-multicast": 9,
-            "tx-bytes": 10, "tx-packets": 11, "tx-errs": 12, "tx-drop": 13,
-            "tx-fifo": 14, "tx-colls": 15, "tx-compressed": 16
-        }
+        # self.hf_net_metric_keys = { # https://www.kernel.org/doc/html/v6.7/networking/statistics.html
+        #     "rx-bytes": 2, "rx-packets": 3, "rx-errs": 4, "rx-drop": 5,
+        #     "rx-fifo": 6, "rx-frame": 7, "rx-compressed": 8, "rx-multicast": 9,
+        #     "tx-bytes": 10, "tx-packets": 11, "tx-errs": 12, "tx-drop": 13,
+        #     "tx-fifo": 14, "tx-colls": 15, "tx-carrier": 16, "tx-compressed": 17
+        # }
+        _sidx = 2
+        self.hf_net_metric_keys = {key: idx + _sidx for idx,key in enumerate(net_report_lines[0][_sidx:])}
 
         _interf_idx = 1
         net_ts_raw = {}
@@ -976,20 +974,24 @@ class HighFreqData():
             for row in csvreader:
                 disk_report_lines.append(row)
 
-        self.hf_disk_field_keys = { # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
-            "#rd-cd": 4, "#rd-md": 5, "sect-rd": 6, "time-rd": 7,
-            "#wr-cd": 8, "#wr-md": 9, "sect-wr": 10, "time-wr": 11,
-            "#io-ip": 12, "time-io": 13, "time-wei-io": 14,
-            "#disc-cd": 15, "#disc-md": 16, "sect-disc": 17, "time-disc": 18,
-            "#flush-req": 19, "time-flush": 20
-        }
-
         # useful indexes for the csv report
-        _samples_idx = 3
-        _blk_idx = 3
         _maj_blk_indx = 0
         _all_blk_indx = 1
         _sect_blk_indx = 2
+        _header_indx = 3
+        _samples_idx = 4
+
+        _blk_idx = 3 # Horizontal
+
+        # self.hf_disk_field_keys = { # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
+        #     "#rd-cd": 4, "#rd-md": 5, "sect-rd": 6, "time-rd": 7,
+        #     "#wr-cd": 8, "#wr-md": 9, "sect-wr": 10, "time-wr": 11,
+        #     "#io-ip": 12, "time-io": 13, "time-wei-io": 14,
+        #     "#disc-cd": 15, "#disc-md": 16, "sect-disc": 17, "time-disc": 18,
+        #     "#flush-req": 19, "time-flush": 20
+        # }
+        _sidx = 4
+        self.hf_disk_field_keys = {key: idx + _sidx for idx,key in enumerate(disk_report_lines[_header_indx][_sidx:])}
 
         # get major blocks and associated sector size
         self.hf_maj_blks_sects = dict(zip(
@@ -1018,6 +1020,7 @@ class HighFreqData():
         timestamps_raw = [float(item[0]) for item in disk_report_lines[_samples_idx:][::ndisk_blk]]
 
         return disk_ts_raw, timestamps_raw
+
 
     def get_hf_disk_prof(self, csv_disk_report: str):
         """
