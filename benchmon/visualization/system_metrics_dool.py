@@ -2,9 +2,29 @@
 Python script to read and plot dool measurements
 """
 import csv
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-from .system_metrics import read_sys_info, create_plt_params, plot_inline_calls
+from .system_metrics import create_plt_params, plot_inline_calls
+
+def read_sys_info(any_reportpath) -> int:
+    """
+    Parse and read sys_info.txt file
+    """
+    sys_info_txtfile = os.path.dirname(any_reportpath) + "/sys_info.txt"
+    sys_info = {}
+    with open(sys_info_txtfile, "r") as file:
+        for line in file:
+            _key, _val = line.strip().split(": ")
+            sys_info[_key] = _val
+
+    for _key in ["cpu_freq_max", "cpu_freq_min"]:
+        sys_info[_key] = float(sys_info[_key])
+
+    for _key in ["online_cores", "offline_cores"]:
+        sys_info[_key] = [int(lcore) for lcore in sys_info[_key].split(" ")][1:]
+
+    return sys_info
 
 class DoolData():
     """

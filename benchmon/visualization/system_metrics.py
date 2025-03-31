@@ -11,25 +11,6 @@ from math import ceil
 PLT_XLIM_COEF = 0.02
 PLT_XRANGE = 21
 
-def read_sys_info(any_reportpath) -> int:
-    """
-    Parse and read sys_info.txt file
-    """
-    sys_info_txtfile = os.path.dirname(any_reportpath) + "/sys_info.txt"
-    sys_info = {}
-    with open(sys_info_txtfile, "r") as file:
-        for line in file:
-            _key, _val = line.strip().split(": ")
-            sys_info[_key] = _val
-
-    for _key in ["cpu_freq_max", "cpu_freq_min"]:
-        sys_info[_key] = float(sys_info[_key])
-
-    for _key in ["online_cores", "offline_cores"]:
-        sys_info[_key] = [int(lcore) for lcore in sys_info[_key].split(" ")][1:]
-
-    return sys_info
-
 
 def create_plt_params(t0, tf, xmargin=PLT_XLIM_COEF) -> tuple:
     """
@@ -92,7 +73,6 @@ class HighFreqData():
         """
 
         self.ncpu = 0
-        self.sys_info = read_sys_info(any_reportpath=csv_cpu_report)
 
         self.hf_cpu_prof = {}
         self.hf_cpu_stamps = np.array([])
@@ -101,6 +81,7 @@ class HighFreqData():
         if csv_cpufreq_report:
             self.hf_cpufreq_prof = {}
             self.hf_cpufreq_stamps = np.array([])
+            self.hf_cpufreq_minmax = []
             self.get_hf_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report)
 
         if csv_mem_report:
@@ -313,7 +294,7 @@ class HighFreqData():
         """
         ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"
 
-        _chosen_keys = ["Time", "MemTotal", "MemFree", "Buffers", "Cached", "Slab", "SwapTotal", "SwapFree", "SwapCached"]
+        _chosen_keys = ["timestamp", "MemTotal", "MemFree", "Buffers", "Cached", "Slab", "SwapTotal", "SwapFree", "SwapCached"]
 
         mem_report_lines, keys_with_idx = self.read_hf_mem_csv_report(csv_mem_report=csv_mem_report)
 
@@ -327,7 +308,7 @@ class HighFreqData():
             memory_dict[key] = np.array(memory_dict[key])
 
         self.hf_mem_prof = memory_dict
-        self.hf_mem_stamps = memory_dict["Time"]
+        self.hf_mem_stamps = memory_dict["timestamp"]
 
         return 0
 
@@ -377,6 +358,8 @@ class HighFreqData():
             for row in csvreader:
                 cpufreq_report_lines.append(row)
 
+        self.hf_cpufreq_minmax = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
+
         # Init cpu time series
         cpufreq_ts = {}
         for cpu_nb in range(self.ncpu):
@@ -400,8 +383,9 @@ class HighFreqData():
         """
         Plot cpu frequency per core
         """
-        cpu_freq_min = self.sys_info["cpu_freq_min"] / 1e6 # GHz
-        cpu_freq_max = self.sys_info["cpu_freq_max"] / 1e6 # GHz
+        HZ_UNIT = 1e6 # GHz
+        cpu_freq_min = float(self.hf_cpufreq_minmax[0]) / HZ_UNIT
+        cpu_freq_max = float(self.hf_cpufreq_minmax[1]) / HZ_UNIT
 
         cores = [core for core in range(self.ncpu)]
         if len(cores_in) > 0:
