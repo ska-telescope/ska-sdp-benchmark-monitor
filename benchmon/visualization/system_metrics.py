@@ -120,11 +120,6 @@ class DoolData():
         if not ("read" in self.csv_report[5] and "writ" in self.csv_report[5]):
             self.with_io = False
 
-        print(f"version: {''.join(version)}")
-        print(f"Hostname: {host[1]}")
-        print(f"Username: {host[-1]}")
-        print(f"Commandline: {command[1]}")
-
         return 0
 
 
@@ -495,7 +490,7 @@ class HighFreqData():
             self.hf_net_prof = {}
             self.hf_net_data = {}
             self.hf_net_metric_keys = {}
-            self.hf_net_intrfs = []
+            self.hf_net_interfs = []
             self.hf_net_stamps = np.array([])
             self.get_hf_net_prof(csv_net_report=csv_net_report)
 
@@ -837,7 +832,15 @@ class HighFreqData():
             for row in csvreader:
                 net_report_lines.append(row)
 
-        nnet_intrf = int(net_report_lines[0][0])
+        # Get network interfaces
+        ts_0 = net_report_lines[1][0]
+        ts = ts_0
+        line_idx = 1
+        while ts == ts_0:
+            self.hf_net_interfs += [net_report_lines[line_idx][1]]
+            line_idx += 1
+            ts = net_report_lines[line_idx][0]
+        nnet_interf = len(self.hf_net_interfs)
 
         self.hf_net_metric_keys = { # https://www.kernel.org/doc/html/v6.7/networking/statistics.html
             "rx-bytes": 2, "rx-packets": 3, "rx-errs": 4, "rx-drop": 5,
@@ -846,19 +849,17 @@ class HighFreqData():
             "tx-fifo": 14, "tx-colls": 15, "tx-compressed": 16
         }
 
-        _intrf_idx = 1
-        self.hf_net_intrfs = [net_report_lines[1 + idx][_intrf_idx] for idx in range(nnet_intrf)]
-
+        _interf_idx = 1
         net_ts_raw = {}
-        for intrf in self.hf_net_intrfs:
-            net_ts_raw[intrf] = {key: [] for key in self.hf_net_metric_keys}
+        for interf in self.hf_net_interfs:
+            net_ts_raw[interf] = {key: [] for key in self.hf_net_metric_keys}
 
         _samples_idx = 1
         for report_line in net_report_lines[_samples_idx:]:
             for key in self.hf_net_metric_keys:
-                net_ts_raw[report_line[_intrf_idx]][key] += [float(report_line[self.hf_net_metric_keys[key]])]
+                net_ts_raw[report_line[_interf_idx]][key] += [float(report_line[self.hf_net_metric_keys[key]])]
 
-        timestamps_raw = [float(item[0]) for item in net_report_lines[_samples_idx:][::nnet_intrf]]
+        timestamps_raw = [float(item[0]) for item in net_report_lines[_samples_idx:][::nnet_interf]]
 
         return net_ts_raw, timestamps_raw
 
@@ -878,9 +879,9 @@ class HighFreqData():
             self.hf_net_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
 
         # Init network profile
-        for intrf in self.hf_net_intrfs:
-            self.hf_net_prof[intrf] = {key: np.zeros(nstamps) for key in self.hf_net_metric_keys}
-            self.hf_net_data[intrf] = {key: 0 for key in self.hf_net_metric_keys}
+        for interf in self.hf_net_interfs:
+            self.hf_net_prof[interf] = {key: np.zeros(nstamps) for key in self.hf_net_metric_keys}
+            self.hf_net_data[interf] = {key: 0 for key in self.hf_net_metric_keys}
 
         # Fill in
         for key in net_ts_raw:
@@ -900,48 +901,55 @@ class HighFreqData():
         ALPHA = .5
         MRKSZ = 3.5
 
-        rx_total = 0
-        tx_total = 0
-        for intrf in self.hf_net_intrfs:
-            rx_total = rx_total + self.hf_net_prof[intrf]["rx-bytes"] / BYTES_UNIT
-            tx_total = tx_total + self.hf_net_prof[intrf]["tx-bytes"] / BYTES_UNIT
+        # Interface to exclude (eg: br0)
+        interf_to_exclude = ["br0:",]
+        is_excluded = lambda interf: any([_interf in interf for _interf in interf_to_exclude])
+
+        rx_total = np.zeros_like(self.hf_net_stamps)
+        tx_total = np.zeros_like(self.hf_net_stamps)
+        rx_data = 0
+        tx_data = 0
+        for interf in self.hf_net_interfs:
+            if is_excluded(interf): continue
+
+            rx_total = rx_total + self.hf_net_prof[interf]["rx-bytes"] / BYTES_UNIT
+            tx_total = tx_total + self.hf_net_prof[interf]["tx-bytes"] / BYTES_UNIT
+
+            rx_data += self.hf_net_data[interf]["rx-bytes"] / BYTES_UNIT
+            tx_data += self.hf_net_data[interf]["tx-bytes"] / BYTES_UNIT
 
         # RX
         if not is_tx_only:
             if total_network:
                 label = f"rx:total"
-                if is_netdata_label:
-                    _rd = int(sum([self.hf_net_data[intrf]["rx-bytes"] / BYTES_UNIT for intrf in self.hf_net_intrfs]))
-                    label +=  f" ({_rd} MB)"
+                if is_netdata_label: label += f" ({int(rx_data)} MB)"
                 plt.fill_between(self.hf_net_stamps, rx_total, label=label, color="b", alpha=ALPHA)
 
             if all_interfaces:
-                for intrf in self.hf_net_intrfs:
-                    rx_arr = self.hf_net_prof[intrf]["rx-bytes"] / BYTES_UNIT
-                    if np.linalg.norm(rx_arr) > 1:
-                        label = f"rx:{intrf[:-1]}"
-                        if is_netdata_label:
-                            _rd = int(self.hf_net_data[intrf]["rx-bytes"] / BYTES_UNIT)
-                            label += f" ({_rd} MB)"
+                for interf in self.hf_net_interfs:
+                    if is_excluded(interf): continue
+                    rx_arr = self.hf_net_prof[interf]["rx-bytes"] / BYTES_UNIT
+                    rd = self.hf_net_data[interf]["rx-bytes"] / BYTES_UNIT
+                    if rd > 1: # and rd / rx_data > 0.001:
+                        label = f"rx:{interf[:-1]}"
+                        if is_netdata_label: label += f" ({int(rd)} MB)"
                         plt.plot(self.hf_net_stamps, rx_arr, label=label, ls="-", alpha=ALPHA, marker="v", markersize=MRKSZ)
 
         # TX
         if not is_rx_only:
             if total_network:
                 label = f"tx:total"
-                if is_netdata_label:
-                    _tr = int(sum([self.hf_net_data[intrf]["tx-bytes"] / BYTES_UNIT for intrf in self.hf_net_intrfs]))
-                    label +=  f" ({_tr} MB)"
+                if is_netdata_label: label +=  f" ({int(tx_data)} MB)"
                 plt.fill_between(self.hf_net_stamps, tx_total, label=label, color="r", alpha=ALPHA)
 
             if all_interfaces:
-                for intrf in self.hf_net_intrfs:
-                    tx_arr = self.hf_net_prof[intrf]["tx-bytes"] / BYTES_UNIT
-                    if np.linalg.norm(tx_arr) > 1:
-                        label = f"tx:{intrf[:-1]}"
-                        if is_netdata_label:
-                            _tr = int(self.hf_net_data[intrf]["tx-bytes"] / BYTES_UNIT)
-                            label += f" ({_tr} MB)"
+                for interf in self.hf_net_interfs:
+                    if is_excluded(interf): continue
+                    tx_arr = self.hf_net_prof[interf]["tx-bytes"] / BYTES_UNIT
+                    td = self.hf_net_data[interf]['tx-bytes'] / BYTES_UNIT
+                    if td > 1: # and td / tx_data > 0.001:
+                        label = f"tx:{interf[:-1]}"
+                        if is_netdata_label: label += f" ({int(td)} MB)"
                         plt.plot(self.hf_net_stamps, tx_arr, label=label, ls="-", alpha=ALPHA, marker="^", markersize=MRKSZ)
 
         _ymax = max(max(rx_total), max(tx_total))
@@ -1142,8 +1150,8 @@ class HighFreqData():
         self.ib_interfs = set(self.ib_interfs)
 
         ib_ts_raw = {}
-        for intrf in self.ib_interfs:
-            ib_ts_raw[intrf] = {key: [] for key in self.ib_metric_keys}
+        for interf in self.ib_interfs:
+            ib_ts_raw[interf] = {key: [] for key in self.ib_metric_keys}
 
         for line in ib_report_lines[1:]:
             interf = line[1]
@@ -1167,10 +1175,10 @@ class HighFreqData():
         for stamp in range(nstamps):
             self.hf_ib_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
 
-        # Init network profile
-        for intrf in self.ib_interfs:
-            self.hf_ib_prof[intrf] = {key: np.zeros(nstamps) for key in self.ib_metric_keys}
-            self.hf_ib_data[intrf] = {key: 0 for key in self.ib_metric_keys}
+        # Init infiniband profile
+        for interf in self.ib_interfs:
+            self.hf_ib_prof[interf] = {key: np.zeros(nstamps) for key in self.ib_metric_keys}
+            self.hf_ib_data[interf] = {key: 0 for key in self.ib_metric_keys}
 
         # Fill in
         BYTES_UNIT = (1/4) * 1024 ** 2 # MB
@@ -1187,27 +1195,27 @@ class HighFreqData():
         """
         rx_total = 0
         tx_total = 0
-        for intrf in self.ib_interfs:
-            rx_total = rx_total + self.hf_ib_prof[intrf]["port_rcv_data"]
-            tx_total = tx_total + self.hf_ib_prof[intrf]["port_xmit_data"]
+        for interf in self.ib_interfs:
+            rx_total = rx_total + self.hf_ib_prof[interf]["port_rcv_data"]
+            tx_total = tx_total + self.hf_ib_prof[interf]["port_xmit_data"]
         alpha = .5
+
+        # RX:IB
         plt.fill_between(self.hf_ib_stamps, rx_total, label="rx:total", color="b", alpha=alpha/2)
+        for interf in self.ib_interfs:
+            rx_arr = self.hf_ib_prof[interf]["port_rcv_data"]
+            rx_data_label = self.hf_ib_data[interf]["port_rcv_data"]
+            if rx_data_label > 1: # np.linalg.norm(rx_arr) > 1:
+                plt.plot(self.hf_ib_stamps, rx_arr, label=f"rx:(ib){interf} ({rx_data_label} MB)", ls="-", marker="v", alpha=alpha)
+
+
+        # TX:IB
         plt.fill_between(self.hf_ib_stamps, tx_total, label="tx:total", color="r", alpha=alpha/2)
-
-
-        alpha = 1.
-        for intrf in self.ib_interfs:
-            rx_arr = self.hf_ib_prof[intrf]["port_rcv_data"]
-            rx_data_label = self.hf_ib_data[intrf]["port_rcv_data"]
-            tx_arr = self.hf_ib_prof[intrf]["port_xmit_data"]
-            tx_data_label = self.hf_ib_data[intrf]["port_xmit_data"]
-
-
-            if np.linalg.norm(rx_arr) > 1:
-                plt.plot(self.hf_ib_stamps, rx_arr, label=f"rx:(ib){intrf} ({rx_data_label} MB)", ls="-", marker="v", alpha=alpha/2)
-
-            if np.linalg.norm(tx_arr) > 1:
-                plt.plot(self.hf_ib_stamps, tx_arr, label=f"tx:(ib){intrf} ({tx_data_label} MB)", ls="-", marker="^", alpha=alpha/2)
+        for interf in self.ib_interfs:
+            tx_arr = self.hf_ib_prof[interf]["port_xmit_data"]
+            tx_data_label = self.hf_ib_data[interf]["port_xmit_data"]
+            if tx_data_label > 1: # np.linalg.norm(tx_arr) > 1:
+                plt.plot(self.hf_ib_stamps, tx_arr, label=f"tx:(ib){interf} ({tx_data_label} MB)", ls="-", marker="^", alpha=alpha)
 
         plt.ylabel("Infiniband bandwidth (MB/s)")
         plt.xticks(xticks[0], xticks[1])
