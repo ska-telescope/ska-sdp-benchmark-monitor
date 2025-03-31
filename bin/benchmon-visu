@@ -20,7 +20,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 print("Add parent directory to sys.path.")
 sys.path.insert(0, parent_dir)
 
-from benchmon.visualization import system_metrics
+from benchmon.visualization import system_metrics, system_metrics_dool
 from benchmon.visualization import power_metrics
 from benchmon.visualization import call_profile
 
@@ -161,7 +161,7 @@ def main():
     # Dool data
     is_any_sys = is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io
     if is_any_sys:
-        sys_trace = system_metrics.DoolData(csv_filename=f"{traces_repo}/sys_report.csv")
+        sys_trace = system_metrics_dool.DoolData(csv_filename=f"{traces_repo}/sys_report.csv")
         _xticks = sys_trace._xticks
         _xlim = sys_trace._xlim
     n_sys = is_cpu + is_cpu_all + is_cpu_freq + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
