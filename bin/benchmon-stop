@@ -30,29 +30,25 @@ then
     rm -v ${benchmon_pid_file}
 fi
 
+
+traces_repo=$save_dir/benchmon_traces_$(hostname)
+benchmon_visu=$(dirname $0)/benchmon-visu
 if [[ $level == 0 ]]; then
-    for subrepo in $save_dir/*/; do
-        $(dirname $0)/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $subrepo &
-        $(dirname $0)/benchmon-visu --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $subrepo &
-        $(dirname $0)/benchmon-visu --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $subrepo &
-    done
+    $benchmon_visu --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $traces_repo &
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $traces_repo &
+    $benchmon_visu --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $traces_repo &
     wait
 
 elif [[ $level == 1 ]]; then
-    for subrepo in $save_dir/*/; do
-        $(dirname $0)/benchmon-visu --inline-call --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $subrepo & # --pow
-        $(dirname $0)/benchmon-visu --inline-call --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $subrepo & # --pow
-        $(dirname $0)/benchmon-visu --inline-call --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $subrepo & # --pow
-    done
+    $benchmon_visu --inline-call --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $traces_repo & # --pow
+    $benchmon_visu --inline-call --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $traces_repo & # --pow
+    $benchmon_visu --inline-call --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $traces_repo & # --pow
     wait
 
 elif [[ $level == 2 ]]; then
-    for subrepo in $save_dir/*/; do
-        $(dirname $0)/benchmon-visu --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $subrepo & # --pow --call --call-depth 4
-        $(dirname $0)/benchmon-visu --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $subrepo & # --pow --call --call-depth 4
-        $(dirname $0)/benchmon-visu --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $subrepo & # --pow --call --call-depth 4
-        $(dirname $0)/benchmon-visu --hf-cpu-all --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name call_only $subrepo & # --pow --call --call-depth 4
-
-    done
+    $benchmon_visu --hf-mem --hf-cpu --hf-cpu-all --net --io --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $traces_repo & # --pow --call --call-depth 4
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --io --fig-fmt png,svg --fig-dpi medium --fig-name dool_only $traces_repo & # --pow --call --call-depth 4
+    $benchmon_visu --hf-cpu --hf-cpu-all --hf-cpu-freq --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name hf_only $traces_repo & # --pow --call --call-depth 4
+    $benchmon_visu --hf-cpu-all --hf-mem --fig-fmt png,svg --fig-dpi medium --fig-name call_only $traces_repo & # --pow --call --call-depth 4
     wait
 fi
