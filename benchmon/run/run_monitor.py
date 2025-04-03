@@ -57,7 +57,7 @@ class RunMonitor:
         self.is_perf_datafile_kept = args.call_keep_datafile
 
         # Enable sudo-g5k (for Grid5000 clusters)
-        self.sudo_g5k = "sudo-g5k" if args.sudo_g5k else ""
+        self.sudo_g5k = "sudo-g5k" if "grid5000" in HOSTNAME else ""
 
         # Mark the node with SLURM_NODEID == "0" as main node responsible for collecting all the different reports in the end
         is_slurm_control_node = os.environ.get("SLURM_NODEID") == "0" if "SLURM_NODEID" in os.environ else False
