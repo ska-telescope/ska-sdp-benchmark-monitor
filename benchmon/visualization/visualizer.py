@@ -6,20 +6,11 @@ from .system_metrics import HighFreqData
 
 class BenchmonVisualizer():
     def __init__(self, args, logger) -> None:
-        """
-        Initializes the SampleClass with an attribute.
-
-        Args:
-            attribute (str): A sample attribute to be assigned.
-        """
         self.args = args
         self.logger = logger
 
 
-
     def load_measurements(self, args, logger):
-        """
-        """
         # Load HF data
         is_hf_sys = args.hf_sys
 

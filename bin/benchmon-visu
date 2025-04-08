@@ -20,7 +20,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 print("Add parent directory to sys.path.")
 sys.path.insert(0, parent_dir)
 
-from benchmon.visualization import system_metrics, system_metrics_dool
+from benchmon.visualization import system_metrics, visualizer
 from benchmon.visualization import power_metrics
 from benchmon.visualization import call_profile
 
@@ -138,48 +138,11 @@ def main():
         args_str += f"\t--{key} {value}\n"
     logger.debug(f"{args_str}")
 
-    # Load dool data
-    is_sys = args.sys
-    is_cpu = args.cpu or is_sys
-    is_cpu_all = args.cpu_all or is_sys
-    is_cpu_freq = args.cpu_freq
-    is_cpu_all_acc = args.cpu_all_acc
-    is_mem = args.mem or is_sys
-    is_net = args.net or is_sys
-    is_io = args.io or is_sys
+    measurement = visualizer.BenchmonVisualizer(args=args, logger=logger)
 
-    # Load HF data
-    is_hf_sys = args.hf_sys
-    is_hf_cpu = args.hf_cpu or is_hf_sys
-    is_hf_cpu_all = args.hf_cpu_all or is_hf_sys
-    is_hf_cpu_freq = args.hf_cpu_freq or is_hf_sys
-    is_hf_cores_full = bool(args.hf_cpu_cores_full)
-    is_hf_mem = args.hf_mem or is_hf_sys
-    is_hf_net_all = args.hf_net_all or is_hf_sys
-    is_hf_net = args.hf_net or is_hf_net_all or is_hf_sys
-    is_hf_disk = args.hf_disk or is_hf_sys
-    is_hf_ib = args.hf_ib or is_hf_sys
-
-    # Dool data
-    is_any_sys = is_cpu or is_cpu_all or is_cpu_freq or is_cpu_all_acc or is_mem or is_net or is_io
-    if is_any_sys:
-        sys_trace = system_metrics_dool.DoolData(csv_filename=f"{traces_repo}/sys_report.csv")
-        _xticks = sys_trace._xticks
-        _xlim = sys_trace._xlim
-    n_sys = is_cpu + is_cpu_all + is_cpu_freq + is_cpu_all_acc + is_mem + is_net + (is_io and sys_trace.with_io)
-
-    # High-frequency monitoring data
-    is_any_hf_sys = is_hf_cpu or is_hf_cpu_all or is_hf_cpu_freq or is_hf_cores_full or is_hf_mem or is_hf_net or is_hf_disk
-    csv_reports = {}
-    conds = {"mem": is_hf_mem, "cpu": is_hf_cpu or is_hf_cpu_all or is_hf_cores_full,
-            "cpufreq": is_hf_cpu_freq, "net": is_hf_net, "disk": is_hf_disk, "ib": is_hf_ib}
-    for key in conds.keys():
-        csv_reports[f"csv_{key}_report"] = f"{traces_repo}/hf_{key}_report.csv" if conds[key] else None
-
-    if is_any_hf_sys:
-        hfsys_trace = system_metrics.HighFreqData(**csv_reports)
-        _xticks = hfsys_trace._xticks
-        _xlim = hfsys_trace._xlim
+    hfsys_trace = measurement.load_measurements()
+    _xticks = hfsys_trace._xticks
+    _xlim = hfsys_trace._xlim
 
     # Resize x-axis limit
     fmt = "%Y-%m-%dT%H:%M:%S"
@@ -189,12 +152,6 @@ def main():
     if args.end_time:
         _xlim[1] = datetime.strptime(args.end_time, fmt).timestamp()
     _xticks, _xlim = system_metrics.create_plt_params(*tuple(_xlim))
-    if is_any_hf_sys:
-        hfsys_trace._xticks = _xticks
-        hfsys_trace._xlim = _xlim
-    if is_any_sys:
-        sys_trace._xticks = _xticks
-        sys_trace._xlim = _xlim
 
     _n_cores_full = len(args.hf_cpu_cores_full.split(",")) if is_hf_cores_full else 0
     n_hf_sys = is_hf_cpu + is_hf_cpu_all + is_hf_cpu_freq + _n_cores_full + is_hf_mem + is_hf_net + is_hf_disk + is_hf_ib
@@ -296,11 +253,6 @@ def main():
             ax = plt.subplot(nsbp, 1, sbp); sbp += 1
             hfsys_trace.plot_hf_cpu(core_number)
 
-    # (dool) CPU plot
-    if is_cpu:
-        logger.debug("Plotting (dool) cpu")
-        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_average(_xticks, _xlim, calls=inline_calls_prof)
 
     # (HF) CPU per core plot
     if is_hf_cpu_all:
@@ -308,18 +260,7 @@ def main():
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
 
-    # (dool) CPU per core plot
-    if is_cpu_all:
-        logger.debug("Plotting (dool) cpu per core")
-        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_per_core(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out,
-                                    xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
-    # (dool) CPU per core (accumulated) plot
-    if is_cpu_all_acc:
-        logger.debug("Plotting (dool) accumulated cpu per core")
-        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_per_core_acc(xticks=_xticks, xlim=_xlim, with_color_bar=True, with_legend=False, fig=fig, nsbp=nsbp, sbp=sbp-1)
 
     # (HF) CPU cores frequency plot
     if is_hf_cpu_freq:
@@ -327,23 +268,13 @@ def main():
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_cpufreq(cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
 
-    # (dool) CPU cores frequency plot
-    if is_cpu_freq:
-        logger.debug("Plotting (dool) cpu cores frequency")
-        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_cpu_freq(xticks=_xticks, xlim=_xlim, cores_in=args.cpu_cores_in, cores_out=args.cpu_cores_out, calls=inline_calls_prof)
+
 
     # (HF) Memory/swap plot
     if is_hf_mem:
         logger.debug("Plotting (hf) memory/swap")
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
-
-    # (dool) Memory plot
-    if is_mem:
-        logger.debug("Plotting (dool) memory/swap")
-        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_memory_usage(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
     # (HF) Network plot
     if is_hf_net:
@@ -358,11 +289,6 @@ def main():
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_ib(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof)
 
-    # (dool) Network plot
-    if is_net:
-        logger.debug("Plotting (dool) network")
-        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_network()
 
     # (HF) Disk plot
     if is_hf_disk:
@@ -370,12 +296,6 @@ def main():
         ax = plt.subplot(nsbp, 1, sbp); sbp += 1
         hfsys_trace.plot_hf_disk(xticks=_xticks, xlim=_xlim, calls=inline_calls_prof, is_with_iops=args.hf_disk_iops,
                                  is_rd_only=args.hf_disk_rd_only, is_wr_only=args.hf_disk_wr_only, is_diskdata_label=args.hf_disk_data)
-
-    # (dool) IO plot
-    if is_io and sys_trace.with_io:
-        logger.debug("Plotting (hf) cpu")
-        ax = plt.subplot(nsbp, 1, sbp); sbp += 1
-        sys_trace.plot_io()
 
     # (perf) Power plot
     if args.pow or is_pow_g5k:
