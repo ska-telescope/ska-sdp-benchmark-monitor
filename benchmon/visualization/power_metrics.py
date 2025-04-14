@@ -124,7 +124,7 @@ class PerfPowerData:
         return 0
 
 
-    def plot_events(self, xticks: list = [], xlim: list = []) -> float:
+    def plot_events(self, pre_label: str = "") -> float:
         """
         Plots total power events
 
@@ -148,7 +148,7 @@ class PerfPowerData:
             power_array = np.append(pow_total[event], pow_total[event][-1])
             energy = compute_total_energy(time_stamps=self._stamps, power_stamps=power_array)
             plt.step(self._stamps, power_array, where="post",
-                     label=self.events_table[event] + f" ({round(energy, 1)} Wh)",
+                     label=f"{pre_label}{self.events_table[event]} ({round(energy, 1)} Wh)",
                      color=events_style[event]["color"],
                      ls=events_style[event]["ls"])
             ymax = max(ymax, max(power_array))
@@ -211,7 +211,7 @@ class G5KPowerData:
                 self.g5k_pow_prof[metric]["value"][idx] = item["value"]
 
 
-    def plot_g5k_pow_profiles(self, xticks: list = [], xlim: list = []) -> float:
+    def plot_g5k_pow_profiles(self, pre_label: str = "") -> float:
         """
         Plots total power events
 
@@ -244,7 +244,7 @@ class G5KPowerData:
                      color=metrics_style[metric]["color"],
                      ls=metrics_style[metric]["ls"],
                      marker=metrics_style[metric]["marker"],
-                     label=f"{metrics_style[metric]['label']} ({round(energy,1)} Wh)")
+                     label=f"{pre_label}{metrics_style[metric]['label']} ({round(energy,1)} Wh)")
             if len(vals) > 1: _ymax = max(_ymax, max(vals))
 
         return _ymax

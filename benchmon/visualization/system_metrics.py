@@ -1,458 +1,12 @@
-#!/usr/bin/env python3
-
+"""
+Python script to read and plot system resources measurements
+"""
 import csv
+import os
 import time
 import numpy as np
 import matplotlib.pyplot as plt
 from math import ceil
-
-PLT_XLIM_COEF = 0.02
-PLT_XRANGE = 21
-
-def read_sys_info(any_reportpath) -> int:
-    """
-    Parse and read sys_info.txt file
-    """
-    import os
-    sys_info_txtfile = os.path.dirname(any_reportpath) + "/sys_info.txt"
-    sys_info = {}
-    with open(sys_info_txtfile, "r") as file:
-        for line in file:
-            _key, _val = line.strip().split(": ")
-            sys_info[_key] = _val
-
-    for _key in ["cpu_freq_max", "cpu_freq_min"]:
-        sys_info[_key] = float(sys_info[_key])
-
-    for _key in ["online_cores", "offline_cores"]:
-        sys_info[_key] = [int(lcore) for lcore in sys_info[_key].split(" ")][1:]
-
-    return sys_info
-
-
-def create_plt_params(t0, tf, xmargin=PLT_XLIM_COEF) -> tuple:
-    """
-    Create plot parameters
-    """
-    xticks_val = np.linspace(t0, tf, PLT_XRANGE)
-
-    t0_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(t0))
-    tlst = np.round(xticks_val - t0, 3)
-    tf_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(tf))
-
-    # xticks_label = [t0_fmt] + tlst[1:-1].astype("int").tolist() + [tf_fmt]
-
-    inbetween_labels = []
-    _days = [t0_fmt.split("\n")[1].split("-")[1]]
-    for st in xticks_val[1:-1]:
-        inbetween_labels += [time.strftime('%H:%M:%S', time.localtime(st))]
-        _days += [time.strftime('%d', time.localtime(st))]
-        if _days[-1] != _days[-2]:
-            inbetween_labels[-1] += "\n" + time.strftime('%b-%d', time.localtime(st))
-    xticks_label = [t0_fmt] + inbetween_labels + [tf_fmt]
-
-    xticks = (xticks_val, xticks_label)
-
-    dx = (tf - t0) * xmargin
-    xlim = [t0 - dx, tf + dx]
-
-    return xticks, xlim
-
-
-def plot_inline_calls(calls: dict, ymax: float = 100., xlim: list = []):
-    """
-    Generic plot of call inline
-    """
-    cm = plt.cm.gist_earth(np.linspace(0, 1, len(calls)+1))
-
-    ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
-    ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
-    for idx, call in enumerate(calls):
-        call_ts_limited = calls[call][np.logical_and(calls[call] > xlim[0], calls[call] < xlim[1])]
-        if len(call_ts_limited) == 0: continue
-        plt.plot(call_ts_limited, ypos(idx) * np.ones(len(call_ts_limited)), ".", ms=4, c=cm[idx])
-        plt.text(np.mean(call_ts_limited), ypos(idx)*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
-    plt.ylim(ylim(idx))
-    plt.xlim(xlim)
-
-
-class DoolData():
-    """
-    Dool database
-    """
-    def __init__(self, csv_filename):
-        """
-        Constructor
-        """
-        self.csv_filename = csv_filename
-        self.csv_report = []
-
-        self.prof_keys = []
-        self.prof = {}
-
-        self.ncpu = 0
-        self.with_io = True
-
-        self._stamps = np.array([])
-        self._xticks = ()
-        self._xlim = []
-
-        self.sys_info = read_sys_info(self.csv_filename)
-        self.read_csv_report()
-        self.create_profile()
-
-        self._stamps = self.prof["time"].astype(np.float64)
-        _ts_0 = self._stamps[0]
-        _ts_f = self._stamps[-1]
-        self._xticks, self._xlim = create_plt_params(t0=_ts_0, tf=_ts_f, xmargin=0)
-
-
-    def read_csv_report(self) -> int:
-        """
-        Parse the csv report
-        """
-        self.csv_report = []
-        with open(self.csv_filename, newline="") as csvfile:
-            csvreader = csv.reader(csvfile)
-            for row in csvreader:
-                self.csv_report.append(row)
-
-        if not ("read" in self.csv_report[5] and "writ" in self.csv_report[5]):
-            self.with_io = False
-
-        return 0
-
-
-    def create_profile(self) -> int:
-        """
-        Create profiling dictionary
-        """
-        # Get total number of active cpus (by looking for number just before freq column)
-        self.ncpu = len(self.sys_info["online_cores"])
-        self.ncpu_all = self.ncpu + len(self.sys_info["offline_cores"])
-
-        self.is_mono_threaded = False
-        if self.ncpu < self.ncpu_all:
-            self.is_mono_threaded = True
-
-        # Init dictionaries containing indices
-        sys_idx = {}
-        io_idx = {}
-        net_idx = {}
-        cpu_idx = {}
-
-        # Corresponding indices to system columns: "--time"
-        sys_idx = {"time": 0}
-
-        # Corresponding indices to memory columns: "--mem --swap"
-        mi0 = len(sys_idx)
-        mem_labels = ["mem-used", "mem-free", "mem-cach", "mem-avai", "swp-used", "swp-free"]
-        mem_idx = {label: mi0 + idx for idx, label in enumerate(mem_labels)}
-
-        # Corresponding indices to io/disk columns "--io --aio --disk --fs"
-        ii0 = len(sys_idx) + len(mem_idx)
-        io_labels = ["io-async", "fs-file", "fs-inod"]
-        if self.with_io:
-            io_labels = ["io-read", "io-writ", "io-async", "dsk-read", "dsk-writ", "fs-file", "fs-inod"]
-        io_idx = {label: ii0 + idx for idx, label in enumerate(io_labels)}
-
-        # Corresponding indices to network: "--net"
-        ni0 = len(sys_idx) + len(mem_idx) + len(io_idx)
-        net_labels = ["net-recv", "net-send"]
-        net_idx = {label: ni0 + idx for idx, label in enumerate(net_labels)}
-
-        # Corresponding indices to CPU: "--cpu --cpu-use"
-        ci0 = len(sys_idx) + len(mem_idx) + len(io_idx) + len(net_idx)
-        cpu_labels = ["cpu-usr", "cpu-sys", "cpu-idl", "cpu-wai", "cpu-stl"] \
-                        + [f"cpu-{i}" for i in range(self.ncpu)] \
-                        + [f"freq-{i}" for i in range(self.ncpu_all)]
-        cpu_idx = {label: ci0 + idx for idx, label in enumerate(cpu_labels)}
-
-        # Omit logical core freq when monothreaded
-        if self.is_mono_threaded:
-            for lcore in self.sys_info["offline_cores"]:
-                cpu_idx.pop(f"freq-{lcore}")
-
-        # Full indices correspondance
-        prof_idx = {**sys_idx, **mem_idx, **io_idx, **net_idx, **cpu_idx}
-        self.prof_keys = list(prof_idx.keys())
-
-        # Construct full profiling dictionary of list
-        for key in self.prof_keys:
-            self.prof[key] = []
-
-        # Loop on timestamps (timing starts for index 6)
-        for stamp in range(6, len(self.csv_report)):
-
-            # Loop on keys
-            for key in self.prof_keys:
-
-                # Skip csv non-informative lines
-                if self.csv_report[stamp] == []:
-                    continue
-                elif self.csv_report[stamp][0] in ("Host:", "Cmdline:", "system", "time", "epoch"):
-                    continue
-
-                # Get value
-                val = self.csv_report[stamp][prof_idx[key]]
-
-                # Convert val to float (execpt time)
-                if key != "time":
-                    val = float(val)
-
-                # Append value to dictonary
-                self.prof[key].append(val)
-
-        # Convert list to numpy array
-        for key in self.prof_keys:
-            self.prof[key] = np.array(self.prof[key])
-
-        return 0
-
-
-    def plot_cpu_average(self, xticks, xlim, calls: dict = None) -> int:
-        """
-        Plot average cpu usage
-        """
-        alpha = .8
-
-        cpu_usr = self.prof["cpu-usr"]
-        cpu_sys = self.prof["cpu-sys"]
-        cpu_wai = self.prof["cpu-wai"]
-        cpu_stl = self.prof["cpu-stl"]
-        plt.fill_between(self._stamps, 0, 100, color="C7", alpha=alpha/3, label="dool: idle")
-        plt.fill_between(self._stamps, 0, cpu_stl, color="C5", alpha=alpha, label="dool: virt")
-        plt.fill_between(self._stamps, cpu_stl, cpu_stl+cpu_wai, color="C8", alpha=alpha, label="dool: wait")
-        plt.fill_between(self._stamps, cpu_stl+cpu_wai, cpu_stl+cpu_wai+cpu_sys, color="C4", alpha=alpha, label="dool: sys")
-        plt.fill_between(self._stamps, cpu_stl+cpu_wai+cpu_sys, cpu_stl+cpu_wai+cpu_sys+cpu_usr, color="C0", alpha=alpha, label="dool: usr")
-
-        plt.xticks(xticks[0], xticks[1])
-        plt.xlim(xlim)
-        _yrange = 10
-        plt.yticks(100 / _yrange * np.arange(_yrange + 1))
-        plt.ylabel("CPU average usage (%)")
-        plt.grid()
-        # plt.title("dool: cpu average usage")
-
-        # Order legend
-        _order = [0, 4, 3, 2, 1]
-        _handles, _labels = plt.gca().get_legend_handles_labels()
-        plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
-
-        if calls:
-            plot_inline_calls(calls=calls, xlim=xlim)
-
-        return 0
-
-
-    def plot_cpu_per_core(self, xticks, xlim, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
-        """
-        Plot cpu per core
-        """
-
-        cores = [core for core in range(self.ncpu)]
-        if len(cores_in) > 0:
-            cores = [int(core) for core in cores_in.split(",")]
-        elif len(cores_in) == 0 and len(cores_out) > 0:
-            for core_ex in cores_out.split(","):
-                cores.remove(int(core_ex))
-        _ncpu = len(cores)
-
-        cm = plt.cm.jet(np.linspace(0, 1, _ncpu+1))
-        for idx, core in enumerate(cores):
-            plt.plot(self._stamps, self.prof[f"cpu-{core}"], color=cm[idx], label=f"dool: core-{core}")
-        plt.xticks(xticks[0], xticks[1])
-        _yrange = 10
-        plt.yticks(100 * 1/_yrange * np.arange(_yrange + 1))
-        plt.xlim(xlim)
-        plt.ylabel(f"(Dool) CPU Cores (%)")
-        plt.grid()
-
-        plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
-
-        if calls:
-            plot_inline_calls(calls=calls, xlim=xlim)
-
-        return 0
-
-
-    def plot_cpu_per_core_acc(self, xticks, xlim, with_legend: bool = False, with_color_bar: bool = False,
-                          fig=None, nsbp: int = None, sbp: int = None) -> int:
-        """
-        Plot cpu per core in an accumulated way
-
-        Args:
-            with_legend (bool): Plot cores usage with legend
-            with_color_bar (bool): Plot cores usage with colobar (color gardient)
-            fig (obj): Figure object (matplotlib)
-            nsbp (int): Total number of subplots
-            sbp (int): Number of current subplots
-        """
-        alpha = 0.8
-        cm = plt.cm.jet(np.linspace(0, 1, self.ncpu+1))
-        cpu_n = 0
-        for cpu in range(self.ncpu):
-            if cpu > 0:
-                cpu_n = cpu_nn
-            cpu_nn = self.prof[f"cpu-{cpu}"] / self.ncpu + cpu_n
-            plt.fill_between(self._stamps, cpu_n, cpu_nn, color=cm[cpu], alpha=alpha, label=f"cpu-{cpu}")
-        plt.xticks(xticks[0], xticks[1])
-        _yrange = 10
-        plt.yticks(100 * 1/_yrange * np.arange(_yrange + 1))
-        plt.xlim(xlim)
-        plt.ylabel(f" CPU Cores (x{self.ncpu}) (%)")
-        plt.grid()
-
-        if with_legend:
-            plt.legend(loc=1, ncol=3)
-
-        if with_color_bar:
-            cax = fig.add_axes([0.955, 1 - (sbp-.2)/nsbp, fig.get_figwidth()/1e4, .7/nsbp]) # [left, bottom, width, height]
-            plt.colorbar(plt.cm.ScalarMappable(norm=plt.Normalize(vmin=1, vmax=self.ncpu), cmap=plt.cm.jet), \
-                         ticks=np.linspace(1, self.ncpu, min(self.ncpu, 5), dtype="i"), cax=cax)
-
-        return 0
-
-
-    def plot_cpu_freq(self, xticks, xlim, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
-        """
-        Plot cpu per core
-        """
-        cpu_freq_min = self.sys_info["cpu_freq_min"] / 1e6 # GHz
-        cpu_freq_max = self.sys_info["cpu_freq_max"] / 1e6 # GHz
-
-        cores = [core for core in range(self.ncpu)]
-        if len(cores_in) > 0:
-            cores = [int(core) for core in cores_in.split(",")]
-        elif len(cores_in) == 0 and len(cores_out) > 0:
-            for core_ex in cores_out.split(","):
-                cores.remove(int(core_ex))
-        _ncpu = len(cores)
-
-
-        cm = plt.cm.jet(np.linspace(0, 1, _ncpu+1))
-
-        _nstamps = len(self._stamps)
-        freq_mean = np.zeros(_nstamps)
-
-        for idx, core in enumerate(cores):
-            plt.plot(self._stamps, self.prof[f"freq-{core}"] * (cpu_freq_max / 100), color=cm[idx], label=f"dool: core-{core}")
-
-        for cpu in range(self.ncpu):
-            freq_mean += self.prof[f"freq-{cpu}"] / self.ncpu * (cpu_freq_max / 100)
-        plt.plot(self._stamps, freq_mean, "k.-", label=f"mean")
-
-        plt.plot(self._stamps, cpu_freq_max * np.ones(_nstamps), "gray", linestyle="--", label=f"hw max/min")
-        plt.plot(self._stamps, cpu_freq_min * np.ones(_nstamps), "gray", linestyle="--")
-
-        plt.xticks(xticks[0], xticks[1])
-        _yrange = 10
-        plt.yticks(cpu_freq_max * 1/_yrange * np.arange(_yrange + 1))
-        plt.xlim(xlim)
-        plt.ylabel(f" CPU frequencies (GHz)")
-        plt.grid()
-
-        plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
-
-        if calls:
-            plot_inline_calls(calls=calls, ymax=cpu_freq_max, xlim=xlim)
-
-        return 0
-
-
-    def plot_memory_usage(self, xticks, xlim, calls: dict = None) -> int:
-        """
-        Plot memory usage
-        """
-        alpha = .3
-        mem_unit = 1024 ** 3 # (GB)
-
-        # Total memory
-        memtotal = (self.prof["mem-used"] + self.prof["mem-cach"] + self.prof["mem-free"]) / mem_unit
-        plt.fill_between(self._stamps, memtotal, alpha=alpha, label="dool: MemTotal", color="b")
-
-        # Used memory
-        memused =  self.prof["mem-used"] / mem_unit
-        plt.fill_between(self._stamps, memused, alpha=alpha*3, label="dool: MemUsed", color="b")
-
-        # Cache memory
-        memcach = self.prof["mem-cach"] / mem_unit
-        plt.fill_between(self._stamps, memused, memused + memcach, alpha=alpha*2, label="dool: MemCach", color="g")
-
-        # Total swap
-        swaptotal = (self.prof["swp-used"] + self.prof["swp-free"]) / mem_unit
-        plt.fill_between(self._stamps, swaptotal, alpha=alpha, label="dool: SwapTotal", color="r")
-
-        # Used swap
-        swapused = self.prof["swp-used"] / mem_unit
-        plt.fill_between(self._stamps, swapused, alpha=alpha*3, label="dool: SwapUsed", color="r")
-
-        plt.xticks(xticks[0], xticks[1])
-        plt.xlim(xlim)
-        plt.yticks(np.linspace(0, max(memtotal), 8, dtype="i"))
-        plt.ylabel("Memory (GB)")
-        plt.legend(loc=1)
-        plt.grid()
-
-        if calls:
-            plot_inline_calls(calls=calls, ymax=max(memtotal), xlim=xlim)
-
-        return 0
-
-
-    def plot_network(self) -> int:
-        """
-        Plot network activity
-        """
-        # Yplot: #opened_files - #inodes
-        plt.plot(self._stamps, self.prof["fs-file"], "g-", label="# Open file")
-        plt.plot(self._stamps, self.prof["fs-inod"], "y-", label="# inodes")
-        plt.ylabel("Total number")
-        plt.xticks(self._xticks[0], self._xticks[1])
-        plt.xlim(self._xlim)
-        plt.legend(loc=2)
-        plt.grid()
-
-        # YYplot: download - upload
-        alpha = .5
-        mem_unit = 1024 ** 2
-        pltt = plt.twinx()
-        pltt.fill_between(self._stamps, 0, self.prof["net-recv"] / mem_unit, alpha=alpha, color="b", label="dool: rx:total")
-        pltt.fill_between(self._stamps, 0, self.prof["net-send"] / mem_unit, alpha=alpha, color="r", label="dool: tx:total")
-        pltt.grid()
-        pltt.set_ylabel("Network (MB/s)")
-        pltt.legend(loc=1)
-
-        return 0
-
-
-    def plot_io(self) -> int:
-        """
-        Plot IO stats
-        """
-        if self.with_io:
-            alpha = .5
-            mem_unit = 1024 ** 2
-
-            # Yplot: #read-requests; #write-requests; #async-requests
-            plt.plot(self._stamps, self.prof["io-read"], "b-", label="#read")
-            plt.plot(self._stamps, self.prof["io-writ"], "r-", label="#write")
-            plt.plot(self._stamps, self.prof["io-async"], "g-", label="#async")
-            plt.ylabel("# Number of requests")
-            plt.xticks(self._xticks[0], self._xticks[1])
-            plt.xlim(self._xlim)
-            plt.legend(loc=2)
-            plt.grid()
-
-            # YYplot: disk-read; disk-write
-            pltt = plt.twinx()
-            pltt.fill_between(self._stamps, 0, self.prof["dsk-read"] / mem_unit, color="b", alpha=alpha, label="Disk read")
-            pltt.fill_between(self._stamps, 0, self.prof["dsk-writ"] / mem_unit, color="r", alpha=alpha, label="Disk write")
-            pltt.set_ylabel("IO (MB)")
-            pltt.legend(loc=1)
-            plt.grid()
-
-        return 0
 
 
 class HighFreqData():
@@ -469,16 +23,17 @@ class HighFreqData():
         Constructor
         """
 
-        self.ncpu = 0
-        self.sys_info = read_sys_info(any_reportpath=csv_cpu_report)
-
-        self.hf_cpu_prof = {}
-        self.hf_cpu_stamps = np.array([])
-        self.get_hf_cpu_profile(csv_cpu_report=csv_cpu_report)
+        if csv_cpu_report:
+            self.ncpu = 0
+            self.hf_cpus = []
+            self.hf_cpu_prof = {}
+            self.hf_cpu_stamps = np.array([])
+            self.get_hf_cpu_profile(csv_cpu_report=csv_cpu_report)
 
         if csv_cpufreq_report:
             self.hf_cpufreq_prof = {}
             self.hf_cpufreq_stamps = np.array([])
+            self.hf_cpufreq_minmax = []
             self.get_hf_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report)
 
         if csv_mem_report:
@@ -492,6 +47,10 @@ class HighFreqData():
             self.hf_net_metric_keys = {}
             self.hf_net_interfs = []
             self.hf_net_stamps = np.array([])
+            self.hf_net_rx_total = np.array([])
+            self.hf_net_tx_total = np.array([])
+            self.hf_net_rx_data = 0
+            self.hf_net_tx_data = 0
             self.get_hf_net_prof(csv_net_report=csv_net_report)
 
         if csv_disk_report:
@@ -501,6 +60,10 @@ class HighFreqData():
             self.hf_maj_blks_sects = {}
             self.hf_disk_blks = []
             self.hf_disk_stamps = np.array([])
+            self.hf_disk_rd_total = np.array([])
+            self.hf_disk_wr_total = np.array([])
+            self.hf_disk_rd_data = 0
+            self.hf_disk_wr_data = 0
             self.get_hf_disk_prof(csv_disk_report=csv_disk_report)
 
         if csv_ib_report:
@@ -509,11 +72,9 @@ class HighFreqData():
             self.ib_metric_keys = []
             self.ib_interfs = []
             self.hf_ib_stamps = np.array([])
+            self.ib_rx_total = np.array([])
+            self.ib_tx_total = np.array([])
             self.get_hf_ib_prof(csv_ib_report=csv_ib_report)
-
-        _ts_0 = self.hf_cpu_stamps[0]
-        _ts_f = self.hf_cpu_stamps[-1]
-        self._xticks, self._xlim = create_plt_params(t0=_ts_0, tf=_ts_f, xmargin=0)
 
 
     def read_hf_cpu_csv_report(self, csv_cpu_report: str):
@@ -599,7 +160,7 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_cpu(self, number="", calls: dict = None) -> int:
+    def plot_hf_cpu(self, number="", annotate_with_cmds = None) -> int:
         core = f"cpu{number}"
         alpha = .8
         prefix = f"{number}: " if number else ""
@@ -615,8 +176,8 @@ class HighFreqData():
         plt.fill_between(self.hf_cpu_stamps, cpu_stl+cpu_wai, cpu_stl+cpu_wai+cpu_sys, color="C4", alpha=alpha, label=f"{prefix}sys")
         plt.fill_between(self.hf_cpu_stamps, cpu_stl+cpu_wai+cpu_sys, cpu_stl+cpu_wai+cpu_sys+cpu_usr, color="C0", alpha=alpha, label=f"{prefix}usr")
 
-        plt.xticks(self._xticks[0], self._xticks[1])
-        plt.xlim(self._xlim)
+        plt.xticks(*self.xticks)
+        plt.xlim(self.xlim)
         _yrange = 10
         plt.yticks(100 / _yrange * np.arange(_yrange + 1))
         plt.grid()
@@ -631,13 +192,12 @@ class HighFreqData():
         _handles, _labels = plt.gca().get_legend_handles_labels()
         plt.legend([_handles[idx] for idx in _order],[_labels[idx] for idx in _order], loc=1)
 
-        if calls:
-            plot_inline_calls(calls=calls, xlim=self._xlim)
+        if annotate_with_cmds: annotate_with_cmds(ymax=100)
 
         return 0
 
 
-    def plot_hf_cpu_per_core(self, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
+    def plot_hf_cpu_per_core(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds = None) -> int:
         """
         Plot cpu per core
         """
@@ -656,16 +216,16 @@ class HighFreqData():
             cpu_sys = self.hf_cpu_prof[core_name]["system"] + self.hf_cpu_prof[core_name]["irq"] + self.hf_cpu_prof[core_name]["softirq"]
             cpu_wai = self.hf_cpu_prof[core_name]["iowait"]
             plt.plot(self.hf_cpu_stamps, cpu_usr+cpu_sys+cpu_wai, color=cm[idx], label=f"core-{core}")
-        plt.xticks(self._xticks[0], self._xticks[1])
+        plt.xticks(*self.xticks)
         _yrange = 10
         plt.yticks(100 * 1/_yrange * np.arange(_yrange + 1))
-        plt.xlim(self._xlim)
+        plt.xlim(self.xlim)
         plt.ylabel(f" CPU Cores (%)")
         plt.grid()
         plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
 
-        if calls:
-            plot_inline_calls(calls=calls, xlim=self._xlim)
+        if annotate_with_cmds: annotate_with_cmds(ymax=100)
+
         return 0
 
 
@@ -691,7 +251,7 @@ class HighFreqData():
         """
         ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"
 
-        _chosen_keys = ["Time", "MemTotal", "MemFree", "Buffers", "Cached", "Slab", "SwapTotal", "SwapFree", "SwapCached"]
+        _chosen_keys = ["timestamp", "MemTotal", "MemFree", "Buffers", "Cached", "Slab", "SwapTotal", "SwapFree", "SwapCached"]
 
         mem_report_lines, keys_with_idx = self.read_hf_mem_csv_report(csv_mem_report=csv_mem_report)
 
@@ -705,12 +265,12 @@ class HighFreqData():
             memory_dict[key] = np.array(memory_dict[key])
 
         self.hf_mem_prof = memory_dict
-        self.hf_mem_stamps = memory_dict["Time"]
+        self.hf_mem_stamps = memory_dict["timestamp"]
 
         return 0
 
 
-    def plot_hf_memory_usage(self, xticks, xlim, calls: dict = None) -> int:
+    def plot_hf_memory_usage(self, annotate_with_cmds=None) -> int:
         """
         Plot memory/swap usage
         """
@@ -731,15 +291,14 @@ class HighFreqData():
         plt.fill_between(self.hf_mem_stamps, swap_total, alpha=alpha, label="SwapTotal", color="r")
         plt.fill_between(self.hf_mem_stamps, swap_used, alpha=alpha*3, label="SwapUsed", color="r")
 
-        plt.xticks(xticks[0], xticks[1])
-        plt.xlim(xlim)
+        plt.xticks(*self.xticks)
+        plt.xlim(self.xlim)
         plt.yticks(np.linspace(0, max(total), 8, dtype="i"))
         plt.ylabel("Memory (GB)")
         plt.legend(loc=1)
         plt.grid()
 
-        if calls:
-            plot_inline_calls(calls=calls, ymax=max(total), xlim=xlim)
+        if annotate_with_cmds: annotate_with_cmds(ymax=max(total))
 
         return 0
 
@@ -754,6 +313,8 @@ class HighFreqData():
             csvreader = csv.reader(csvfile)
             for row in csvreader:
                 cpufreq_report_lines.append(row)
+
+        self.hf_cpufreq_minmax = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
 
         # Init cpu time series
         cpufreq_ts = {}
@@ -774,12 +335,13 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_cpufreq(self, cores_in: str = "", cores_out: str = "", calls: dict = None) -> int:
+    def plot_hf_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> int:
         """
         Plot cpu frequency per core
         """
-        cpu_freq_min = self.sys_info["cpu_freq_min"] / 1e6 # GHz
-        cpu_freq_max = self.sys_info["cpu_freq_max"] / 1e6 # GHz
+        HZ_UNIT = 1e6 # GHz
+        cpu_freq_min = float(self.hf_cpufreq_minmax[0]) / HZ_UNIT
+        cpu_freq_max = float(self.hf_cpufreq_minmax[1]) / HZ_UNIT
 
         cores = [core for core in range(self.ncpu)]
         if len(cores_in) > 0:
@@ -804,16 +366,15 @@ class HighFreqData():
         plt.plot(self.hf_cpufreq_stamps, cpu_freq_max * np.ones(_nstamps), "gray", linestyle="--", label=f"hw max/min")
         plt.plot(self.hf_cpufreq_stamps, cpu_freq_min * np.ones(_nstamps), "gray", linestyle="--")
 
-        plt.xticks(self._xticks[0], self._xticks[1])
+        plt.xticks(*self.xticks)
         _yrange = 10
         plt.yticks(cpu_freq_max * 1/_yrange * np.arange(_yrange + 1))
-        plt.xlim(self._xlim)
+        plt.xlim(self.xlim)
         plt.ylabel(f" CPU frequencies (GHz)")
         plt.grid()
         plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
 
-        if calls:
-            plot_inline_calls(calls=calls, ymax=cpu_freq_max, xlim=self._xlim)
+        if annotate_with_cmds: annotate_with_cmds(ymax=cpu_freq_max)
 
         return 0
 
@@ -889,9 +450,13 @@ class HighFreqData():
                     self.hf_net_prof[key][metric_key][stamp] = (net_ts_raw[key][metric_key][stamp + 1] - net_ts_raw[key][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
 
 
-
-    def plot_hf_network(self, xticks, xlim, calls: dict = None, all_interfaces=False,
-                        total_network=True, is_rx_only=False, is_tx_only=False, is_netdata_label=True) -> int:
+    def plot_hf_network(self,
+                        all_interfaces=False,
+                        total_network=True,
+                        is_rx_only=False,
+                        is_tx_only=False,
+                        is_netdata_label=True,
+                        annotate_with_cmds=None) -> int:
         """
         Plot high-frequency network activity
         """
@@ -903,32 +468,31 @@ class HighFreqData():
         interf_to_exclude = ["br0:",]
         is_excluded = lambda interf: any([_interf in interf for _interf in interf_to_exclude])
 
-        rx_total = np.zeros_like(self.hf_net_stamps)
-        tx_total = np.zeros_like(self.hf_net_stamps)
-        rx_data = 0
-        tx_data = 0
+        self.hf_net_rx_total = np.zeros_like(self.hf_net_stamps)
+        self.hf_net_tx_total = np.zeros_like(self.hf_net_stamps)
+
         for interf in self.hf_net_interfs:
             if is_excluded(interf): continue
 
-            rx_total = rx_total + self.hf_net_prof[interf]["rx-bytes"] / BYTES_UNIT
-            tx_total = tx_total + self.hf_net_prof[interf]["tx-bytes"] / BYTES_UNIT
+            self.hf_net_rx_total = self.hf_net_rx_total + self.hf_net_prof[interf]["rx-bytes"] / BYTES_UNIT
+            self.hf_net_tx_total = self.hf_net_tx_total + self.hf_net_prof[interf]["tx-bytes"] / BYTES_UNIT
 
-            rx_data += self.hf_net_data[interf]["rx-bytes"] / BYTES_UNIT
-            tx_data += self.hf_net_data[interf]["tx-bytes"] / BYTES_UNIT
+            self.hf_net_rx_data += self.hf_net_data[interf]["rx-bytes"] / BYTES_UNIT
+            self.hf_net_tx_data += self.hf_net_data[interf]["tx-bytes"] / BYTES_UNIT
 
         # RX
         if not is_tx_only:
             if total_network:
                 label = f"rx:total"
-                if is_netdata_label: label += f" ({int(rx_data)} MB)"
-                plt.fill_between(self.hf_net_stamps, rx_total, label=label, color="b", alpha=ALPHA)
+                if is_netdata_label: label += f" ({int(self.hf_net_rx_data)} MB)"
+                plt.fill_between(self.hf_net_stamps, self.hf_net_rx_total, label=label, color="b", alpha=ALPHA)
 
             if all_interfaces:
                 for interf in self.hf_net_interfs:
                     if is_excluded(interf): continue
                     rx_arr = self.hf_net_prof[interf]["rx-bytes"] / BYTES_UNIT
                     rd = self.hf_net_data[interf]["rx-bytes"] / BYTES_UNIT
-                    if rd > 1: # and rd / rx_data > 0.001:
+                    if rd > 1: # and rd / self.hf_net_rx_data > 0.001:
                         label = f"rx:{interf[:-1]}"
                         if is_netdata_label: label += f" ({int(rd)} MB)"
                         plt.plot(self.hf_net_stamps, rx_arr, label=label, ls="-", alpha=ALPHA, marker="v", markersize=MRKSZ)
@@ -937,29 +501,28 @@ class HighFreqData():
         if not is_rx_only:
             if total_network:
                 label = f"tx:total"
-                if is_netdata_label: label +=  f" ({int(tx_data)} MB)"
-                plt.fill_between(self.hf_net_stamps, tx_total, label=label, color="r", alpha=ALPHA)
+                if is_netdata_label: label +=  f" ({int(self.hf_net_tx_data)} MB)"
+                plt.fill_between(self.hf_net_stamps, self.hf_net_tx_total, label=label, color="r", alpha=ALPHA)
 
             if all_interfaces:
                 for interf in self.hf_net_interfs:
                     if is_excluded(interf): continue
                     tx_arr = self.hf_net_prof[interf]["tx-bytes"] / BYTES_UNIT
                     td = self.hf_net_data[interf]['tx-bytes'] / BYTES_UNIT
-                    if td > 1: # and td / tx_data > 0.001:
+                    if td > 1: # and td / self.hf_net_tx_data > 0.001:
                         label = f"tx:{interf[:-1]}"
                         if is_netdata_label: label += f" ({int(td)} MB)"
                         plt.plot(self.hf_net_stamps, tx_arr, label=label, ls="-", alpha=ALPHA, marker="^", markersize=MRKSZ)
 
-        _ymax = max(max(rx_total), max(tx_total))
-        plt.xticks(xticks[0], xticks[1])
-        plt.xlim(xlim)
+        _ymax = max(max(self.hf_net_rx_total), max(self.hf_net_tx_total))
+        plt.xticks(*self.xticks)
+        plt.xlim(self.xlim)
         # plt.yticks(np.linspace(0, _ymax, 11, dtype="i"))
         plt.ylabel("Network (MB/s)")
         plt.legend(loc=1)
         plt.grid()
 
-        if calls:
-            plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
+        if annotate_with_cmds: annotate_with_cmds(ymax=_ymax)
 
         return 0
 
@@ -1073,14 +636,20 @@ class HighFreqData():
                 self.hf_disk_data[blk][field] = int(disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0])
 
 
-    def plot_hf_disk(self, xticks, xlim, calls: dict = None,
-                     is_rd_only=False, is_wr_only=False, is_with_iops=False,
-                     is_diskdata_label=True) -> int:
+    def plot_hf_disk(self,
+                     is_rd_only=False,
+                     is_wr_only=False,
+                     is_with_iops=False,
+                     is_diskdata_label=True,
+                     annotate_with_cmds=None) -> int:
         """
         Plot high-frequency disk activity
         """
         alpha = 0.5
         _ymax = 0.
+
+        self.hf_disk_rd_total = np.zeros_like(self.hf_disk_stamps)
+        self.hf_disk_wr_total = np.zeros_like(self.hf_disk_stamps)
 
         # Read/WRite bandwdith
         fields = ["sect-rd", "sect-wr"]
@@ -1096,6 +665,14 @@ class HighFreqData():
                     if np.linalg.norm(array) > 1:
                         plt.fill_between(self.hf_disk_stamps, array, label=label, alpha=alpha)
                         _ymax = max(_ymax, max(array))
+
+                        if field == "sect-rd":
+                            self.hf_disk_rd_total = self.hf_disk_rd_total + array
+                            self.hf_disk_rd_data = self.hf_disk_rd_data + self.hf_disk_data[blk][field]
+                        elif field == "sect-wr":
+                            self.hf_disk_wr_total = self.hf_disk_wr_total + array
+                            self.hf_disk_wr_data = self.hf_disk_wr_data + self.hf_disk_data[blk][field]
+
         plt.ylabel("Disk bandwidth (MB/s)")
         plt.grid()
         hand, lab = plt.gca().get_legend_handles_labels()
@@ -1119,15 +696,14 @@ class HighFreqData():
             pltt.grid()
             hand_twin, lab_twin = pltt.get_legend_handles_labels()
 
-        plt.xticks(xticks[0], xticks[1])
-        plt.xlim(xlim)
+        plt.xticks(*self.xticks)
+        plt.xlim(self.xlim)
         if is_with_iops:
             plt.legend(hand + hand_twin, lab + lab_twin, loc=1)
         else:
             plt.legend(loc=1)
 
-        if calls and not is_with_iops: # @todo
-            plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
+        if annotate_with_cmds and not is_with_iops: annotate_with_cmds(ymax=_ymax) # @todo
 
 
     def read_hf_ib_csv_report(self, csv_ib_report: str):
@@ -1135,10 +711,6 @@ class HighFreqData():
         Read high-frequency native infiniband monitoring csv report
         """
         ib_report_lines = []
-        with open(self.csv_ib_report, newline="") as csvfile:
-            csvreader = csv.reader(csvfile)
-            for row in csvreader:
-                ib_report_lines.append(row)
 
         self.ib_metric_keys = ["port_rcv_data", "port_xmit_data"]
 
@@ -1192,28 +764,25 @@ class HighFreqData():
                 self.hf_ib_data[interf][metric_key] = int((ib_ts_raw[interf][metric_key][-1] - ib_ts_raw[interf][metric_key][0]) / BYTES_UNIT)
 
 
-    def plot_hf_ib(self, xticks, xlim, calls: dict = None):
+    def plot_hf_ib(self, annotate_with_cmds=None):
         """
         Plot high-frequency infiniband activity
         """
-        rx_total = 0
-        tx_total = 0
         for interf in self.ib_interfs:
-            rx_total = rx_total + self.hf_ib_prof[interf]["port_rcv_data"]
-            tx_total = tx_total + self.hf_ib_prof[interf]["port_xmit_data"]
+            self.ib_rx_total = self.ib_rx_total + self.hf_ib_prof[interf]["port_rcv_data"]
+            self.ib_tx_total = self.ib_tx_total + self.hf_ib_prof[interf]["port_xmit_data"]
         alpha = .5
 
         # RX:IB
-        plt.fill_between(self.hf_ib_stamps, rx_total, label="rx:total", color="b", alpha=alpha/2)
+        plt.fill_between(self.hf_ib_stamps, self.ib_rx_total, label="rx:total", color="b", alpha=alpha/2)
         for interf in self.ib_interfs:
             rx_arr = self.hf_ib_prof[interf]["port_rcv_data"]
             rx_data_label = self.hf_ib_data[interf]["port_rcv_data"]
             if rx_data_label > 1: # np.linalg.norm(rx_arr) > 1:
                 plt.plot(self.hf_ib_stamps, rx_arr, label=f"rx:(ib){interf} ({rx_data_label} MB)", ls="-", marker="v", alpha=alpha)
 
-
         # TX:IB
-        plt.fill_between(self.hf_ib_stamps, tx_total, label="tx:total", color="r", alpha=alpha/2)
+        plt.fill_between(self.hf_ib_stamps, self.ib_tx_total, label="tx:total", color="r", alpha=alpha/2)
         for interf in self.ib_interfs:
             tx_arr = self.hf_ib_prof[interf]["port_xmit_data"]
             tx_data_label = self.hf_ib_data[interf]["port_xmit_data"]
@@ -1221,12 +790,11 @@ class HighFreqData():
                 plt.plot(self.hf_ib_stamps, tx_arr, label=f"tx:(ib){interf} ({tx_data_label} MB)", ls="-", marker="^", alpha=alpha)
 
         plt.ylabel("Infiniband bandwidth (MB/s)")
-        plt.xticks(xticks[0], xticks[1])
-        plt.xlim(xlim)
+        plt.xticks(*self.xticks)
+        plt.xlim(self.xlim)
         plt.grid()
         plt.legend(loc=1)
 
 
-        _ymax = max(max(rx_total), max(tx_total))
-        if calls:
-            plot_inline_calls(calls=calls, ymax=_ymax, xlim=xlim)
+        _ymax = max(max(self.ib_rx_total), max(self.ib_tx_total))
+        if annotate_with_cmds: annotate_with_cmds(ymax=_ymax)
