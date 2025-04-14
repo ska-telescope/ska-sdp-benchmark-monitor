@@ -145,7 +145,7 @@ def main():
 
     traces_repos = [traces_repo]
     if is_recursive:
-        traces_repos = [name for name in os.listdir(traces_repo) if os.path.isdir(os.path.join(traces_repo, name))]
+        traces_repos = [f"{traces_repo}/{name}" for name in os.listdir(traces_repo) if os.path.isdir(os.path.join(traces_repo, name))]
 
     nodes_data = []
     for repo in traces_repos:
