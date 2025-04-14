@@ -57,7 +57,7 @@ class RunMonitor:
         self.is_perf_datafile_kept = args.call_keep_datafile
 
         # Enable sudo-g5k (for Grid5000 clusters)
-        self.sudo_g5k = "sudo-g5k" if args.sudo_g5k else ""
+        self.sudo_g5k = "sudo-g5k" if "grid5000" in HOSTNAME else ""
 
         # Mark the node with SLURM_NODEID == "0" as main node responsible for collecting all the different reports in the end
         is_slurm_control_node = os.environ.get("SLURM_NODEID") == "0" if "SLURM_NODEID" in os.environ else False
@@ -72,13 +72,13 @@ class RunMonitor:
         if not self.dool:
             # search for dool in the path
             dool_path = shutil.which("dool")
-            if dool_path is None:
+            if dool_path is None and self.is_system:
                 raise Exception("Dool not found in PATH. Please specify the dool executable using --dool")
             self.dool = dool_path
         else:
             # We use shutil again to check if the passed file exists and is an executable.
             dool_path = shutil.which(self.dool, mode=os.F_OK | os.X_OK)
-            if dool_path is None:
+            if dool_path is None and self.is_system:
                 raise Exception(f"Specified dool executable \"{self.dool}\" is not executable or not found! Please specify the correct dool executable using --dool")
 
         self.filename = self.filename.replace("%j", os.environ.get("SLURM_JOB_ID") if "SLURM_JOB_ID" in os.environ else "noslurm")
@@ -127,6 +127,7 @@ class RunMonitor:
         self.terminate("", "")
         self.post_process()
 
+
     def run_hf_sys_monitoring(self):
         """
         Run high-frequency monitoring
@@ -165,6 +166,7 @@ class RunMonitor:
         self.logger.debug(f"Starting dool:\n\t{' '.join(dool_cmd)}")
 
         self.dool_process = subprocess.Popen(dool_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
 
     def run_perf_pow(self):
         """
