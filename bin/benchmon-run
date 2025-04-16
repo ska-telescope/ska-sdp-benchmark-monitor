@@ -23,7 +23,7 @@ except ImportError as e:
         print('%2d) %s' % (i + 1, sys.path[i]))
     raise
 
-JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")
+JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
 HOSTNAME = os.uname()[1]
 PID = os.getpid()
 
@@ -151,7 +151,7 @@ Default value is "benchmon-%%n".''',
     return parser.parse_args()
 
 
-def get_benchmon_pid():
+def get_benchmon_pid(logger: logging.Logger) -> None:
     """
     Get benchmon-run pid
     """
@@ -159,8 +159,10 @@ def get_benchmon_pid():
     with open(filename, 'w') as fn:
         fn.write(f"{PID}")
 
+    logger.debug(f"PID file created: {filename}")
 
-def create_logger(save_dir: str, verbose: bool):
+
+def create_logger(save_dir: str, verbose: bool) -> logging.Logger:
     """
     Create logging manager
     """
@@ -198,7 +200,7 @@ if __name__ == '__main__':
         args_str += f"\t--{key} {value}\n"
     logger.debug(f"benchmon-run arguments: \n{args_str}")
 
-    get_benchmon_pid()
+    get_benchmon_pid(logger)
     rm = rc.RunMonitor(args, logger)
     rm.run()
 

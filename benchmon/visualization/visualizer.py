@@ -101,7 +101,7 @@ class BenchmonVisualizer:
             csv_reports[f"csv_{key}_report"] = f"{self.traces_repo}/hf_{key}_report.csv" if conds[key] else None
 
         if self.is_any_hf_sys:
-            self.system_native_metrics = HighFreqData(logger=self.logger, **csv_reports)
+            self.system_native_metrics = HighFreqData(**csv_reports)
 
         self.n_subplots += self.args.hf_cpu + self.args.hf_cpu_all + self.args.hf_cpu_freq + _n_cores_full \
                             + self.args.hf_mem + is_hf_net + is_hf_disk + self.args.hf_ib

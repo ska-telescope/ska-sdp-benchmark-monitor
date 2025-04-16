@@ -288,7 +288,7 @@ class RunMonitor:
             self.download_g5k_pow()
 
         # Create callgraph file
-        if self.perfcall_process:
+        if self.is_call:
             self.logger.debug("Post-processing perf.data file ...")
             perf_data_file = f"{self.save_dir}/{self.temp_perf_file}"
             create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", perf_data_file] # @dev "-F comm,pid,tid,cpu,time,event" could be used to lighten the file
