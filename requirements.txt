@@ -3,3 +3,4 @@ ping3
 matplotlib
 requests
 numpy
+scipy

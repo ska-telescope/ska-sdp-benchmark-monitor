@@ -33,7 +33,8 @@ class HighFreqData():
         if csv_cpufreq_report:
             self.hf_cpufreq_prof = {}
             self.hf_cpufreq_stamps = np.array([])
-            self.hf_cpufreq_minmax = []
+            self.hf_cpufreq_min = None
+            self.hf_cpufreq_max = None
             self.get_hf_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report)
 
         if csv_mem_report:
@@ -314,7 +315,9 @@ class HighFreqData():
             for row in csvreader:
                 cpufreq_report_lines.append(row)
 
-        self.hf_cpufreq_minmax = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
+        cpu_freq_parsing = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
+        self.hf_cpufreq_min = cpu_freq_parsing[0] or None
+        self.hf_cpufreq_max = cpu_freq_parsing[1] or None
 
         # Init cpu time series
         cpufreq_ts = {}
@@ -340,8 +343,6 @@ class HighFreqData():
         Plot cpu frequency per core
         """
         HZ_UNIT = 1e6 # GHz
-        cpu_freq_min = float(self.hf_cpufreq_minmax[0]) / HZ_UNIT
-        cpu_freq_max = float(self.hf_cpufreq_minmax[1]) / HZ_UNIT
 
         cores = [core for core in range(self.ncpu)]
         if len(cores_in) > 0:
@@ -363,8 +364,12 @@ class HighFreqData():
             freq_mean += self.hf_cpufreq_prof[f"cpu{cpu}"] / self.ncpu
         plt.plot(self.hf_cpufreq_stamps, freq_mean, "k.-", label=f"mean")
 
-        plt.plot(self.hf_cpufreq_stamps, cpu_freq_max * np.ones(_nstamps), "gray", linestyle="--", label=f"hw max/min")
-        plt.plot(self.hf_cpufreq_stamps, cpu_freq_min * np.ones(_nstamps), "gray", linestyle="--")
+        cpu_freq_max = 6 # Hard-coded 6 HZ
+        if self.hf_cpufreq_min and self.hf_cpufreq_max:
+            cpu_freq_min = float(self.hf_cpufreq_min) / HZ_UNIT
+            cpu_freq_max = float(self.hf_cpufreq_max) / HZ_UNIT
+            plt.plot(self.hf_cpufreq_stamps, cpu_freq_max * np.ones(_nstamps), "gray", linestyle="--", label=f"hw max/min")
+            plt.plot(self.hf_cpufreq_stamps, cpu_freq_min * np.ones(_nstamps), "gray", linestyle="--")
 
         plt.xticks(*self.xticks)
         _yrange = 10
@@ -563,7 +568,15 @@ class HighFreqData():
                         ))
 
         # all disk blocks
-        ndisk_blk = int(disk_report_lines[_all_blk_indx][0])
+        ts_0 = disk_report_lines[_samples_idx][0]
+        ts = ts_0
+        line_idx = _samples_idx
+        ndisk_blk = 0
+        while ts == ts_0:
+            line_idx += 1
+            ndisk_blk += 1
+            ts = disk_report_lines[line_idx][0]
+        # ndisk_blk = int(disk_report_lines[_all_blk_indx][0])
         self.hf_disk_blks = [disk_report_lines[_samples_idx + idx][_blk_idx] for idx in range(ndisk_blk)]
 
         # raw disk measure stamps
