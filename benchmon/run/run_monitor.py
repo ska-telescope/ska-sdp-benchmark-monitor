@@ -201,7 +201,12 @@ class RunMonitor:
         """
         Profile and get the call graph
         """
-        perf_call_cmd = ["perf", "record", "--running-time", "-T", "-a", "-F", f"{self.call_profiling_frequency}", "--call-graph", f"{self.call_mode}", "-o", f"{self.save_dir}/{self.temp_perf_file}"]
+        perf_call_cmd = ["perf", "record",
+                         "--running-time", "-T", "-a",
+                         "-F", f"{self.call_profiling_frequency}",
+                         "--call-graph", f"{self.call_mode}",
+                         "-o", f"{self.save_dir}/{self.temp_perf_file}"
+                         ]
         if self.sudo_g5k: perf_call_cmd.insert(0, self.sudo_g5k)
 
         self.logger.debug(f"Starting perf (call graph):\n\t{' '.join(perf_call_cmd)}")

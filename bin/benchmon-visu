@@ -86,7 +86,7 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
     parser.add_argument("--fig-width", type=float, default=25.6, help="Figure width")
     parser.add_argument("--fig-height-unit", type=float, default=3, help="Figure height unit for each subplot")
-    parser.add_argument("--fig-xrange", type=int, default=21, help="Number of xticks on x-axis")
+    parser.add_argument("--fig-xrange", type=int, default=25, help="Number of xticks on x-axis")
     parser.add_argument("--fig-yrange", type=int, default=11, help="Number of yticks on y-axis")
 
 
@@ -111,7 +111,7 @@ def create_logger(traces_repo: str, verbose: bool) -> logging.Logger:
     """
     logger = logging.getLogger("benchmon_logger")
     logger.setLevel(logging.DEBUG)
-    fmt = f"<%(filename)s::%(funcName)s> [%(asctime)s] [%(levelname)s] %(message)s"
+    fmt = f"<%(filename)s> [%(asctime)s] [%(levelname)s] %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
     fmtter = logging.Formatter(fmt=fmt, datefmt=datefmt)
 
