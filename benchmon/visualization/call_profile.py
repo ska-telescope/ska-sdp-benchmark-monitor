@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import logging
 import time
 import matplotlib.pyplot as plt
 
@@ -12,27 +13,27 @@ class PerfCallRawData:
     """
     Perf callsatck raw data
     """
-    def __init__(self, filename: str):
+    def __init__(self, logger: logging.Logger, filename: str):
         """
         Constructor of RawData
 
         Args:
-            filename (str): Data filename
+            logger      (logging.Logger)    Logging object
+            filename    (str)               Data filename
         """
+        self.logger = logger
         self.filename = filename
+
+        self.logger.debug("Read CPU csv report..."); t0 = time.time()
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
 
     def load_data(self) -> list:
         """
         Load raw data
         """
-        if DEBUG: print("Load file...")
-
-        t0 = time.time()
         with open(self.filename, "r") as file:
             content = file.readlines()
-
-        if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
 
         return content
 
@@ -43,9 +44,6 @@ class PerfCallRawData:
         """
         content = self.load_data()
 
-        if DEBUG: print("Read blocks...")
-
-        t0 = time.time()
         blocks = []
         _block_lines = []
         for line in content:
@@ -55,8 +53,6 @@ class PerfCallRawData:
                 continue
             _block_lines.append(line)
 
-        if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
-
         return blocks
 
 
@@ -64,11 +60,11 @@ class PerfCallRawData:
         """
         Create data samples
         """
+        self.logger.debug("Read PerfCall txt report + blocks..."); t0 = time.time()
         blocks = self.read_blocks()
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        if DEBUG: print("Create samples...")
-
-        t0 = time.time()
+        self.logger.debug("Create PerfCall samples..."); t0 = time.time()
         samples = []
         for block in blocks:
             if len(block) == 0: continue        # @hc avoid empty line
@@ -80,6 +76,9 @@ class PerfCallRawData:
             try: float(sample_info[1]) # @hc Avoid second element not being a float
             except ValueError: continue
             if any(line[0] != "\t" for line in block[1:]): continue
+            if len(sample_info) != 6:
+                self.logger.debug(f"{sample_info = } skipped!")
+                continue
 
             sample = {
                 "cmd": sample_info[0],
@@ -105,8 +104,7 @@ class PerfCallRawData:
                 sample["tid"] = int(sample_info[1])
 
             samples.append(sample)
-
-        if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return samples
 
@@ -117,9 +115,8 @@ class PerfCallRawData:
         """
         samples = self.create_samples()
 
-        if DEBUG: print("List commands...")
+        self.logger.debug("Get PerfCall command list..."); t0 = time.time()
 
-        t0 = time.time()
         cmds = {}
         for sample in samples:
             cmd = sample["cmd"]
@@ -133,7 +130,7 @@ class PerfCallRawData:
         with open(list_filename, "w") as _file:
             for cmd in cmds.keys():
                 _file.write(f"{cmd}: {cmds[cmd]} samples\n")
-        print(f"List of recorded commands with perf: {list_filename}")
+        self.logger.debug(f"List of recorded commands with perf: {list_filename}")
 
         if DEBUG:
             print("Recorded commands with perf " + 22 * "-")
@@ -141,7 +138,7 @@ class PerfCallRawData:
                 print(f"{cmd}: {cmds[cmd]} samples")
             print(50 * "-")
 
-        if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return samples, cmds
 
@@ -150,15 +147,17 @@ class PerfCallData():
     """
     Per callstack data with cmd
     """
-    def __init__(self, cmd: str, samples: list, m2r: float):
+    def __init__(self, logger: logging.Logger, cmd: str, samples: list, m2r: float):
         """
         Constructor
 
         Args:
-            cmd (str): Recorded command
-            samples (list): Samples of recorded command
-            m2r (int): Delta monotonic time to real
+            logger  (logging.Logger)    Logging object
+            cmd     (str)               Recorded command
+            samples (list)              Samples of recorded command
+            m2r     (int)               Delta monotonic time to real
         """
+        self.logger = logger
         self.cmd = cmd
         self.mono_to_real_time = m2r
         self._plt_legend_threshold = 0.01 # @pars
@@ -174,6 +173,8 @@ class PerfCallData():
         Args:
             samples (list): Samples
         """
+        self.logger.debug("Construct PerfCall command samples..."); t0 = time.time()
+
         self.samples = []
         pids = []
         tids = []
@@ -196,6 +197,8 @@ class PerfCallData():
         self.tids = {tid: rel_tid for rel_tid, tid in enumerate(set(tids))}
         self.nt = len(self.tids)
         self.nsamples = len(self.samples)
+
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 

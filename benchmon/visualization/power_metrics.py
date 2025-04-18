@@ -1,5 +1,7 @@
 import csv
+import logging
 import json
+import time
 from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,13 +21,15 @@ class PerfPowerData:
     """
     Perf power database
     """
-    def __init__(self, csv_filename: str):
+    def __init__(self, logger: logging.Logger, csv_filename: str):
         """
         Constructor
 
         Args:
-            csv_filename (str): csv filename
+            csv_filename    (str)               csv filename
+            logger          (logging.Logger)    logging object
         """
+        self.logger = logger
         self.csv_filename = csv_filename
         self.csv_list = []
 
@@ -44,11 +48,16 @@ class PerfPowerData:
         """
         Read csv list
         """
+        self.logger.debug("Read PerfPower csv report..."); t0 = time.time()
+
         with open(self.csv_filename, newline="", encoding='utf-8') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
             next(reader)
             for row in reader:
                 self.csv_list.append(row)
+
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
         return 0
 
 
@@ -56,6 +65,8 @@ class PerfPowerData:
         """
         Create power profiles
         """
+        self.logger.debug("Create PerfPower profile..."); t0 = time.time()
+
         LINES_START_INDEX = 2
 
         EVENT_INDEX = 4
@@ -91,6 +102,8 @@ class PerfPowerData:
         for cpu in self.cpus:
             for event in self.events:
                 self.prof[cpu][event] = np.array(self.prof[cpu][event])
+
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 

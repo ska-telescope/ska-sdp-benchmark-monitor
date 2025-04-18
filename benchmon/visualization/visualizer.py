@@ -108,7 +108,7 @@ class BenchmonVisualizer:
             csv_reports[f"csv_{key}_report"] = f"{self.traces_repo}/hf_{key}_report.csv" if conds[key] else None
 
         if self.is_any_hf_sys:
-            self.system_native_metrics = HighFreqData(**csv_reports)
+            self.system_native_metrics = HighFreqData(logger=self.logger, **csv_reports)
 
         self.n_subplots += self.args.hf_cpu + self.args.hf_cpu_all + self.args.hf_cpu_freq + _n_cores_full \
                             + self.args.hf_mem + is_hf_net + is_hf_disk + self.args.hf_ib
@@ -119,7 +119,7 @@ class BenchmonVisualizer:
         Load power metrics recorded with perf (rapl) and grid5000 tools
         """
         if self.args.pow:
-            self.power_perf_metrics = PerfPowerData(csv_filename=f"{self.traces_repo}/pow_report.csv")
+            self.power_perf_metrics = PerfPowerData(logger=self.logger, csv_filename=f"{self.traces_repo}/pow_report.csv")
 
         if self.args.pow_g5k:
             self.power_g5k_metrics = G5KPowerData(traces_dir=self.traces_repo)
@@ -134,7 +134,7 @@ class BenchmonVisualizer:
         if self.args.call or self.args.inline_call or self.args.inline_call_cmd:
             with open(f"{self.traces_repo}/mono_to_real_file.txt", "r") as file:
                 self.call_monotonic_to_real = float(file.readline())
-            call_raw = PerfCallRawData(filename=f"{self.traces_repo}/call_report.txt")
+            call_raw = PerfCallRawData(logger=self.logger, filename=f"{self.traces_repo}/call_report.txt")
             samples, self.call_recorded_cmds = call_raw.cmds_list()
 
             if self.args.call_cmd:
@@ -142,7 +142,7 @@ class BenchmonVisualizer:
             else:
                 self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
 
-            self.call_traces = PerfCallData(cmd=self.call_chosen_cmd, samples=samples, m2r=self.call_monotonic_to_real)
+            self.call_traces = PerfCallData(logger=self.logger, cmd=self.call_chosen_cmd, samples=samples, m2r=self.call_monotonic_to_real)
             if self.args.call_depth:
                 self.call_depths = [depth for depth in range(self.args.call_depth)]
             elif self.args.call_depths:
@@ -162,6 +162,8 @@ class BenchmonVisualizer:
         Returns:
             dict: command as key and value is a list of timestamps
         """
+        self.logger.debug("Create PerfPower inline profile..."); t0 = time.time()
+
         # Hard-coded system command to remove
         kernel_calls = [
             "swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "perf", "prometheus-node",
@@ -190,8 +192,8 @@ class BenchmonVisualizer:
 
         inline_calls_prof = {key: [] for key in user_calls_keys}
 
-        msg = "Inline commands:\n"
-        for cmd in user_calls_keys: msg += f"\t{cmd}: {self.call_recorded_cmds[cmd]} samples\n"
+        msg = "\tInline commands: "
+        for cmd in user_calls_keys: msg += f"{{{cmd}: {self.call_recorded_cmds[cmd]} samples}} "
         self.logger.debug(msg)
 
         for sample in samples:
@@ -200,11 +202,13 @@ class BenchmonVisualizer:
 
         # Remove duplicated wrt decimal
         ROUND_VAL = 2
-        msg = "Inline commands (Lightened):\n"
+        msg = "\tInline commands (Lightened): "
         for cmd in user_calls_keys:
             inline_calls_prof[cmd] = np.unique(np.array(inline_calls_prof[cmd]).round(ROUND_VAL))
-            msg += f"\t{cmd}: {len(inline_calls_prof[cmd])} samples\n"
+            msg += f"{{{cmd}: {len(inline_calls_prof[cmd])} samples}} "
         self.logger.debug(msg)
+
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return inline_calls_prof
 

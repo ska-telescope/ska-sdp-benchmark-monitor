@@ -2,6 +2,10 @@
 Python script to read and plot system resources measurements
 """
 import csv
+import itertools
+import os
+import sys
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 from math import ceil
@@ -11,15 +15,18 @@ class HighFreqData():
     """
     High-frequency monitoring database
     """
-    def __init__(self, csv_mem_report: str,
+    def __init__(self,
+                 logger,
                  csv_cpu_report: str,
                  csv_cpufreq_report: str,
+                 csv_mem_report: str,
                  csv_net_report: str,
                  csv_disk_report: str,
                  csv_ib_report: str):
         """
         Constructor
         """
+        self.logger = logger
 
         if csv_cpu_report:
             self.ncpu = 0
@@ -85,17 +92,14 @@ class HighFreqData():
         Read high-frequency cpu report
         """
         # Read line of cpu csv report
-        cpu_report_lines = []
-        with open(csv_cpu_report, newline="") as csvfile:
-            csvreader = csv.reader(csvfile)
-            for row in csvreader:
-                cpu_report_lines.append(row)
+        t0 = time.time()
+        cpu_report_lines = self.read_csv_line_as_list(csv_report=csv_cpu_report)
+        self.logger.debug(f"\t open+read = {round(time.time() - t0, 3)} s")
 
         # Get cpus, number of cpu cores + global
         ts_0 = cpu_report_lines[1][0]
         ts = ts_0
         line_idx = 1
-        self.hf_cpus = []
         while ts == ts_0:
             self.hf_cpus += [cpu_report_lines[line_idx][1]]
             line_idx += 1
@@ -117,12 +121,15 @@ class HighFreqData():
         cpu_index = 1
         timestamps_raw = []
 
+        t0 = time.time()
         for line in cpu_report_lines[1:]:
             for key in cpu_metric_keys:
                 cpu_ts_raw[line[cpu_index]][key] += [float(line[cpu_metric_keys[key]])]
-        timestamps_raw = [float(line[time_index]) for line in cpu_report_lines[1::ncpu_glob]]
+        self.logger.debug(f"\t fill dict = {round(time.time() - t0, 3)} s")
 
-        timestamps_raw = np.sort(np.array(list(set(timestamps_raw))).astype(np.float64))
+        t0 = time.time()
+        timestamps_raw = [float(line[time_index]) for line in cpu_report_lines[1::ncpu_glob]]
+        self.logger.debug(f"\t ts_raw = {round(time.time() - t0, 3)} s")
 
         return cpu_ts_raw, timestamps_raw
 
@@ -131,23 +138,32 @@ class HighFreqData():
         """
         Get high-frequency cpu profile
         """
+        self.logger.debug("Read CPU csv report..."); t0 = time.time()
         cpu_ts_raw, timestamps_raw = self.read_hf_cpu_csv_report(csv_cpu_report=csv_cpu_report)
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
+        self.logger.debug("Create CPU profile..."); t0 = time.time()
         nstamps = len(timestamps_raw) - 1
 
+        t0i = time.time()
         timestamps = np.zeros(nstamps)
         for stamp in range(nstamps):
             timestamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+        self.logger.debug(f"\t ts = {round(time.time() - t0i, 3)} s")
 
+        t0i = time.time()
         cpu_ts = {}
         for key in cpu_ts_raw.keys():
             cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw["cpu"].keys()}
+        self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
 
-        for key in cpu_ts_raw.keys():
-            for metric_key in cpu_ts_raw["cpu"].keys():
-                for stamp in range(nstamps):
-                    cpu_ts[key][metric_key][stamp] = cpu_ts_raw[key][metric_key][stamp+1] - cpu_ts_raw[key][metric_key][stamp]
+        t0i = time.time()
+        for stamp in range(nstamps):
+            for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw["cpu"].keys()):
+                cpu_ts[key][metric_key][stamp] = cpu_ts_raw[key][metric_key][stamp+1] - cpu_ts_raw[key][metric_key][stamp]
+        self.logger.debug(f"\t compute spaces = {round(time.time() - t0i, 3)} s")
 
+        t0i = time.time()
         for key in cpu_ts.keys():
             for stamp in range(nstamps):
                 cpu_total = 0
@@ -156,9 +172,12 @@ class HighFreqData():
 
                 for metric_key in cpu_ts["cpu"].keys():
                     cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
+        self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
 
         self.hf_cpu_prof = cpu_ts
         self.hf_cpu_stamps = timestamps
+
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 
@@ -234,11 +253,8 @@ class HighFreqData():
         """
         Read high-frequency memory report
         """
-        mem_report_lines = []
-        with open(csv_mem_report, newline="") as csvfile:
-            csvreader = csv.reader(csvfile)
-            for row in csvreader:
-                mem_report_lines.append(row)
+        mem_report_lines = self.read_csv_line_as_list(csv_report=csv_mem_report)
+
         keys_full = mem_report_lines[0][:-1]
 
         keys_with_idx = {key: idx for idx, key in enumerate(mem_report_lines[0][:-1])}
@@ -254,7 +270,11 @@ class HighFreqData():
 
         _chosen_keys = ["timestamp", "MemTotal", "MemFree", "Buffers", "Cached", "Slab", "SwapTotal", "SwapFree", "SwapCached"]
 
+        self.logger.debug("Read Memory csv report..."); t0 = time.time()
         mem_report_lines, keys_with_idx = self.read_hf_mem_csv_report(csv_mem_report=csv_mem_report)
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+        self.logger.debug("Create Memory profile..."); t0 = time.time()
 
         memory_dict = {key: [] for key in _chosen_keys}
 
@@ -267,6 +287,8 @@ class HighFreqData():
 
         self.hf_mem_prof = memory_dict
         self.hf_mem_stamps = memory_dict["timestamp"]
+
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 
@@ -315,12 +337,11 @@ class HighFreqData():
         Read HF cpu frequency csv report
         Get profile
         """
-        cpufreq_report_lines = []
-        with open(csv_cpufreq_report, newline="") as csvfile:
-            csvreader = csv.reader(csvfile)
-            for row in csvreader:
-                cpufreq_report_lines.append(row)
+        self.logger.debug("Read CPUFreq csv report..."); t0 = time.time()
+        cpufreq_report_lines = self.read_csv_line_as_list(csv_report=csv_cpufreq_report)
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
+        self.logger.debug("Create CPUFreq profile..."); t0 = time.time()
         cpu_freq_parsing = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
         self.hf_cpufreq_min = cpu_freq_parsing[0] or None
         self.hf_cpufreq_max = cpu_freq_parsing[1] or None
@@ -340,6 +361,7 @@ class HighFreqData():
 
         self.hf_cpufreq_prof = cpufreq_ts
         self.hf_cpufreq_stamps = [float(line[0]) for line in cpufreq_report_lines[1::self.ncpu]]
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 
@@ -393,11 +415,7 @@ class HighFreqData():
         """
         Read high-frequency native network csv report
         """
-        net_report_lines = []
-        with open(csv_net_report, newline="") as csvfile:
-            csvreader = csv.reader(csvfile)
-            for row in csvreader:
-                net_report_lines.append(row)
+        net_report_lines = self.read_csv_line_as_list(csv_report=csv_net_report)
 
         # Get network interfaces
         ts_0 = net_report_lines[1][0]
@@ -437,8 +455,11 @@ class HighFreqData():
         """
         Get high-frequency native network profile
         """
+        self.logger.debug("Read Network csv report..."); t0 = time.time()
         net_ts_raw, timestamps_raw = self.read_hf_net_csv_report(csv_net_report=csv_net_report)
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
+        self.logger.debug("Create Network profile..."); t0 = time.time()
         time_interval = 1
         time_interval_step = 1 if time_interval == 0 else int(time_interval / (timestamps_raw[1] - timestamps_raw[0]))
 
@@ -458,6 +479,8 @@ class HighFreqData():
                 self.hf_net_data[key][metric_key] = net_ts_raw[key][metric_key][-1] - net_ts_raw[key][metric_key][0]
                 for stamp in range(nstamps):
                     self.hf_net_prof[key][metric_key][stamp] = (net_ts_raw[key][metric_key][stamp + 1] - net_ts_raw[key][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
 
     def plot_hf_network(self,
@@ -544,11 +567,8 @@ class HighFreqData():
         """
         Read high-frequency native disk monitoring csv report
         """
-        disk_report_lines = []
-        with open(csv_disk_report, newline="") as csvfile:
-            csvreader = csv.reader(csvfile)
-            for row in csvreader:
-                disk_report_lines.append(row)
+        disk_report_lines = self.read_csv_line_as_list(csv_report=csv_disk_report)
+
 
         # useful indexes for the csv report
         _maj_blk_indx = 0
@@ -610,8 +630,11 @@ class HighFreqData():
         """
         Get high-frequency native disk profile
         """
+        self.logger.debug("Read Disk csv report..."); t0 = time.time()
         disk_ts_raw, timestamps_raw = self.read_hf_disk_csv_report(csv_disk_report=csv_disk_report)
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
+        self.logger.debug("Create Disk profile..."); t0 = time.time()
         # final time stamps
         nstamps = len(timestamps_raw) - 1
         self.hf_disk_stamps = np.zeros(nstamps)
@@ -655,6 +678,8 @@ class HighFreqData():
                     self.hf_disk_prof[blk][field][stamp] = (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]) \
                                                     / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
                 self.hf_disk_data[blk][field] = int(disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0])
+
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
 
     def plot_hf_disk(self,
@@ -737,7 +762,7 @@ class HighFreqData():
         """
         Read high-frequency native infiniband monitoring csv report
         """
-        ib_report_lines = []
+        ib_report_lines = self.read_csv_line_as_list(csv_report=csv_ib_report)
 
         self.ib_metric_keys = ["port_rcv_data", "port_xmit_data"]
 
@@ -770,7 +795,11 @@ class HighFreqData():
         """
         Get high-frequency native infiniband profile
         """
+        self.logger.debug("Read IB csv report..."); t0 = time.time()
         ib_ts_raw, timestamps_raw = self.read_hf_ib_csv_report(csv_ib_report=csv_ib_report)
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+        self.logger.debug("Create IB profile..."); t0 = time.time()
         nstamps = len(timestamps_raw) - 1
 
         self.hf_ib_stamps = np.zeros(nstamps)
@@ -790,11 +819,15 @@ class HighFreqData():
                     self.hf_ib_prof[interf][metric_key][stamp] = (ib_ts_raw[interf][metric_key][stamp + 1] - ib_ts_raw[interf][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) / BYTES_UNIT
                 self.hf_ib_data[interf][metric_key] = int((ib_ts_raw[interf][metric_key][-1] - ib_ts_raw[interf][metric_key][0]) / BYTES_UNIT)
 
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
 
     def plot_hf_ib(self, annotate_with_cmds=None):
         """
         Plot high-frequency infiniband activity
         """
+        self.ib_rx_total = np.zeros_like(self.hf_ib_stamps)
+        self.ib_tx_total = np.zeros_like(self.hf_ib_stamps)
         for interf in self.ib_interfs:
             self.ib_rx_total = self.ib_rx_total + self.hf_ib_prof[interf]["port_rcv_data"]
             self.ib_tx_total = self.ib_tx_total + self.hf_ib_prof[interf]["port_xmit_data"]
@@ -827,3 +860,22 @@ class HighFreqData():
         if annotate_with_cmds: annotate_with_cmds(ymax=ibmax)
 
         return ibmax
+
+
+    def read_csv_line_as_list(self, csv_report: str) -> list:
+        """
+        Read csv report as list
+
+        Args:
+            csv_report  (str)   CSV report filename
+
+        Returns:
+            (list)  read csv report as list
+        """
+        if os.path.isfile(csv_report):
+            with open(csv_report, newline="") as csvfile:
+                return list(csv.reader(csvfile))
+
+        else:
+            self.logger.error(f"Report {csv_report} does not exist! -> Remove the associated flag to this report")
+            sys.exit(1)
