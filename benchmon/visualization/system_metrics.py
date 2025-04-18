@@ -2,8 +2,6 @@
 Python script to read and plot system resources measurements
 """
 import csv
-import os
-import time
 import numpy as np
 import matplotlib.pyplot as plt
 from math import ceil
@@ -76,6 +74,10 @@ class HighFreqData():
             self.ib_rx_total = np.array([])
             self.ib_tx_total = np.array([])
             self.get_hf_ib_prof(csv_ib_report=csv_ib_report)
+
+        self.xticks = None
+        self.xlim = None
+        self.yrange = None
 
 
     def read_hf_cpu_csv_report(self, csv_cpu_report: str):
@@ -179,8 +181,7 @@ class HighFreqData():
 
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
-        _yrange = 10
-        plt.yticks(100 / _yrange * np.arange(_yrange + 1))
+        plt.yticks(100 / (self.yrange - 1) * np.arange(self.yrange))
         plt.grid()
 
         if number:
@@ -218,10 +219,9 @@ class HighFreqData():
             cpu_wai = self.hf_cpu_prof[core_name]["iowait"]
             plt.plot(self.hf_cpu_stamps, cpu_usr+cpu_sys+cpu_wai, color=cm[idx], label=f"core-{core}")
         plt.xticks(*self.xticks)
-        _yrange = 10
-        plt.yticks(100 * 1/_yrange * np.arange(_yrange + 1))
         plt.xlim(self.xlim)
-        plt.ylabel(f" CPU Cores (%)")
+        plt.yticks(100 / (self.yrange - 1) * np.arange(self.yrange))
+        plt.ylabel(f"CPU Cores (%)")
         plt.grid()
         plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu/16) , fontsize="6")
 
@@ -271,7 +271,7 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_memory_usage(self, annotate_with_cmds=None) -> int:
+    def plot_hf_memory_usage(self, annotate_with_cmds=None) -> float:
         """
         Plot memory/swap usage
         """
@@ -292,16 +292,22 @@ class HighFreqData():
         plt.fill_between(self.hf_mem_stamps, swap_total, alpha=alpha, label="SwapTotal", color="r")
         plt.fill_between(self.hf_mem_stamps, swap_used, alpha=alpha*3, label="SwapUsed", color="r")
 
+        total_max = max(total)
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
-        plt.yticks(np.linspace(0, max(total), 8, dtype="i"))
+
+        for powtow in range(25):
+            yticks = np.arange(0, total_max + 2**powtow, 2**powtow, dtype="i")
+            if len(yticks) < self.yrange: break
+        plt.yticks(yticks)
+
         plt.ylabel("Memory (GB)")
         plt.legend(loc=1)
         plt.grid()
 
-        if annotate_with_cmds: annotate_with_cmds(ymax=max(total))
+        if annotate_with_cmds: annotate_with_cmds(ymax=total_max)
 
-        return 0
+        return total_max
 
 
     def get_hf_cpufreq_prof(self, csv_cpufreq_report: str):
@@ -338,7 +344,7 @@ class HighFreqData():
         return 0
 
 
-    def plot_hf_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> int:
+    def plot_hf_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> float:
         """
         Plot cpu frequency per core
         """
@@ -372,16 +378,15 @@ class HighFreqData():
             plt.plot(self.hf_cpufreq_stamps, cpu_freq_min * np.ones(_nstamps), "gray", linestyle="--")
 
         plt.xticks(*self.xticks)
-        _yrange = 10
-        plt.yticks(cpu_freq_max * 1/_yrange * np.arange(_yrange + 1))
         plt.xlim(self.xlim)
+        plt.yticks(cpu_freq_max / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel(f" CPU frequencies (GHz)")
         plt.grid()
         plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu/16) , fontsize="6")
 
         if annotate_with_cmds: annotate_with_cmds(ymax=cpu_freq_max)
 
-        return 0
+        return cpu_freq_max
 
 
     def read_hf_net_csv_report(self, csv_net_report: str):
@@ -461,7 +466,7 @@ class HighFreqData():
                         is_rx_only=False,
                         is_tx_only=False,
                         is_netdata_label=True,
-                        annotate_with_cmds=None) -> int:
+                        annotate_with_cmds=None) -> float:
         """
         Plot high-frequency network activity
         """
@@ -519,17 +524,20 @@ class HighFreqData():
                         if is_netdata_label: label += f" ({int(td)} MB)"
                         plt.plot(self.hf_net_stamps, tx_arr, label=label, ls="-", alpha=ALPHA, marker="^", markersize=MRKSZ)
 
-        _ymax = max(max(self.hf_net_rx_total), max(self.hf_net_tx_total))
+        netmax = max(max(self.hf_net_rx_total), max(self.hf_net_tx_total))
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
-        # plt.yticks(np.linspace(0, _ymax, 11, dtype="i"))
+        for powtow in range(25):
+            yticks = np.arange(0, netmax + 2**powtow, 2**powtow, dtype="i")
+            if len(yticks) < self.yrange: break
+        plt.yticks(yticks)
         plt.ylabel("Network (MB/s)")
         plt.legend(loc=1)
         plt.grid()
 
-        if annotate_with_cmds: annotate_with_cmds(ymax=_ymax)
+        if annotate_with_cmds: annotate_with_cmds(ymax=netmax)
 
-        return 0
+        return netmax
 
 
     def read_hf_disk_csv_report(self, csv_disk_report: str):
@@ -654,12 +662,12 @@ class HighFreqData():
                      is_wr_only=False,
                      is_with_iops=False,
                      is_diskdata_label=True,
-                     annotate_with_cmds=None) -> int:
+                     annotate_with_cmds=None) -> float:
         """
         Plot high-frequency disk activity
         """
         alpha = 0.5
-        _ymax = 0.
+        diskmax = 0.
 
         self.hf_disk_rd_total = np.zeros_like(self.hf_disk_stamps)
         self.hf_disk_wr_total = np.zeros_like(self.hf_disk_stamps)
@@ -677,7 +685,7 @@ class HighFreqData():
                         label += f" ({self.hf_disk_data[blk][field]} MB)"
                     if np.linalg.norm(array) > 1:
                         plt.fill_between(self.hf_disk_stamps, array, label=label, alpha=alpha)
-                        _ymax = max(_ymax, max(array))
+                        diskmax = max(diskmax, max(array))
 
                         if field == "sect-rd":
                             self.hf_disk_rd_total = self.hf_disk_rd_total + array
@@ -686,6 +694,10 @@ class HighFreqData():
                             self.hf_disk_wr_total = self.hf_disk_wr_total + array
                             self.hf_disk_wr_data = self.hf_disk_wr_data + self.hf_disk_data[blk][field]
 
+        for powtow in range(25):
+            yticks = np.arange(0, diskmax + 2**powtow, 2**powtow, dtype="i")
+            if len(yticks) < self.yrange: break
+        plt.yticks(yticks)
         plt.ylabel("Disk bandwidth (MB/s)")
         plt.grid()
         hand, lab = plt.gca().get_legend_handles_labels()
@@ -716,7 +728,9 @@ class HighFreqData():
         else:
             plt.legend(loc=1)
 
-        if annotate_with_cmds and not is_with_iops: annotate_with_cmds(ymax=_ymax) # @todo
+        if annotate_with_cmds and not is_with_iops: annotate_with_cmds(ymax=diskmax) # @todo
+
+        return diskmax
 
 
     def read_hf_ib_csv_report(self, csv_ib_report: str):
@@ -808,6 +822,8 @@ class HighFreqData():
         plt.grid()
         plt.legend(loc=1)
 
+        ibmax = max(max(self.ib_rx_total), max(self.ib_tx_total))
 
-        _ymax = max(max(self.ib_rx_total), max(self.ib_tx_total))
-        if annotate_with_cmds: annotate_with_cmds(ymax=_ymax)
+        if annotate_with_cmds: annotate_with_cmds(ymax=ibmax)
+
+        return ibmax
