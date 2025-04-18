@@ -15,6 +15,7 @@ from .power_metrics import PerfPowerData
 from .power_metrics import G5KPowerData
 from .call_profile import PerfCallRawData
 from .call_profile import PerfCallData
+from .utils import read_ical_log_file, plot_ical_stages
 
 
 class BenchmonVisualizer:
@@ -70,6 +71,10 @@ class BenchmonVisualizer:
         self.call_monotonic_to_real = 0
         self.inline_calls_prof = None
 
+        self.ical_stages = {}
+        if self.args.annotate_with_log == "ical":
+            self.ical_stages = read_ical_log_file(self.traces_repo)
+
         self.load_system_metrics()
         self.load_power_metrics()
         self.load_call_metrics()
@@ -79,6 +84,8 @@ class BenchmonVisualizer:
 
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
+
+
 
 
     def load_system_metrics(self) -> None:
@@ -159,7 +166,7 @@ class BenchmonVisualizer:
         kernel_calls = [
             "swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "perf", "prometheus-node",
             "htop", "kworker", "dbus-daemon", "ipmitool", "slurmstepd", "rcu_sched", "ldlm_bl", "socknal",
-            "systemd", "snapd", "apparmor", "sed", "kswap", "queue"
+            "systemd", "snapd", "apparmor", "sed", "kswap", "queue", "ps", "sort"
         ]
 
         # Create list of keys for user calls (remove command if less thant 5% of the larger command)
@@ -254,6 +261,7 @@ class BenchmonVisualizer:
         if self.is_any_hf_sys:
             self.system_native_metrics.xlim = self.xlim
             self.system_native_metrics.xticks = self.xticks
+            self.system_native_metrics.yrange = self.args.fig_yrange
 
 
     def run_plots(self) -> None:
@@ -272,6 +280,7 @@ class BenchmonVisualizer:
             self.logger.debug("Plotting (hf) cpu")
             ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
             self.system_native_metrics.plot_hf_cpu(annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages: plot_ical_stages(self.ical_stages)
 
         # Full individual core plot
         if bool(self.args.hf_cpu_cores_full):
@@ -280,6 +289,7 @@ class BenchmonVisualizer:
                 ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
                 self.system_native_metrics.plot_hf_cpu(number=core_number,
                                                        annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages: plot_ical_stages(self.ical_stages)
 
         # CPU per core plot
         if self.args.hf_cpu_all:
@@ -288,58 +298,65 @@ class BenchmonVisualizer:
             self.system_native_metrics.plot_hf_cpu_per_core(cores_in=self.args.cpu_cores_in,
                                                             cores_out=self.args.cpu_cores_out,
                                                             annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages: plot_ical_stages(self.ical_stages)
 
         # CPU cores frequency plot
         if self.args.hf_cpu_freq:
             self.logger.debug("Plotting (hf) cpu cores frequency")
             ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            self.system_native_metrics.plot_hf_cpufreq(cores_in=self.args.cpu_cores_in,
-                                                       cores_out=self.args.cpu_cores_out,
-                                                       annotate_with_cmds=annotate_with_cmds)
+            freqmax = self.system_native_metrics.plot_hf_cpufreq(cores_in=self.args.cpu_cores_in,
+                                                                 cores_out=self.args.cpu_cores_out,
+                                                                 annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=freqmax)
 
         # Memory/swap plot
         if self.args.hf_mem:
             self.logger.debug("Plotting (hf) memory/swap")
             ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            self.system_native_metrics.plot_hf_memory_usage(annotate_with_cmds=annotate_with_cmds)
+            memmax = self.system_native_metrics.plot_hf_memory_usage(annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=memmax)
 
         # Network plot
         if self.args.hf_net:
             self.logger.debug("Plotting (hf) network")
             ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            self.system_native_metrics.plot_hf_network(all_interfaces=self.args.hf_net_all,
-                                                       is_rx_only=self.args.hf_net_rx_only,
-                                                       is_tx_only=self.args.hf_net_tx_only,
-                                                       is_netdata_label=self.args.hf_net_data,
-                                                       annotate_with_cmds=annotate_with_cmds)
+            netmax = self.system_native_metrics.plot_hf_network(all_interfaces=self.args.hf_net_all,
+                                                                is_rx_only=self.args.hf_net_rx_only,
+                                                                is_tx_only=self.args.hf_net_tx_only,
+                                                                is_netdata_label=self.args.hf_net_data,
+                                                                annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=netmax)
 
         # Infiniband plot
         if self.args.hf_ib:
             self.logger.debug("Plotting (hf) infiniband")
             ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            self.system_native_metrics.plot_hf_ib(annotate_with_cmds=annotate_with_cmds)
+            ibmax = self.system_native_metrics.plot_hf_ib(annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=ibmax)
 
         # Disk plot
         if self.args.hf_disk:
             self.logger.debug("Plotting (hf) disk")
             ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            self.system_native_metrics.plot_hf_disk(is_with_iops=self.args.hf_disk_iops,
-                                                    is_rd_only=self.args.hf_disk_rd_only,
-                                                    is_wr_only=self.args.hf_disk_wr_only,
-                                                    is_diskdata_label=self.args.hf_disk_data,
-                                                    annotate_with_cmds=annotate_with_cmds)
+            diskmax = self.system_native_metrics.plot_hf_disk(is_with_iops=self.args.hf_disk_iops,
+                                                              is_rd_only=self.args.hf_disk_rd_only,
+                                                              is_wr_only=self.args.hf_disk_wr_only,
+                                                              is_diskdata_label=self.args.hf_disk_data,
+                                                              annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=diskmax)
 
         # (perf+g5k) Power plot
         if self.args.pow or self.args.pow_g5k:
             self.logger.debug("Plotting perf power")
             ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            _ymax_pow = [0]
+            powmax = [0]
             if self.args.pow:
-                _ymax_pow += [self.power_perf_metrics.plot_events()]
+                powmax += [self.power_perf_metrics.plot_events()]
             if self.args.pow_g5k:
-                _ymax_pow += [self.power_g5k_metrics.plot_g5k_pow_profiles()]
-            if annotate_with_cmds:
-                annotate_with_cmds(ymax=max(_ymax_pow))
+                powmax += [self.power_g5k_metrics.plot_g5k_pow_profiles()]
+            if annotate_with_cmds: annotate_with_cmds(ymax=max(powmax))
+            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=max(powmax))
+
             plt.xticks(*self.xticks)
             plt.xlim(self.xlim)
             plt.ylabel("Power (W)")
