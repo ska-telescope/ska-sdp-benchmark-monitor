@@ -54,6 +54,8 @@ class BenchmonVisualizer:
         self.logger = logger
 
         self.traces_repo = traces_repo
+        os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
+
         self.hostname = os.path.basename(os.path.realpath(traces_repo))[16:]
         self.system_native_metrics = None
         self.power_g5k_metrics = None
@@ -86,8 +88,6 @@ class BenchmonVisualizer:
             self.hostname = self.hostname.split(".")[0]
 
 
-
-
     def load_system_metrics(self) -> None:
         """
         Load native system metrics
@@ -108,7 +108,7 @@ class BenchmonVisualizer:
             csv_reports[f"csv_{key}_report"] = f"{self.traces_repo}/hf_{key}_report.csv" if conds[key] else None
 
         if self.is_any_hf_sys:
-            self.system_native_metrics = HighFreqData(logger=self.logger, **csv_reports)
+            self.system_native_metrics = HighFreqData(logger=self.logger, traces_repo=self.traces_repo, **csv_reports)
 
         self.n_subplots += self.args.hf_cpu + self.args.hf_cpu_all + self.args.hf_cpu_freq + _n_cores_full \
                             + self.args.hf_mem + is_hf_net + is_hf_disk + self.args.hf_ib
@@ -142,7 +142,7 @@ class BenchmonVisualizer:
             else:
                 self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
 
-            self.call_traces = PerfCallData(logger=self.logger, cmd=self.call_chosen_cmd, samples=samples, m2r=self.call_monotonic_to_real)
+            self.call_traces = PerfCallData(logger=self.logger, cmd=self.call_chosen_cmd, samples=samples, m2r=self.call_monotonic_to_real, traces_repo=self.traces_repo)
             if self.args.call_depth:
                 self.call_depths = [depth for depth in range(self.args.call_depth)]
             elif self.args.call_depths:

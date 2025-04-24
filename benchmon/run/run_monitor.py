@@ -139,7 +139,7 @@ class RunMonitor:
         exec_sh_file = lambda device:  f"{os.path.dirname(os.path.realpath(__file__))}/hf_{device}_mon.sh"
 
         # CPU + CPUfreq + Memory + Network + Disk monitoring processes
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib", "timing_mapping"):
+        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"): #, "timing_mapping"):
             self.logger.debug(f"Starting: {exec_sh_file(device)} {freq} {self.save_dir}/{self.hfsys_filename(device)}")
             self.hf_sys_process += [
                 subprocess.Popen(

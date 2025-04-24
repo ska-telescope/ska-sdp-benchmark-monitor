@@ -1,6 +1,8 @@
 import csv
 import logging
 import json
+import os
+import pickle
 import time
 from datetime import datetime
 import numpy as np
@@ -33,49 +35,9 @@ class PerfPowerData:
         self.csv_filename = csv_filename
         self.csv_list = []
 
-        self.events = []
         self.cpus = []
-        self.prof = {}
-
-        self._stamps = np.array([])
-
-        self.read_csv_list()
-        self.create_profile()
-        self.create_plt_params()
-
-
-    def read_csv_list(self) -> int:
-        """
-        Read csv list
-        """
-        self.logger.debug("Read PerfPower csv report..."); t0 = time.time()
-
-        with open(self.csv_filename, newline="", encoding='utf-8') as csvfile:
-            reader = csv.reader(csvfile, delimiter=',')
-            next(reader)
-            for row in reader:
-                self.csv_list.append(row)
-
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
-
-        return 0
-
-
-    def create_profile(self) -> int:
-        """
-        Create power profiles
-        """
-        self.logger.debug("Create PerfPower profile..."); t0 = time.time()
-
-        LINES_START_INDEX = 2
-
-        EVENT_INDEX = 4
-        self.events = list(set([item[EVENT_INDEX] for item in self.csv_list[LINES_START_INDEX:]]))
-        nevents = len(self.events)
-
-        CPU_INDEX = 1
-        self.cpus = list(set([item[CPU_INDEX] for item in self.csv_list[LINES_START_INDEX:]]))
-        ncpu = len(self.cpus)
+        self.pow_prof = {}
+        self.time_stamps = np.array([])
 
         self.events_table = {
             "power/energy-cores/": "cores",
@@ -85,40 +47,88 @@ class PerfPowerData:
             "power/energy-gpu/": "gpu"
             }
 
-        stride = ncpu * nevents
-        self.prof["time"] = [float(self.csv_list[i][0]) for i in range(LINES_START_INDEX, len(self.csv_list), stride)]
-        self.nstamps = len(self.prof["time"])
+        self.create_profile()
 
-        for cpu in self.cpus:
-            for event in self.events:
-                self.prof[cpu] = {event: [] for event in self.events}
 
-        for _list in self.csv_list[LINES_START_INDEX:]:
-            cpu = _list[1]
-            event = _list[4]
-            value = float(_list[2]) / (float(_list[5]) * 1e-9) # J = W/S
-            self.prof[cpu][event] += [value]
-
-        for cpu in self.cpus:
-            for event in self.events:
-                self.prof[cpu][event] = np.array(self.prof[cpu][event])
-
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+    def read_csv_list(self) -> int:
+        """
+        Read csv list
+        """
+        with open(self.csv_filename, newline="", encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile, delimiter=',')
+            next(reader)
+            for row in reader:
+                self.csv_list.append(row)
 
         return 0
 
 
-    def create_plt_params(self) -> int:
+    def create_profile(self) -> int:
         """
-        Create plot parameters
+        Create power profiles
         """
-        with open(self.csv_filename) as file:
-            epoch0 = float(file.readline()[2:-1])
+        pow_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_prof.pkl"
+        ts_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_stamps.pkl"
 
-        self._stamps = np.zeros(self.nstamps+1)
-        self._stamps[0] = epoch0
-        for i in range(0, self.nstamps):
-            self._stamps[i+1] = epoch0 + self.prof["time"][i]
+        if os.access(pow_pkl, os.R_OK):
+            self.logger.debug("Load Power profile..."); t0 = time.time()
+
+            with open(pow_pkl, "rb") as _pf: self.pow_prof = pickle.load(_pf)
+            with open(ts_pkl, "rb") as _pf: self.time_stamps = pickle.load(_pf)
+
+            self.cpus = list(self.pow_prof.keys()); self.cpus.remove("time")
+            self.events = self.pow_prof[self.cpus[0]].keys()
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+        else:
+            self.logger.debug("Read PerfPower csv report..."); t0 = time.time()
+            self.read_csv_list()
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            self.logger.debug("Create PerfPower profile..."); t0 = time.time()
+
+            LINES_START_INDEX = 2
+
+            EVENT_INDEX = 4
+            self.events = list(set([item[EVENT_INDEX] for item in self.csv_list[LINES_START_INDEX:]]))
+            nevents = len(self.events)
+
+            CPU_INDEX = 1
+            self.cpus = list(set([item[CPU_INDEX] for item in self.csv_list[LINES_START_INDEX:]]))
+            ncpu = len(self.cpus)
+
+            stride = ncpu * nevents
+            self.pow_prof["time"] = [float(self.csv_list[i][0]) for i in range(LINES_START_INDEX, len(self.csv_list), stride)]
+            self.nstamps = len(self.pow_prof["time"])
+
+            for cpu in self.cpus:
+                for event in self.events:
+                    self.pow_prof[cpu] = {event: [] for event in self.events}
+
+            for _list in self.csv_list[LINES_START_INDEX:]:
+                cpu = _list[1]
+                event = _list[4]
+                value = float(_list[2]) / (float(_list[5]) * 1e-9) # J = W/S
+                self.pow_prof[cpu][event] += [value]
+
+            for cpu in self.cpus:
+                for event in self.events:
+                    self.pow_prof[cpu][event] = np.array(self.pow_prof[cpu][event])
+
+            # Time stamps
+            with open(self.csv_filename) as file:
+                epoch0 = float(file.readline()[2:-1])
+            self.time_stamps = np.zeros(self.nstamps+1)
+            self.time_stamps[0] = epoch0
+            for i in range(0, self.nstamps):
+                self.time_stamps[i+1] = epoch0 + self.pow_prof["time"][i]
+
+            with open(pow_pkl, "wb") as _pf: pickle.dump(self.pow_prof, _pf)
+            with open(ts_pkl, "wb") as _pf: pickle.dump(self.time_stamps, _pf)
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
         return 0
 
 
@@ -128,7 +138,7 @@ class PerfPowerData:
         """
         for event in self.events:
             for cpu in self.cpus:
-                plt.plot(self._stamps, self.prof[cpu][event], label=f"{cpu}/{self.events_table[event]}")
+                plt.plot(self.time_stamps, self.pow_prof[cpu][event], label=f"{cpu}/{self.events_table[event]}")
         plt.xticks(self._xticks[0], self._xticks[1])
         plt.ylabel("Power (W)")
         plt.legend(loc=1)
@@ -148,7 +158,7 @@ class PerfPowerData:
         pow_total = {event: 0 for event in self.events}
         for cpu in self.cpus:
             for event in self.events:
-                pow_total[event] += self.prof[cpu][event]
+                pow_total[event] += self.pow_prof[cpu][event]
 
         events_style = {}
         events_style["power/energy-cores/"] = {"color": "C4", "ls": "--"}
@@ -159,8 +169,8 @@ class PerfPowerData:
 
         for event in self.events:
             power_array = np.append(pow_total[event], pow_total[event][-1])
-            energy = compute_total_energy(time_stamps=self._stamps, power_stamps=power_array)
-            plt.step(self._stamps, power_array, where="post",
+            energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
+            plt.step(self.time_stamps, power_array, where="post",
                      label=f"{pre_label}{self.events_table[event]} ({round(energy, 1)} Wh)",
                      color=events_style[event]["color"],
                      ls=events_style[event]["ls"])
