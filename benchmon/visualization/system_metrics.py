@@ -2,8 +2,10 @@
 Python script to read and plot system resources measurements
 """
 import csv
+import logging
 import itertools
 import os
+import pickle
 import sys
 import time
 import numpy as np
@@ -16,7 +18,8 @@ class HighFreqData():
     High-frequency monitoring database
     """
     def __init__(self,
-                 logger,
+                 logger : logging.Logger,
+                 traces_repo : str,
                  csv_cpu_report: str,
                  csv_cpufreq_report: str,
                  csv_mem_report: str,
@@ -27,6 +30,7 @@ class HighFreqData():
         Constructor
         """
         self.logger = logger
+        self.traces_repo = traces_repo
 
         if csv_cpu_report:
             self.ncpu = 0
@@ -140,46 +144,65 @@ class HighFreqData():
         """
         Get high-frequency cpu profile
         """
-        self.logger.debug("Read CPU csv report..."); t0 = time.time()
-        cpu_ts_raw, timestamps_raw = self.read_hf_cpu_csv_report(csv_cpu_report=csv_cpu_report)
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        cpu_pkl = f"{self.traces_repo}/pkl_dir/hf_cpu_prof.pkl"
+        ts_pkl = f"{self.traces_repo}/pkl_dir/hf_cpu_stamps.pkl"
 
-        self.logger.debug("Create CPU profile..."); t0 = time.time()
-        nstamps = len(timestamps_raw) - 1
+        if os.access(cpu_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+            self.logger.debug("Load CPU profile..."); t0 = time.time()
 
-        t0i = time.time()
-        timestamps = np.zeros(nstamps)
-        for stamp in range(nstamps):
-            timestamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
-        self.logger.debug(f"\t ts = {round(time.time() - t0i, 3)} s")
+            with open(cpu_pkl, "rb") as _pf: self.hf_cpu_prof = pickle.load(_pf)
+            with open(ts_pkl, "rb") as _pf: self.hf_cpu_stamps = pickle.load(_pf)
+            self.ncpu= len(self.hf_cpu_prof) - 1
 
-        t0i = time.time()
-        cpu_ts = {}
-        for key in cpu_ts_raw.keys():
-            cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw["cpu"].keys()}
-        self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        t0i = time.time()
-        for stamp in range(nstamps):
-            for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw["cpu"].keys()):
-                cpu_ts[key][metric_key][stamp] = cpu_ts_raw[key][metric_key][stamp+1] - cpu_ts_raw[key][metric_key][stamp]
-        self.logger.debug(f"\t compute spaces = {round(time.time() - t0i, 3)} s")
+        else:
 
-        t0i = time.time()
-        for key in cpu_ts.keys():
+            self.logger.debug("Read CPU csv report..."); t0 = time.time()
+            cpu_ts_raw, timestamps_raw = self.read_hf_cpu_csv_report(csv_cpu_report=csv_cpu_report)
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            self.logger.debug("Create CPU profile..."); t0 = time.time()
+            nstamps = len(timestamps_raw) - 1
+
+            t0i = time.time()
+            timestamps = np.zeros(nstamps)
             for stamp in range(nstamps):
-                cpu_total = 0
-                for metric_key in cpu_ts["cpu"].keys():
-                    cpu_total += cpu_ts[key][metric_key][stamp]
+                timestamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+            self.logger.debug(f"\t ts = {round(time.time() - t0i, 3)} s")
 
-                for metric_key in cpu_ts["cpu"].keys():
-                    cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
-        self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
+            t0i = time.time()
+            cpu_ts = {}
+            for key in cpu_ts_raw.keys():
+                cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw["cpu"].keys()}
+            self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
 
-        self.hf_cpu_prof = cpu_ts
-        self.hf_cpu_stamps = timestamps
+            t0i = time.time()
+            for stamp in range(nstamps):
+                for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw["cpu"].keys()):
+                    cpu_ts[key][metric_key][stamp] = cpu_ts_raw[key][metric_key][stamp+1] - cpu_ts_raw[key][metric_key][stamp]
+            self.logger.debug(f"\t compute spaces = {round(time.time() - t0i, 3)} s")
 
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            t0i = time.time()
+            for key in cpu_ts.keys():
+                for stamp in range(nstamps):
+                    cpu_total = 0
+                    for metric_key in cpu_ts["cpu"].keys():
+                        cpu_total += cpu_ts[key][metric_key][stamp]
+
+                    for metric_key in cpu_ts["cpu"].keys():
+                        cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
+            self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
+
+            self.hf_cpu_prof = cpu_ts
+            self.hf_cpu_stamps = timestamps
+
+            t0i = time.time()
+            with open(cpu_pkl, "wb") as _pf: pickle.dump(self.hf_cpu_prof, _pf)
+            with open(ts_pkl, "wb") as _pf: pickle.dump(self.hf_cpu_stamps, _pf)
+            self.logger.debug(f"\t save profile = {round(time.time() - t0i, 3)} s")
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 
@@ -268,29 +291,45 @@ class HighFreqData():
         """
         Get memory profile
         """
-        ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"
+        mem_pkl = f"{self.traces_repo}/pkl_dir/hf_mem_prof.pkl"
+        ts_pkl = f"{self.traces_repo}/pkl_dir/hf_mem_stamps.pkl"
 
-        _chosen_keys = ["timestamp", "MemTotal", "MemFree", "Buffers", "Cached", "Slab", "SwapTotal", "SwapFree", "SwapCached"]
+        if os.access(mem_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+            self.logger.debug("Load Memory profile..."); t0 = time.time()
 
-        self.logger.debug("Read Memory csv report..."); t0 = time.time()
-        mem_report_lines, keys_with_idx = self.read_hf_mem_csv_report(csv_mem_report=csv_mem_report)
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            with open(mem_pkl, "rb") as _pf: self.hf_mem_prof = pickle.load(_pf)
+            with open(ts_pkl, "rb") as _pf: self.hf_mem_stamps = pickle.load(_pf)
 
-        self.logger.debug("Create Memory profile..."); t0 = time.time()
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        memory_dict = {key: [] for key in _chosen_keys}
+        else:
 
-        for line in mem_report_lines[1:]:
+            ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"
+
+            _chosen_keys = ["timestamp", "MemTotal", "MemFree", "Buffers", "Cached", "Slab", "SwapTotal", "SwapFree", "SwapCached"]
+
+            self.logger.debug("Read Memory csv report..."); t0 = time.time()
+            mem_report_lines, keys_with_idx = self.read_hf_mem_csv_report(csv_mem_report=csv_mem_report)
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            self.logger.debug("Create Memory profile..."); t0 = time.time()
+
+            memory_dict = {key: [] for key in _chosen_keys}
+
+            for line in mem_report_lines[1:]:
+                for key in memory_dict:
+                    memory_dict[key] += [float(line[keys_with_idx[key]])]
+
             for key in memory_dict:
-                memory_dict[key] += [float(line[keys_with_idx[key]])]
+                memory_dict[key] = np.array(memory_dict[key])
 
-        for key in memory_dict:
-            memory_dict[key] = np.array(memory_dict[key])
+            self.hf_mem_prof = memory_dict
+            self.hf_mem_stamps = memory_dict["timestamp"]
 
-        self.hf_mem_prof = memory_dict
-        self.hf_mem_stamps = memory_dict["timestamp"]
+            with open(mem_pkl, "wb") as _pf: pickle.dump(self.hf_mem_prof, _pf)
+            with open(ts_pkl, "wb") as _pf: pickle.dump(self.hf_mem_stamps, _pf)
 
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 
@@ -457,32 +496,50 @@ class HighFreqData():
         """
         Get high-frequency native network profile
         """
-        self.logger.debug("Read Network csv report..."); t0 = time.time()
-        net_ts_raw, timestamps_raw = self.read_hf_net_csv_report(csv_net_report=csv_net_report)
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        net_pkl = f"{self.traces_repo}/pkl_dir/hf_net_prof.pkl"
+        dat_pkl = f"{self.traces_repo}/pkl_dir/hf_net_data.pkl"
+        ts_pkl = f"{self.traces_repo}/pkl_dir/hf_net_stamps.pkl"
 
-        self.logger.debug("Create Network profile..."); t0 = time.time()
-        time_interval = 1
-        time_interval_step = 1 if time_interval == 0 else int(time_interval / (timestamps_raw[1] - timestamps_raw[0]))
+        if os.access(net_pkl, os.R_OK) and os.access(dat_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+            self.logger.debug("Load Network profile..."); t0 = time.time()
 
-        nstamps = len(timestamps_raw) - 1
-        self.hf_net_stamps = np.zeros(nstamps)
-        for stamp in range(nstamps):
-            self.hf_net_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+            with open(net_pkl, "rb") as _pf: self.hf_net_prof = pickle.load(_pf)
+            with open(dat_pkl, "rb") as _pf: self.hf_net_data = pickle.load(_pf)
+            with open(ts_pkl, "rb") as _pf: self.hf_net_stamps = pickle.load(_pf)
+            self.hf_net_interfs = list(self.hf_net_prof.keys())
 
-        # Init network profile
-        for interf in self.hf_net_interfs:
-            self.hf_net_prof[interf] = {key: np.zeros(nstamps) for key in self.hf_net_metric_keys}
-            self.hf_net_data[interf] = {key: 0 for key in self.hf_net_metric_keys}
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        # Fill in
-        for key in net_ts_raw:
-            for metric_key in self.hf_net_metric_keys:
-                self.hf_net_data[key][metric_key] = net_ts_raw[key][metric_key][-1] - net_ts_raw[key][metric_key][0]
-                for stamp in range(nstamps):
-                    self.hf_net_prof[key][metric_key][stamp] = (net_ts_raw[key][metric_key][stamp + 1] - net_ts_raw[key][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+        else:
 
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.logger.debug("Read Network csv report..."); t0 = time.time()
+            net_ts_raw, timestamps_raw = self.read_hf_net_csv_report(csv_net_report=csv_net_report)
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            self.logger.debug("Create Network profile..."); t0 = time.time()
+
+            nstamps = len(timestamps_raw) - 1
+            self.hf_net_stamps = np.zeros(nstamps)
+            for stamp in range(nstamps):
+                self.hf_net_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+
+            # Init network profile
+            for interf in self.hf_net_interfs:
+                self.hf_net_prof[interf] = {key: np.zeros(nstamps) for key in self.hf_net_metric_keys}
+                self.hf_net_data[interf] = {key: 0 for key in self.hf_net_metric_keys}
+
+            # Fill in
+            for key in net_ts_raw:
+                for metric_key in self.hf_net_metric_keys:
+                    self.hf_net_data[key][metric_key] = net_ts_raw[key][metric_key][-1] - net_ts_raw[key][metric_key][0]
+                    for stamp in range(nstamps):
+                        self.hf_net_prof[key][metric_key][stamp] = (net_ts_raw[key][metric_key][stamp + 1] - net_ts_raw[key][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+
+            with open(net_pkl, "wb") as _pf: pickle.dump(self.hf_net_prof, _pf)
+            with open(dat_pkl, "wb") as _pf: pickle.dump(self.hf_net_data, _pf)
+            with open(ts_pkl, "wb") as _pf: pickle.dump(self.hf_net_stamps, _pf)
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
 
     def plot_hf_network(self,
@@ -509,8 +566,8 @@ class HighFreqData():
         for interf in self.hf_net_interfs:
             if is_excluded(interf): continue
 
-            self.hf_net_rx_total = self.hf_net_rx_total + self.hf_net_prof[interf]["rx-bytes"] / BYTES_UNIT
-            self.hf_net_tx_total = self.hf_net_tx_total + self.hf_net_prof[interf]["tx-bytes"] / BYTES_UNIT
+            self.hf_net_rx_total += self.hf_net_prof[interf]["rx-bytes"] / BYTES_UNIT
+            self.hf_net_tx_total += self.hf_net_prof[interf]["tx-bytes"] / BYTES_UNIT
 
             self.hf_net_rx_data += self.hf_net_data[interf]["rx-bytes"] / BYTES_UNIT
             self.hf_net_tx_data += self.hf_net_data[interf]["tx-bytes"] / BYTES_UNIT
@@ -632,56 +689,80 @@ class HighFreqData():
         """
         Get high-frequency native disk profile
         """
-        self.logger.debug("Read Disk csv report..."); t0 = time.time()
-        disk_ts_raw, timestamps_raw = self.read_hf_disk_csv_report(csv_disk_report=csv_disk_report)
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        disk_pkl = f"{self.traces_repo}/pkl_dir/hf_disk_prof.pkl"
+        dat_pkl = f"{self.traces_repo}/pkl_dir/hf_disk_data.pkl"
+        maj_pkl = f"{self.traces_repo}/pkl_dir/hf_disk_maj.pkl"
+        ts_pkl = f"{self.traces_repo}/pkl_dir/hf_disk_stamps.pkl"
 
-        self.logger.debug("Create Disk profile..."); t0 = time.time()
-        # final time stamps
-        nstamps = len(timestamps_raw) - 1
-        self.hf_disk_stamps = np.zeros(nstamps)
-        for stamp in range(nstamps):
-            self.hf_disk_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+        if all([os.access(pkl_file, os.R_OK) for pkl_file in (disk_pkl, dat_pkl, maj_pkl, ts_pkl)]):
+            self.logger.debug("Load Disk profile..."); t0 = time.time()
 
-        # Init disk profile
-        self.hf_disk_prof = {}
-        self.hf_disk_data = {}
-        for blk in self.hf_disk_blks:
-            self.hf_disk_prof[blk] = {key: np.zeros(nstamps) for key in self.hf_disk_field_keys}
-            self.hf_disk_data[blk] = {key: -999.999 for key in self.hf_disk_field_keys}
+            with open(disk_pkl, "rb") as _pf: self.hf_disk_prof = pickle.load(_pf)
+            with open(dat_pkl, "rb") as _pf: self.hf_disk_data = pickle.load(_pf)
+            with open(maj_pkl, "rb") as _pf: self.hf_maj_blks_sects = pickle.load(_pf)
+            with open(ts_pkl, "rb") as _pf: self.hf_disk_stamps = pickle.load(_pf)
+            self.hf_disk_blks = list(self.hf_disk_prof.keys())
 
-        # Fill in
-        for blk in self.hf_disk_blks:
-            self.hf_disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
-            self.hf_disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
-            # for field_key in self.hf_disk_field_keys:
-            #     for stamp in range(nstamps):
-            #         self.hf_disk_prof[blk][field_key][stamp] = (disk_ts_raw[blk][field_key][stamp + 1] - disk_ts_raw[blk][field_key][stamp])
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        # Sectors and data n bytes
-        BYTES_UNIT = 1024 ** 2
-        fields = ["sect-rd", "sect-wr", "sect-disc"]
-        for blk in self.hf_disk_blks:
-            bytes_by_sector = self.hf_maj_blks_sects[[item for item in self.hf_maj_blks_sects if item in blk][0]]
-            for field in fields:
-                for stamp in range(nstamps):
-                    self.hf_disk_prof[blk][field][stamp] = \
-                        (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]) \
-                        / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) \
-                        * bytes_by_sector / BYTES_UNIT
-                self.hf_disk_data[blk][field] = int((disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]) \
-                                               * bytes_by_sector / BYTES_UNIT)
+        else:
 
-        # Number of operations
-        fields = ["#rd-cd", "#rd-md", "#wr-cd", "#wr-md", "#io-ip", "#disc-cd", "#disc-md", "#flush-req"]
-        for blk in self.hf_disk_blks:
-            for field in fields:
-                for stamp in range(nstamps):
-                    self.hf_disk_prof[blk][field][stamp] = (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]) \
-                                                    / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
-                self.hf_disk_data[blk][field] = int(disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0])
+            self.logger.debug("Read Disk csv report..."); t0 = time.time()
+            disk_ts_raw, timestamps_raw = self.read_hf_disk_csv_report(csv_disk_report=csv_disk_report)
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.logger.debug("Create Disk profile..."); t0 = time.time()
+            # final time stamps
+            nstamps = len(timestamps_raw) - 1
+            self.hf_disk_stamps = np.zeros(nstamps)
+            for stamp in range(nstamps):
+                self.hf_disk_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+
+            # Init disk profile
+            self.hf_disk_prof = {}
+            self.hf_disk_data = {}
+            for blk in self.hf_disk_blks:
+                self.hf_disk_prof[blk] = {key: np.zeros(nstamps) for key in self.hf_disk_field_keys}
+                self.hf_disk_data[blk] = {key: -999.999 for key in self.hf_disk_field_keys}
+
+            # Fill in
+            for blk in self.hf_disk_blks:
+                self.hf_disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
+                self.hf_disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
+                # for field_key in self.hf_disk_field_keys:
+                #     for stamp in range(nstamps):
+                #         self.hf_disk_prof[blk][field_key][stamp] = (disk_ts_raw[blk][field_key][stamp + 1] - disk_ts_raw[blk][field_key][stamp])
+
+            # Sectors and data n bytes
+            BYTES_UNIT = 1024 ** 2
+            fields = ["sect-rd", "sect-wr", "sect-disc"]
+            for blk in self.hf_disk_blks:
+                bytes_by_sector = self.hf_maj_blks_sects[[item for item in self.hf_maj_blks_sects if item in blk][0]]
+                for field in fields:
+                    for stamp in range(nstamps):
+                        self.hf_disk_prof[blk][field][stamp] = \
+                            (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]) \
+                            / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) \
+                            * bytes_by_sector / BYTES_UNIT
+                    self.hf_disk_data[blk][field] = int((disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]) \
+                                                * bytes_by_sector / BYTES_UNIT)
+
+            # Number of operations
+            fields = ["#rd-cd", "#rd-md", "#wr-cd", "#wr-md", "#io-ip", "#disc-cd", "#disc-md", "#flush-req"]
+            for blk in self.hf_disk_blks:
+                for field in fields:
+                    for stamp in range(nstamps):
+                        self.hf_disk_prof[blk][field][stamp] = (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]) \
+                                                        / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+                    self.hf_disk_data[blk][field] = int(disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0])
+
+            # Save profiles
+            with open(disk_pkl, "wb") as _pf: pickle.dump(self.hf_disk_prof, _pf)
+            with open(dat_pkl, "wb") as _pf: pickle.dump(self.hf_disk_data, _pf)
+            with open(maj_pkl, "wb") as _pf: pickle.dump(self.hf_maj_blks_sects, _pf)
+            with open(ts_pkl, "wb") as _pf: pickle.dump(self.hf_disk_stamps, _pf)
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
 
     def plot_hf_disk(self,
@@ -715,11 +796,11 @@ class HighFreqData():
                         diskmax = max(diskmax, max(array))
 
                         if field == "sect-rd":
-                            self.hf_disk_rd_total = self.hf_disk_rd_total + array
-                            self.hf_disk_rd_data = self.hf_disk_rd_data + self.hf_disk_data[blk][field]
+                            self.hf_disk_rd_total += array
+                            self.hf_disk_rd_data += self.hf_disk_data[blk][field]
                         elif field == "sect-wr":
-                            self.hf_disk_wr_total = self.hf_disk_wr_total + array
-                            self.hf_disk_wr_data = self.hf_disk_wr_data + self.hf_disk_data[blk][field]
+                            self.hf_disk_wr_total += array
+                            self.hf_disk_wr_data += self.hf_disk_data[blk][field]
 
         for powtwo in range(25):
             yticks = np.arange(0, diskmax + 2**powtwo, 2**powtwo, dtype="i")
@@ -797,31 +878,51 @@ class HighFreqData():
         """
         Get high-frequency native infiniband profile
         """
-        self.logger.debug("Read IB csv report..."); t0 = time.time()
-        ib_ts_raw, timestamps_raw = self.read_hf_ib_csv_report(csv_ib_report=csv_ib_report)
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        ib_pkl = f"{self.traces_repo}/pkl_dir/hf_ib_prof.pkl"
+        dat_pkl = f"{self.traces_repo}/pkl_dir/hf_ib_data.pkl"
+        ts_pkl = f"{self.traces_repo}/pkl_dir/hf_ib_stamps.pkl"
 
-        self.logger.debug("Create IB profile..."); t0 = time.time()
-        nstamps = len(timestamps_raw) - 1
+        if os.access(ib_pkl, os.R_OK) and os.access(dat_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+            self.logger.debug("Load IB profile..."); t0 = time.time()
 
-        self.hf_ib_stamps = np.zeros(nstamps)
-        for stamp in range(nstamps):
-            self.hf_ib_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+            with open(ib_pkl, "rb") as _pf: self.hf_ib_prof = pickle.load(_pf)
+            with open(dat_pkl, "rb") as _pf: self.hf_ib_data = pickle.load(_pf)
+            with open(ts_pkl, "rb") as _pf: self.hf_ib_stamps = pickle.load(_pf)
+            self.ib_interfs = list(self.hf_ib_prof.keys())
 
-        # Init infiniband profile
-        for interf in self.ib_interfs:
-            self.hf_ib_prof[interf] = {key: np.zeros(nstamps) for key in self.ib_metric_keys}
-            self.hf_ib_data[interf] = {key: 0 for key in self.ib_metric_keys}
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        # Fill in
-        BYTES_UNIT = (1/4) * 1024 ** 2 # MB
-        for interf in self.ib_interfs:
-            for metric_key in self.ib_metric_keys:
-                for stamp in range(nstamps):
-                    self.hf_ib_prof[interf][metric_key][stamp] = (ib_ts_raw[interf][metric_key][stamp + 1] - ib_ts_raw[interf][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) / BYTES_UNIT
-                self.hf_ib_data[interf][metric_key] = int((ib_ts_raw[interf][metric_key][-1] - ib_ts_raw[interf][metric_key][0]) / BYTES_UNIT)
+        else:
 
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.logger.debug("Read IB csv report..."); t0 = time.time()
+            ib_ts_raw, timestamps_raw = self.read_hf_ib_csv_report(csv_ib_report=csv_ib_report)
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            self.logger.debug("Create IB profile..."); t0 = time.time()
+            nstamps = len(timestamps_raw) - 1
+
+            self.hf_ib_stamps = np.zeros(nstamps)
+            for stamp in range(nstamps):
+                self.hf_ib_stamps[stamp] = (timestamps_raw[stamp+1] + timestamps_raw[stamp]) / 2
+
+            # Init infiniband profile
+            for interf in self.ib_interfs:
+                self.hf_ib_prof[interf] = {key: np.zeros(nstamps) for key in self.ib_metric_keys}
+                self.hf_ib_data[interf] = {key: 0 for key in self.ib_metric_keys}
+
+            # Fill in
+            BYTES_UNIT = (1/4) * 1024 ** 2 # MB
+            for interf in self.ib_interfs:
+                for metric_key in self.ib_metric_keys:
+                    for stamp in range(nstamps):
+                        self.hf_ib_prof[interf][metric_key][stamp] = (ib_ts_raw[interf][metric_key][stamp + 1] - ib_ts_raw[interf][metric_key][stamp]) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) / BYTES_UNIT
+                    self.hf_ib_data[interf][metric_key] = int((ib_ts_raw[interf][metric_key][-1] - ib_ts_raw[interf][metric_key][0]) / BYTES_UNIT)
+
+            with open(ib_pkl, "wb") as _pf: pickle.dump(self.hf_ib_prof, _pf)
+            with open(dat_pkl, "wb") as _pf: pickle.dump(self.hf_ib_data, _pf)
+            with open(ts_pkl, "wb") as _pf: pickle.dump(self.hf_ib_stamps, _pf)
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
 
     def plot_hf_ib(self, annotate_with_cmds=None):
@@ -831,8 +932,8 @@ class HighFreqData():
         self.ib_rx_total = np.zeros_like(self.hf_ib_stamps)
         self.ib_tx_total = np.zeros_like(self.hf_ib_stamps)
         for interf in self.ib_interfs:
-            self.ib_rx_total = self.ib_rx_total + self.hf_ib_prof[interf]["port_rcv_data"]
-            self.ib_tx_total = self.ib_tx_total + self.hf_ib_prof[interf]["port_xmit_data"]
+            self.ib_rx_total += self.hf_ib_prof[interf]["port_rcv_data"]
+            self.ib_tx_total += self.hf_ib_prof[interf]["port_xmit_data"]
 
             self.ib_rx_data += self.hf_ib_data[interf]["port_rcv_data"]
             self.ib_tx_data += self.hf_ib_data[interf]["port_xmit_data"]
@@ -866,6 +967,13 @@ class HighFreqData():
         plt.ylabel("Infiniband bandwidth (MB/s)")
         plt.grid()
         plt.legend(loc=1)
+
+        ibmax = max(max(self.ib_rx_total), max(self.ib_tx_total))
+
+        for powtow in range(25):
+            yticks = np.arange(0, ibmax + 2**powtow, 2**powtow, dtype="i")
+            if len(yticks) < self.yrange: break
+        plt.yticks(yticks)
 
         if annotate_with_cmds: annotate_with_cmds(ymax=ibmax)
 

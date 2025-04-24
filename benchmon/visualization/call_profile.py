@@ -2,6 +2,7 @@
 
 import os
 import logging
+import pickle
 import time
 import matplotlib.pyplot as plt
 
@@ -23,9 +24,6 @@ class PerfCallRawData:
         """
         self.logger = logger
         self.filename = filename
-
-        self.logger.debug("Read CPU csv report..."); t0 = time.time()
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
 
     def load_data(self) -> list:
@@ -113,30 +111,39 @@ class PerfCallRawData:
         """
         Get samples and commands
         """
-        samples = self.create_samples()
+        samples_pkl = f"{os.path.dirname(self.filename)}/pkl_dir/call_samples.pkl"
+        cmds_pkl = f"{os.path.dirname(self.filename)}/pkl_dir/call_cmds.pkl"
 
-        self.logger.debug("Get PerfCall command list..."); t0 = time.time()
+        if os.access(samples_pkl, os.R_OK) and os.access(cmds_pkl, os.R_OK):
+            self.logger.debug("Load PerfCall samples + PerfCall commands list..."); t0 = time.time()
 
-        cmds = {}
-        for sample in samples:
-            cmd = sample["cmd"]
-            try:
-                cmds[cmd] += 1
-            except KeyError:
-                cmds[cmd] = 1
-        cmds = {ky: val for ky, val in sorted(cmds.items(), key = lambda item: -item[1])}
+            with open(samples_pkl, "rb") as _pf: samples = pickle.load(_pf)
+            with open(cmds_pkl, "rb") as _pf: cmds = pickle.load(_pf)
+
+        else:
+
+            samples = self.create_samples()
+            with open(samples_pkl, "wb") as _pf: pickle.dump(samples, _pf)
+
+
+            self.logger.debug("Get PerfCall command list..."); t0 = time.time()
+
+            cmds = {}
+            for sample in samples:
+                cmd = sample["cmd"]
+                try:
+                    cmds[cmd] += 1
+                except KeyError:
+                    cmds[cmd] = 1
+            cmds = {ky: val for ky, val in sorted(cmds.items(), key = lambda item: -item[1])}
+
+            with open(cmds_pkl, "wb") as _pf: pickle.dump(cmds, _pf)
 
         list_filename = f"{os.path.realpath(os.path.dirname(self.filename))}/list_recorded_perf_cmds.txt"
         with open(list_filename, "w") as _file:
             for cmd in cmds.keys():
                 _file.write(f"{cmd}: {cmds[cmd]} samples\n")
         self.logger.debug(f"List of recorded commands with perf: {list_filename}")
-
-        if DEBUG:
-            print("Recorded commands with perf " + 22 * "-")
-            for cmd in cmds.keys():
-                print(f"{cmd}: {cmds[cmd]} samples")
-            print(50 * "-")
 
         self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
@@ -147,21 +154,24 @@ class PerfCallData():
     """
     Per callstack data with cmd
     """
-    def __init__(self, logger: logging.Logger, cmd: str, samples: list, m2r: float):
+    def __init__(self, logger: logging.Logger, cmd: str, samples: list, m2r: float, traces_repo: str):
         """
         Constructor
 
         Args:
-            logger  (logging.Logger)    Logging object
-            cmd     (str)               Recorded command
-            samples (list)              Samples of recorded command
-            m2r     (int)               Delta monotonic time to real
+            logger      (logging.Logger)    Logging object
+            cmd         (str)               Recorded command
+            samples     (list)              Samples of recorded command
+            m2r         (int)               Delta monotonic time to real
+            traces_repo (str)               Traces repository
         """
         self.logger = logger
         self.cmd = cmd
         self.mono_to_real_time = m2r
         self._plt_legend_threshold = 0.01 # @pars
         self._plt_depth_size = 2/3
+
+        self.traces_repo = traces_repo
 
         self._construct(samples)
 
@@ -173,28 +183,43 @@ class PerfCallData():
         Args:
             samples (list): Samples
         """
-        self.logger.debug("Construct PerfCall command samples..."); t0 = time.time()
+        cmd_samples = f"{self.traces_repo}/pkl_dir/call_{self.cmd}_samples.pkl"
+        cmd_tids = f"{self.traces_repo}/pkl_dir/call_{self.cmd}_tids.pkl"
 
-        self.samples = []
-        pids = []
-        tids = []
-        timestamps = []
-        for sample in samples:
-            if sample["cmd"] == self.cmd:
-                self.samples += [{
-                    # "pid": sample["pid"],
-                    "tid": sample["tid"],
-                    "timestamp": sample["timestamp"],
-                    "cycles": sample["cycles"],
-                    "callstack": sample["callstack"],
-                    "ncalls": len(sample["callstack"])
-                    }]
-                # pids += [sample["pid"]]
-                tids += [sample["tid"]]
-                timestamps += [sample["timestamp"]]
+        if os.access(cmd_samples, os.R_OK) and os.access(cmd_tids, os.R_OK):
+            self.logger.debug(f"Load PerfCall samples for command = {self.cmd} ..."); t0 = time.time()
 
-        # self.pids = {pid: rel_pid for rel_pid, pid in enumerate(set(pids))} # @hc
-        self.tids = {tid: rel_tid for rel_tid, tid in enumerate(set(tids))}
+            with open(cmd_samples, "rb") as _pf: self.samples = pickle.load(_pf)
+            with open(cmd_tids, "rb") as _pf: self.tids = pickle.load(_pf)
+
+        else:
+
+            self.logger.debug("Construct PerfCall command samples..."); t0 = time.time()
+
+            self.samples = []
+            pids = []
+            tids = []
+            timestamps = []
+            for sample in samples:
+                if sample["cmd"] == self.cmd:
+                    self.samples += [{
+                        # "pid": sample["pid"],
+                        "tid": sample["tid"],
+                        "timestamp": sample["timestamp"],
+                        "cycles": sample["cycles"],
+                        "callstack": sample["callstack"],
+                        "ncalls": len(sample["callstack"])
+                        }]
+                    # pids += [sample["pid"]]
+                    tids += [sample["tid"]]
+                    timestamps += [sample["timestamp"]]
+
+            # self.pids = {pid: rel_pid for rel_pid, pid in enumerate(set(pids))} # @hc
+            self.tids = {tid: rel_tid for rel_tid, tid in enumerate(set(tids))}
+
+            with open(cmd_samples, "wb") as _pf: pickle.dump(self.samples, _pf)
+            with open(cmd_tids, "wb") as _pf: pickle.dump(self.tids, _pf)
+
         self.nt = len(self.tids)
         self.nsamples = len(self.samples)
 
