@@ -53,9 +53,12 @@ class BenchmonMNSyncVisualizer:
         Args:
             nodes_data (list): list of nodes data
         """
-        nsbp = self.args.hf_cpu + self.args.hf_mem + self.args.hf_net + self.args.hf_disk + (self.args.pow or self.args.pow_g5k)
+        nsbp = self.args.hf_cpu + self.args.hf_mem + self.args.hf_net + self.args.hf_ib + + self.args.hf_disk # + (self.args.pow or self.args.pow_g5k)
 
-        fig = plt.figure(figsize=(self.args.fig_width, nsbp * self.args.fig_height_unit))
+        fig, axs = plt.subplots(nsbp, sharex=True)
+        fig.set_size_inches(self.args.fig_width, nsbp * self.args.fig_height_unit)
+        fig.add_gridspec(nsbp, hspace=0)
+
         sbp = 1
 
         if self.args.hf_cpu:
@@ -70,21 +73,20 @@ class BenchmonMNSyncVisualizer:
             plt.subplot(nsbp, 1, sbp); sbp += 1
             self.plot_sync_net(nodes_data=nodes_data)
 
+        if self.args.hf_ib:
+            plt.subplot(nsbp, 1, sbp); sbp += 1
+            self.plot_sync_ib(nodes_data=nodes_data)
+
         if self.args.hf_disk:
             plt.subplot(nsbp, 1, sbp); sbp += 1
             self.plot_sync_disk(nodes_data=nodes_data)
 
-        if self.args.pow or self.args.pow_g5k:
-            plt.subplot(nsbp, 1, sbp); sbp += 1
-            self.plot_sync_pow(nodes_data=nodes_data)
+        # if self.args.pow or self.args.pow_g5k:
+        #     plt.subplot(nsbp, 1, sbp); sbp += 1
+        #     self.plot_sync_pow(nodes_data=nodes_data)
 
         plt.subplots_adjust(hspace=.5)
         plt.tight_layout()
-        plt.savefig("myfig.png")
-
-        plt.subplots_adjust(hspace=.5)
-        plt.tight_layout()
-        plt.savefig("myfig.png")
 
         if self.args.interactive:
             self.logger.debug("Start interactive session with matplotlib")
@@ -145,6 +147,11 @@ class BenchmonMNSyncVisualizer:
             mem_sync += [mem]
         plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
         self.sync_metrics(ts_list=ts_sync, dev_list=mem_sync, label="sum", color="k", ls="-.")
+
+        for powtwo in range(25):
+            yticks = np.arange(0, sum(memtotal) + 2**powtwo, 2**powtwo, dtype="i")
+            if len(yticks) < self.args.fig_yrange: break
+        plt.yticks(yticks)
         self.set_frame(label="Memory (GB)")
 
 
@@ -179,7 +186,7 @@ class BenchmonMNSyncVisualizer:
             ts_sync += [ts]
             net_tx_sync += [net_tx]
             tx_data += data.system_native_metrics.hf_net_tx_data
-        self.sync_metrics(ts_list=ts_sync, dev_list=net_tx_sync, label=f"tx:sum ({int(tx_data)} MB)", marker="^", ls="--")
+        self.sync_metrics(ts_list=ts_sync, dev_list=net_tx_sync, label=f"tx:sum ({int(tx_data)} MB)", marker="^", ls="--", with_yrange=(tx_data > rx_data))
 
         self.set_frame(label="Network Activity (MB/s)")
 
@@ -215,9 +222,45 @@ class BenchmonMNSyncVisualizer:
             ts_sync += [ts]
             wr_sync += [disk_wr]
             wr_data += data.system_native_metrics.hf_disk_wr_data
-        self.sync_metrics(ts_list=ts_sync, dev_list=wr_sync, label=f"wr:sum ({int(rd_data)} MB)", marker="^", ls="--")
+        self.sync_metrics(ts_list=ts_sync, dev_list=wr_sync, label=f"wr:sum ({int(wr_data)} MB)", marker="^", ls="--", with_yrange=(wr_data > rd_data))
 
         self.set_frame(label="Disk Activity (MB/s)")
+
+
+    def plot_sync_ib(self, nodes_data: list = []) -> None:
+        """
+        Plot infiniband sync
+
+        Args:
+            nodes_data (list): list of nodes data
+        """
+        ts_sync = []
+        ib_rx_sync = []
+        rx_data = 0
+        for data in nodes_data:
+            ts = data.system_native_metrics.hf_ib_stamps
+            ib_rx = data.system_native_metrics.ib_rx_total
+            plt.plot(ts, ib_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_native_metrics.ib_rx_data)} MB)")
+
+            ts_sync += [ts]
+            ib_rx_sync += [ib_rx]
+            rx_data += data.system_native_metrics.ib_rx_data
+        self.sync_metrics(ts_list=ts_sync, dev_list=ib_rx_sync, label=f"rx:sum ({int(rx_data)} MB)", marker="v", ls="--", with_yrange=True)
+
+        ts_sync = []
+        ib_tx_sync = []
+        tx_data = 0
+        for data in nodes_data:
+            ts = data.system_native_metrics.hf_ib_stamps
+            ib_tx = data.system_native_metrics.ib_tx_total
+            plt.plot(ts, ib_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_native_metrics.ib_tx_data)} MB)")
+
+            ts_sync += [ts]
+            ib_tx_sync += [ib_tx]
+            tx_data += data.system_native_metrics.ib_tx_data
+        self.sync_metrics(ts_list=ts_sync, dev_list=ib_tx_sync, label=f"tx:sum ({int(tx_data)} MB)", marker="^", ls="--", with_yrange=(tx_data > rx_data))
+
+        self.set_frame(label="Infiniband Activity (MB/s)")
 
 
     def plot_sync_pow(self, nodes_data: list = []) -> None:
@@ -241,7 +284,7 @@ class BenchmonMNSyncVisualizer:
     def sync_metrics(self,
                      ts_list: list = [], dev_list: list = [], opt: str = "sum",
                      label: str = "", ls: str = "-", marker: str = "",
-                     color = None) -> None:
+                     color = None, with_yrange: bool = False) -> None:
         """
         Sync multi-node metrics
 
@@ -266,3 +309,9 @@ class BenchmonMNSyncVisualizer:
 
         plt.plot(ts_sync, dev_sync/divider, label=label, color=color, ls=ls, marker=marker)
 
+        if with_yrange:
+            maxval = max(dev_sync/divider)
+            for powtwo in range(25):
+                yticks = np.arange(0, maxval + 2**powtwo, 2**powtwo, dtype="i")
+                if len(yticks) < self.args.fig_yrange: break
+            plt.yticks(yticks)

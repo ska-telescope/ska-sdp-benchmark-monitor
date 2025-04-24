@@ -80,6 +80,8 @@ class HighFreqData():
             self.hf_ib_stamps = np.array([])
             self.ib_rx_total = np.array([])
             self.ib_tx_total = np.array([])
+            self.ib_rx_data = 0
+            self.ib_tx_data = 0
             self.get_hf_ib_prof(csv_ib_report=csv_ib_report)
 
         self.xticks = None
@@ -318,8 +320,8 @@ class HighFreqData():
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
 
-        for powtow in range(25):
-            yticks = np.arange(0, total_max + 2**powtow, 2**powtow, dtype="i")
+        for powtwo in range(25):
+            yticks = np.arange(0, total_max + 2**powtwo, 2**powtwo, dtype="i")
             if len(yticks) < self.yrange: break
         plt.yticks(yticks)
 
@@ -550,8 +552,8 @@ class HighFreqData():
         netmax = max(max(self.hf_net_rx_total), max(self.hf_net_tx_total))
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
-        for powtow in range(25):
-            yticks = np.arange(0, netmax + 2**powtow, 2**powtow, dtype="i")
+        for powtwo in range(25):
+            yticks = np.arange(0, netmax + 2**powtwo, 2**powtwo, dtype="i")
             if len(yticks) < self.yrange: break
         plt.yticks(yticks)
         plt.ylabel("Network (MB/s)")
@@ -719,8 +721,8 @@ class HighFreqData():
                             self.hf_disk_wr_total = self.hf_disk_wr_total + array
                             self.hf_disk_wr_data = self.hf_disk_wr_data + self.hf_disk_data[blk][field]
 
-        for powtow in range(25):
-            yticks = np.arange(0, diskmax + 2**powtow, 2**powtow, dtype="i")
+        for powtwo in range(25):
+            yticks = np.arange(0, diskmax + 2**powtwo, 2**powtwo, dtype="i")
             if len(yticks) < self.yrange: break
         plt.yticks(yticks)
         plt.ylabel("Disk bandwidth (MB/s)")
@@ -831,10 +833,14 @@ class HighFreqData():
         for interf in self.ib_interfs:
             self.ib_rx_total = self.ib_rx_total + self.hf_ib_prof[interf]["port_rcv_data"]
             self.ib_tx_total = self.ib_tx_total + self.hf_ib_prof[interf]["port_xmit_data"]
+
+            self.ib_rx_data += self.hf_ib_data[interf]["port_rcv_data"]
+            self.ib_tx_data += self.hf_ib_data[interf]["port_xmit_data"]
+
         alpha = .5
 
         # RX:IB
-        plt.fill_between(self.hf_ib_stamps, self.ib_rx_total, label="rx:total", color="b", alpha=alpha/2)
+        plt.fill_between(self.hf_ib_stamps, self.ib_rx_total, label=f"rx:total ({self.ib_rx_data}) MB", color="b", alpha=alpha/2)
         for interf in self.ib_interfs:
             rx_arr = self.hf_ib_prof[interf]["port_rcv_data"]
             rx_data_label = self.hf_ib_data[interf]["port_rcv_data"]
@@ -842,20 +848,24 @@ class HighFreqData():
                 plt.plot(self.hf_ib_stamps, rx_arr, label=f"rx:(ib){interf} ({rx_data_label} MB)", ls="-", marker="v", alpha=alpha)
 
         # TX:IB
-        plt.fill_between(self.hf_ib_stamps, self.ib_tx_total, label="tx:total", color="r", alpha=alpha/2)
+        plt.fill_between(self.hf_ib_stamps, self.ib_tx_total, label=f"tx:total ({self.ib_tx_data} MB)", color="r", alpha=alpha/2)
         for interf in self.ib_interfs:
             tx_arr = self.hf_ib_prof[interf]["port_xmit_data"]
             tx_data_label = self.hf_ib_data[interf]["port_xmit_data"]
             if tx_data_label > 1: # np.linalg.norm(tx_arr) > 1:
                 plt.plot(self.hf_ib_stamps, tx_arr, label=f"tx:(ib){interf} ({tx_data_label} MB)", ls="-", marker="^", alpha=alpha)
 
-        plt.ylabel("Infiniband bandwidth (MB/s)")
+        ibmax = max(max(self.ib_rx_total), max(self.ib_tx_total))
+
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
+        for powtwo in range(25):
+            yticks = np.arange(0, ibmax + 2**powtwo, 2**powtwo, dtype="i")
+            if len(yticks) < self.yrange: break
+        plt.yticks(yticks)
+        plt.ylabel("Infiniband bandwidth (MB/s)")
         plt.grid()
         plt.legend(loc=1)
-
-        ibmax = max(max(self.ib_rx_total), max(self.ib_tx_total))
 
         if annotate_with_cmds: annotate_with_cmds(ymax=ibmax)
 
