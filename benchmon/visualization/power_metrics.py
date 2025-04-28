@@ -1,3 +1,5 @@
+"""Module to process power/energy data"""
+
 import csv
 import logging
 import json
@@ -5,8 +7,10 @@ import os
 import pickle
 import time
 from datetime import datetime
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     """
@@ -23,9 +27,10 @@ class PerfPowerData:
     """
     Perf power database
     """
+
     def __init__(self, logger: logging.Logger, csv_filename: str):
         """
-        Constructor
+        Construct PerfPowData object
 
         Args:
             csv_filename    (str)               csv filename
@@ -45,7 +50,7 @@ class PerfPowerData:
             "power/energy-pkg/": "cpu-pkg",
             "power/energy-psys/": "psys",
             "power/energy-gpu/": "gpu"
-            }
+        }
 
         self.create_profile()
 
@@ -71,35 +76,39 @@ class PerfPowerData:
         ts_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_stamps.pkl"
 
         if os.access(pow_pkl, os.R_OK):
-            self.logger.debug("Load Power profile..."); t0 = time.time()
+            self.logger.debug("Load Power profile..."); t0 = time.time()  # noqa: E702
 
-            with open(pow_pkl, "rb") as _pf: self.pow_prof = pickle.load(_pf)
-            with open(ts_pkl, "rb") as _pf: self.time_stamps = pickle.load(_pf)
+            with open(pow_pkl, "rb") as _pf:
+                self.pow_prof = pickle.load(_pf)
+            with open(ts_pkl, "rb") as _pf:
+                self.time_stamps = pickle.load(_pf)
 
-            self.cpus = list(self.pow_prof.keys()); self.cpus.remove("time")
+            self.cpus = list(self.pow_prof.keys()); self.cpus.remove("time")  # noqa: E702
             self.events = self.pow_prof[self.cpus[0]].keys()
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         else:
-            self.logger.debug("Read PerfPower csv report..."); t0 = time.time()
+            self.logger.debug("Read PerfPower csv report..."); t0 = time.time()  # noqa: E702
             self.read_csv_list()
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-            self.logger.debug("Create PerfPower profile..."); t0 = time.time()
+            self.logger.debug("Create PerfPower profile..."); t0 = time.time()  # noqa: E702
 
-            LINES_START_INDEX = 2
+            LINES_START_INDEX = 2  # noqa: N806
 
-            EVENT_INDEX = 4
-            self.events = list(set([item[EVENT_INDEX] for item in self.csv_list[LINES_START_INDEX:]]))
+            EVENT_INDEX = 4  # noqa: N806
+            self.events = list({item[EVENT_INDEX] for item in self.csv_list[LINES_START_INDEX:]})
             nevents = len(self.events)
 
-            CPU_INDEX = 1
-            self.cpus = list(set([item[CPU_INDEX] for item in self.csv_list[LINES_START_INDEX:]]))
+            CPU_INDEX = 1  # noqa: N806
+            self.cpus = list({item[CPU_INDEX] for item in self.csv_list[LINES_START_INDEX:]})
             ncpu = len(self.cpus)
 
             stride = ncpu * nevents
-            self.pow_prof["time"] = [float(self.csv_list[i][0]) for i in range(LINES_START_INDEX, len(self.csv_list), stride)]
+            self.pow_prof["time"] = [float(self.csv_list[i][0]) for i in range(LINES_START_INDEX,
+                                                                               len(self.csv_list),
+                                                                               stride)]
             self.nstamps = len(self.pow_prof["time"])
 
             for cpu in self.cpus:
@@ -109,7 +118,7 @@ class PerfPowerData:
             for _list in self.csv_list[LINES_START_INDEX:]:
                 cpu = _list[1]
                 event = _list[4]
-                value = float(_list[2]) / (float(_list[5]) * 1e-9) # J = W/S
+                value = float(_list[2]) / (float(_list[5]) * 1e-9)  # J = W/S
                 self.pow_prof[cpu][event] += [value]
 
             for cpu in self.cpus:
@@ -119,13 +128,15 @@ class PerfPowerData:
             # Time stamps
             with open(self.csv_filename) as file:
                 epoch0 = float(file.readline()[2:-1])
-            self.time_stamps = np.zeros(self.nstamps+1)
+            self.time_stamps = np.zeros(self.nstamps + 1)
             self.time_stamps[0] = epoch0
             for i in range(0, self.nstamps):
-                self.time_stamps[i+1] = epoch0 + self.pow_prof["time"][i]
+                self.time_stamps[i + 1] = epoch0 + self.pow_prof["time"][i]
 
-            with open(pow_pkl, "wb") as _pf: pickle.dump(self.pow_prof, _pf)
-            with open(ts_pkl, "wb") as _pf: pickle.dump(self.time_stamps, _pf)
+            with open(pow_pkl, "wb") as _pf:
+                pickle.dump(self.pow_prof, _pf)
+            with open(ts_pkl, "wb") as _pf:
+                pickle.dump(self.time_stamps, _pf)
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
@@ -149,13 +160,13 @@ class PerfPowerData:
 
     def plot_events(self, pre_label: str = "") -> float:
         """
-        Plots total power events
+        Plot total power events
 
         Args:
             xticks (list): x-axis ticks of current plot
             xlim (list): x-axis limit of current plot
         """
-        pow_total = {event: 0 for event in self.events}
+        pow_total = {event: 0 for event in self.events}  # noqa: C420
         for cpu in self.cpus:
             for event in self.events:
                 pow_total[event] += self.pow_prof[cpu][event]
@@ -183,9 +194,10 @@ class G5KPowerData:
     """
     Grid5000 power database
     """
+
     def __init__(self, traces_dir: str):
         """
-        Constructor
+        Construct Grid5000 power database
         """
         self.traces_dir = traces_dir
         self.g5k_pow_prof = {}
@@ -196,7 +208,7 @@ class G5KPowerData:
         """
         Read json report
         """
-        with open (f"{self.traces_dir}/{report_filename}", "r") as jsfile:
+        with open(f"{self.traces_dir}/{report_filename}", "r") as jsfile:
             return json.load(jsfile)
 
 
@@ -219,10 +231,8 @@ class G5KPowerData:
             g5k_pow_list = self.read_json_file(f"g5k_pow_report_{metric}.json")
             nstamps = len(g5k_pow_list)
 
-            self.g5k_pow_prof[metric] = {
-            "timestamps": np.zeros(nstamps),
-            "value": np.zeros(nstamps)
-            }
+            self.g5k_pow_prof[metric] = {"timestamps": np.zeros(nstamps),
+                                         "value": np.zeros(nstamps)}
 
             fmt = "%Y-%m-%dT%H:%M:%S.%f%z"
             for idx, item in enumerate(g5k_pow_list):
@@ -236,7 +246,7 @@ class G5KPowerData:
 
     def plot_g5k_pow_profiles(self, pre_label: str = "") -> float:
         """
-        Plots total power events
+        Plot total power events
 
         Args:
             xticks (list): x-axis ticks of current plot
@@ -268,6 +278,8 @@ class G5KPowerData:
                      ls=metrics_style[metric]["ls"],
                      marker=metrics_style[metric]["marker"],
                      label=f"{pre_label}{metrics_style[metric]['label']} ({round(energy,1)} Wh)")
-            if len(vals) > 1: _ymax = max(_ymax, max(vals))
+
+            if len(vals) > 1:
+                _ymax = max(_ymax, max(vals))
 
         return _ymax

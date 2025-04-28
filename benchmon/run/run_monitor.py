@@ -1,46 +1,47 @@
+"""Run monitor module"""
+
 import glob
 import json
 import math
 import os
-import psutil
-import requests
-import shutil
 import signal
 import subprocess
-import sys
 import time
+
+import psutil
+import requests
+
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
 
+
 class RunMonitor:
+    """
+    Run monitor class starting, stoping, post-processing monitoring processes
+    """
+
     def __init__(self, args, logger):
+        """Docstring @todo."""
+
         self.logger = logger
 
         self.should_run = True
 
         self.save_dir = args.save_dir
-        self.prefix = args.prefix
-
-        self.sampling_freq = args.sampling_freq
 
         self.save_dir_base = args.save_dir
         self.save_dir = f"{self.save_dir}/benchmon_traces_{HOSTNAME}"
 
         self.verbose = args.verbose
 
-        # High-frequency system monitoring
-        self.hfsys_filename = lambda device: f"hf_{device}_report.csv" # @nc
-        self.is_hf_system = args.high_freq_system
-        self.hf_sys_freq = args.hf_sys_freq
-
-        # System monitoring parameters (with dool)
-        self.filename = f"sys_report.csv"
+        # System monitoring
+        self.sys_filename = lambda device: f"{device}_report.csv"  # @nc
         self.is_system = args.system
-        self.system_sampling_interval = args.system_sampling_interval
+        self.sys_freq = args.sys_freq
 
         # Power monitoring parameters
-        self.pow_filename = f'pow_report.csv'
+        self.pow_filename = "pow_report.csv"
         self.is_power = args.power
         self.power_sampling_interval = args.power_sampling_interval
 
@@ -49,69 +50,45 @@ class RunMonitor:
         self.is_power_g5k = args.power_g5k
 
         # Profiling and callstack parameters
-        self.call_filename = f'call_report.txt'
+        self.call_filename = "call_report.txt"
         self.is_call = args.call
         self.call_mode = args.call_mode
         self.call_profiling_frequency = args.call_profiling_frequency
-        self.temp_perf_file = f'_temp_perf.data'
+        self.temp_perf_file = "_temp_perf.data"
         self.is_perf_datafile_kept = args.call_keep_datafile
 
         # Enable sudo-g5k (for Grid5000 clusters)
         self.sudo_g5k = "sudo-g5k" if "grid5000" in HOSTNAME else ""
 
-        # Mark the node with SLURM_NODEID == "0" as main node responsible for collecting all the different reports in the end
-        is_slurm_control_node = os.environ.get("SLURM_NODEID") == "0" if "SLURM_NODEID" in os.environ else False
-        is_oar_control_node = True if subprocess.run(["oarprint host"], capture_output=True, shell=True, text=True).stdout.split("\n")[0] == HOSTNAME else False
-        self.is_benchmon_control_node = is_slurm_control_node or is_oar_control_node
+        # Mark the node 0 as main node responsible for collecting all the different reports
+        oar_check = subprocess.run(args=["oarprint", "host"],
+                                   capture_output=True,
+                                   shell=True,
+                                   text=True,
+                                   check=False).stdout.split("\n")[0] == HOSTNAME
+        slurm_check = os.environ.get("SLURM_NODEID") == "0"
+        self.is_benchmon_control_node = True if oar_check or slurm_check else False
 
         # Setup SIGTERM handler for graceful termination
         signal.signal(signal.SIGTERM, self.terminate)
 
-        # Get dool binary
-        self.dool = args.dool
-        if not self.dool:
-            # search for dool in the path
-            dool_path = shutil.which("dool")
-            if dool_path is None and self.is_system:
-                raise Exception("Dool not found in PATH. Please specify the dool executable using --dool")
-            self.dool = dool_path
-        else:
-            # We use shutil again to check if the passed file exists and is an executable.
-            dool_path = shutil.which(self.dool, mode=os.F_OK | os.X_OK)
-            if dool_path is None and self.is_system:
-                raise Exception(f"Specified dool executable \"{self.dool}\" is not executable or not found! Please specify the correct dool executable using --dool")
-
-        self.filename = self.filename.replace("%j", os.environ.get("SLURM_JOB_ID") if "SLURM_JOB_ID" in os.environ else "noslurm")
-        self.filename = self.filename.replace("%n", HOSTNAME)
-        if not self.filename.endswith(".csv"):
-            self.filename = f"{self.filename}.csv"
-
-        # # Remove possible trailing slashes in save_dir path
-        # if self.save_dir[-1] == os.path.sep:
-        #     self.save_dir = self.save_dir[:-1]
-
-        # handle for the dool process
-        self.dool_process = None
+        # Init process variables
+        self.sys_process = []
         self.perfpow_process = None
         self.perfcall_process = None
-        self.hf_sys_process = []
+
 
     def run(self):
         """
-        Wrapper of monitoring functions
+        Run, terminate, post-process processes
+        (Wrapper of monitoring functions)
         """
         self.t0 = time.time()
 
         os.makedirs(self.save_dir, exist_ok=True)
-        # Hardcoded (system info)
-        sh_file = f"{os.path.dirname(os.path.realpath(__file__))}/pre_dool_hc.sh"
-        subprocess.run(["bash", f"{sh_file}", f"{self.save_dir}"])
-
-        if self.is_hf_system:
-            self.run_hf_sys_monitoring()
 
         if self.is_system:
-            self.run_dool()
+            self.run_sys_monitoring()
 
         if self.is_power:
             self.run_perf_pow()
@@ -119,53 +96,44 @@ class RunMonitor:
         if self.is_call:
             self.run_perf_call()
 
-        if self.is_hf_system:
-            self.hf_sys_process[0].wait()
-        elif self.is_system:
-            self.dool_process.wait()
+        if self.is_system:
+            self.sys_process[0].wait()
+        elif self.is_power:
+            self.perfpow_process.wait()
+        elif self.is_call:
+            self.perfcall_process.wait()
 
         self.terminate("", "")
         self.post_process()
 
 
-    def run_hf_sys_monitoring(self):
+    def run_sys_monitoring(self):
         """
-        Run high-frequency monitoring
+        Run system monitoring
         """
-        freq = self.hf_sys_freq
+        freq = self.sys_freq
 
-        self.logger.debug("Starting native high-frequency monitoring")
+        self.logger.debug("Starting system monitoring")
 
-        exec_sh_file = lambda device:  f"{os.path.dirname(os.path.realpath(__file__))}/hf_{device}_mon.sh"
+        sh_repo = os.path.dirname(os.path.realpath(__file__))
+        exec_sh_file = lambda device: f"{sh_repo}/{device}_mon.sh"
 
         # CPU + CPUfreq + Memory + Network + Disk monitoring processes
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"): #, "timing_mapping"):
-            self.logger.debug(f"Starting: {exec_sh_file(device)} {freq} {self.save_dir}/{self.hfsys_filename(device)}")
-            self.hf_sys_process += [
+        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):  # , "timing_mapping"):
+
+            msg = f"{exec_sh_file(device)} {freq} {self.save_dir}/{self.sys_filename(device)}"
+            self.logger.debug(f"Starting: {msg}")
+
+            self.sys_process += [
                 subprocess.Popen(
-                    [
-                        "bash", exec_sh_file(device),
-                        f"{freq}",
-                        f"{self.save_dir}/{self.hfsys_filename(device)}"
-                    ],
+                    args=["bash", exec_sh_file(device),
+                          f"{freq}",
+                          f"{self.save_dir}/{self.sys_filename(device)}"],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True
                 )
             ]
-
-
-    def run_dool(self):
-        """
-        Run dool as subprocess
-        """
-        # The constructor made sure we have a correct dool executable at self.dool
-        # dool --time --mem --swap --io --aio --disk --fs --net --cpu --cpu-use --output save_dir/sys_report.csv
-        dool_cmd = [self.dool, "--epoch", "--mem", "--swap", "--io", "--aio", "--disk", "--fs", "--net", "--cpu", "--cpu-use", "--cpufreq", "--bytes", "--output", f"{self.save_dir}{os.path.sep}{self.filename}", f"{self.system_sampling_interval}"]
-
-        self.logger.debug(f"Starting dool:\n\t{' '.join(dool_cmd)}")
-
-        self.dool_process = subprocess.Popen(dool_cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
 
     def run_perf_pow(self):
@@ -174,7 +142,12 @@ class RunMonitor:
         """
         # Get Perf Power event
         get_events_cmd = "perf list | grep -i power/energy | awk '{print $1}'"
-        events = subprocess.run(get_events_cmd, capture_output=True, shell=True, text=True).stdout.split("\n")[:-1]
+        events = subprocess.run(args=get_events_cmd,
+                                capture_output=True,
+                                shell=True,
+                                text=True,
+                                check=False).stdout.split("\n")[:-1]
+
         event_flags = []
         for event in events:
             event_flags += ["-e"] + [event]
@@ -188,13 +161,19 @@ class RunMonitor:
             fn.write(f"# {time.time()}\n")
 
         # Perf power command
-        perf_pow_cmd = ["perf", "stat", "-A", "-a"] + event_flags + ["-I", f"{sampl_intv}"] + ["-x", ",", "--append", "-o", f"{filename}"]
-        if self.sudo_g5k: perf_pow_cmd.insert(0, self.sudo_g5k)
+        perf_pow_cmd = ["perf", "stat", "-A", "-a"] + event_flags + \
+                       ["-I", f"{sampl_intv}"] + ["-x", ",", "--append", "-o", f"{filename}"]
+
+        if self.sudo_g5k:
+            perf_pow_cmd.insert(0, self.sudo_g5k)
 
         self.logger.debug(f"Starting perf (power):\n\t{' '.join(perf_pow_cmd)}")
 
         # Run perf (power)
-        self.perfpow_process = subprocess.Popen(perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.perfpow_process = subprocess.Popen(args=perf_pow_cmd,
+                                                stdout=subprocess.PIPE,
+                                                stderr=subprocess.STDOUT,
+                                                text=True)
 
 
     def run_perf_call(self):
@@ -207,7 +186,9 @@ class RunMonitor:
                          "--call-graph", f"{self.call_mode}",
                          "-o", f"{self.save_dir}/{self.temp_perf_file}"
                          ]
-        if self.sudo_g5k: perf_call_cmd.insert(0, self.sudo_g5k)
+
+        if self.sudo_g5k:
+            perf_call_cmd.insert(0, self.sudo_g5k)
 
         self.logger.debug(f"Starting perf (call graph):\n\t{' '.join(perf_call_cmd)}")
 
@@ -218,7 +199,11 @@ class RunMonitor:
             file.write(f"{real - monotonic}\n")
 
         # Run perf (call)
-        self.perfcall_process = subprocess.Popen(perf_call_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, shell=False, text=True)
+        self.perfcall_process = subprocess.Popen(args=perf_call_cmd,
+                                                 stdout=subprocess.PIPE,
+                                                 stderr=subprocess.DEVNULL,
+                                                 shell=False,
+                                                 text=True)
 
 
     def download_g5k_pow(self):
@@ -234,55 +219,75 @@ class RunMonitor:
 
         for metric in metrics:
 
-            suffix = f"stable/sites/{_site}/metrics?metrics={metric}&nodes={_cluster}&start_time={math.floor(self.t0)}&end_time={math.ceil(self.t1)}"
+            suffix = f"stable/sites/{_site}/metrics?metrics={metric}&" + \
+                     f"nodes={_cluster}&start_time={math.floor(self.t0)}&" + \
+                     f"end_time={math.ceil(self.t1)}"
             url = f"https://api.grid5000.fr/{suffix}"
 
             self.logger.debug(f"Downloading ...: {url}")
 
             req = requests.get(url, verify=False)
             filepath = f"{self.save_dir}/g5k_pow_report_{metric}.json"
-            with open (filepath, "w") as jsfile:
+            with open(filepath, "w") as jsfile:
                 json.dump(req.json(), jsfile)
 
             self.logger.debug(f"File saved in: {filepath}")
 
 
     def terminate(self, signum=None, frame=None):
+        """
+        Terminate background process after catching term signal
+        """
+        signum = signum
+        frame = frame
+
         # kill perf (call)
         if self.perfcall_process:
-            perfcall_children = [f"{child.pid}" for child in psutil.Process(self.perfcall_process.pid).children()]
+            perfcall_children = [
+                f"{child.pid}" for child in psutil.Process(self.perfcall_process.pid).children()
+            ]
             kill_perf_pow_cmd = ["kill", "-15", f"{self.perfcall_process.pid}"] + perfcall_children
-            if self.sudo_g5k: kill_perf_pow_cmd.insert(0, self.sudo_g5k)
-            subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            process_stdout = self.perfcall_process.stdout.read() # @hc must be kept, otherwise it doesnt terminate properly
+
+            if self.sudo_g5k:
+                kill_perf_pow_cmd.insert(0, self.sudo_g5k)
+
+            subprocess.run(args=kill_perf_pow_cmd,
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT,
+                           text=True,
+                           check=False)
+
+            process_stdout = self.perfcall_process.stdout.read()
+            # @hc must be kept, otherwise, it doesnt terminate properly
 
             self.logger.debug(f"Terminated perf (call graph) with stdout: {process_stdout}")
 
         # kill perf (power)
         if self.perfpow_process:
-            perfpow_children = [f"{child.pid}" for child in psutil.Process(self.perfpow_process.pid).children()]
+            perfpow_children = [
+                f"{child.pid}" for child in psutil.Process(self.perfpow_process.pid).children()
+            ]
             kill_perf_pow_cmd = ["kill", "-15", f"{self.perfpow_process.pid}"] + perfpow_children
-            if self.sudo_g5k: kill_perf_pow_cmd.insert(0, self.sudo_g5k)
-            subprocess.run(kill_perf_pow_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            process_stdout = self.perfpow_process.stdout.read() # @hc
+
+            if self.sudo_g5k:
+                kill_perf_pow_cmd.insert(0, self.sudo_g5k)
+
+            subprocess.run(args=kill_perf_pow_cmd,
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT,
+                           text=True,
+                           check=False)
+
+            process_stdout = self.perfpow_process.stdout.read()  # @hc
 
             self.logger.debug(f"Terminated perf (power) with stdout: {process_stdout}")
 
-
-        # kill dool process gracefully
-        if self.dool_process and self.dool_process.poll() is None:
-            self.dool_process.terminate()
-            process_stdout = self.dool_process.stdout.read()
-
-            self.logger.debug(f"Terminated dool with stdout: {process_stdout}")
-
-            self.dool_process = None
-
-        for process in self.hf_sys_process:
+        # Kill sys processes
+        for process in self.sys_process:
             process.terminate()
             process_stdout = process.stdout.read()
 
-            self.logger.debug(f"Terminated high-frequency monitoring with stdout: {process_stdout}")
+            self.logger.debug(f"Terminated system monitoring with stdout: {process_stdout}")
 
 
     def post_process(self):
@@ -296,17 +301,24 @@ class RunMonitor:
         if self.is_call:
             self.logger.debug("Post-processing perf.data file ...")
             perf_data_file = f"{self.save_dir}/{self.temp_perf_file}"
-            create_callgraph_cmd = ["perf", "script", "-F", "trace:comm,pid,tid,cpu,time,event", "-i", perf_data_file] # @dev "-F comm,pid,tid,cpu,time,event" could be used to lighten the file
+            create_callgraph_cmd = ["perf", "script",
+                                    "-F", "trace:comm,pid,tid,cpu,time,event",
+                                    "-i", perf_data_file]
+            # @dev "-F comm,pid,tid,cpu,time,event" could be used to lighten the file
+
             with open(f"{self.save_dir}/{self.call_filename}", "w") as redirect_stdout:
-                subprocess.run(create_callgraph_cmd, stdout=redirect_stdout, stderr=subprocess.STDOUT, text=True)
+                subprocess.run(args=create_callgraph_cmd,
+                               stdout=redirect_stdout,
+                               stderr=subprocess.STDOUT,
+                               text=True,
+                               check=False)
 
             if not self.is_perf_datafile_kept:
                 self.logger.debug(f"Removing perf binany file: {perf_data_file}...")
                 os.remove(perf_data_file)
-                self.logger.debug(f"...done")
+                self.logger.debug("...done")
 
             self.logger.debug("...done")
-
 
         if self.is_benchmon_control_node:
             self.logger.debug("Control Node: Merging output...")
@@ -323,13 +335,12 @@ class RunMonitor:
             """
             swmon_files = sorted(glob.glob(f"{self.save_dir_base}/swmon-*.json"))
             hwmon_files = sorted(glob.glob(f"{self.save_dir_base}/hwmon-*.json"))
-            traces_dirs = sorted(glob.glob(f"{self.save_dir_base}/benchmon_traces_*"))
 
             # merge swmon-files if any:
             if len(swmon_files) > 0:
                 swmon_data = {}
                 for file in swmon_files:
-                    filename = file.split("/")[-1][6:-4]  # remove "swmon-" and ".csv" - should result in the hostname
+                    filename = file.split("/")[-1][6:-4]
                     with open(file, "r") as f:
                         swmon_data[filename] = json.load(f)
 
@@ -344,7 +355,7 @@ class RunMonitor:
                 hwmon_data = {}
 
                 for file in hwmon_files:
-                    filename = file.split("/")[-1][6:-4]  # remove "hwmon-" and ".csv" - should result in the hostname
+                    filename = file.split("/")[-1][6:-4]
                     with open(file, "r") as f:
                         hwmon_data[filename] = json.load(f)
 

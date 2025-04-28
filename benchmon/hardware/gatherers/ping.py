@@ -1,7 +1,8 @@
-from ping3 import ping
+"""Docstring @todo."""
 import os
 import logging
 
+from ping3 import ping
 from benchmon.common.utils import execute_cmd
 
 log = logging.getLogger(__name__)
@@ -9,8 +10,12 @@ log = logging.getLogger(__name__)
 num_ping = 10
 
 
-class PingReader():
+class PingReader:
+    """Docstring @todo."""
+
     def read(self):
+        """Docstring @todo."""
+
         job_nodes = os.environ.get("SLURM_NODELIST")
         if job_nodes is None:
             return
@@ -24,5 +29,7 @@ class PingReader():
                 latency = sum([ping(node, unit="ms") for _ in range(num_ping)]) / num_ping
                 data[node] = {"avg_latency": latency}
         except PermissionError:
-            log.exception("Permission error when running ping: On some systems ICMP packages might only be sent with elevated privileges.")
+            log.exception(
+                "Permission error when running ping: On some systems ICMP packages might only be sent with elevated privileges."  # noqa: E501
+            )
             return

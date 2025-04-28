@@ -1,19 +1,27 @@
+"""docstring,"""
+
 import shutil
 import logging
+
 from benchmon.common.utils import execute_cmd
 
 log = logging.getLogger(__name__)
 
+
 class AcceleratorReader:
+    """Docstring @todo"""
+
     def __init__(self):
+        """Docstring @todo"""
         pass
 
     def read(self):
+        """Docstring @todo"""
         accelerators = {}
 
         if self.has_nvidia():
             try:
-                accelerators['nvidia'] = self.get_nvidia_data()
+                accelerators["nvidia"] = self.get_nvidia_data()
             except Exception as e:
                 log.error(f"Failed to get nvidia data: {e}")
 
@@ -24,17 +32,21 @@ class AcceleratorReader:
         return accelerators
 
     def has_nvidia(self):
+        """Docstring @todo"""
         # Expect nvidia-smi to be available
-        return shutil.which('nvidia-smi') is not None
+        return shutil.which("nvidia-smi") is not None
 
     def has_amd(self):
+        """Docstring @todo"""
         # Expect rocm-smi to be available
-        return shutil.which('rocm-smi') is not None
+        return shutil.which("rocm-smi") is not None
 
     def get_nvidia_data(self) -> list:
+        """Docstring @todo"""
         nvidia_data = execute_cmd(
-            "nvidia-smi --query-gpu=driver_version,count,name,pci.bus_id,pci.domain,pci.bus,pci.device,pci.device_id,pci.sub_device_id,pcie.link.gen.max,pcie.link.width.max,vbios_version,inforom.img,inforom.oem,pstate,memory.total,ecc.errors.corrected.aggregate.total,clocks.max.sm,clocks.max.memory --format=csv,nounits").splitlines()
-        nvidia_data = [n.split(',') for n in nvidia_data]
+            "nvidia-smi --query-gpu=driver_version,count,name,pci.bus_id,pci.domain,pci.bus,pci.device,pci.device_id,pci.sub_device_id,pcie.link.gen.max,pcie.link.width.max,vbios_version,inforom.img,inforom.oem,pstate,memory.total,ecc.errors.corrected.aggregate.total,clocks.max.sm,clocks.max.memory --format=csv,nounits"  # noqa: E501, B950
+        ).splitlines()
+        nvidia_data = [n.split(",") for n in nvidia_data]
         nvidia_data = [[k.strip() for k in n] for n in nvidia_data]
         headers = nvidia_data[0]
         data = nvidia_data[1:]

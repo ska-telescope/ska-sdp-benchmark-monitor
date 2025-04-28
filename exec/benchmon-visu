@@ -1,18 +1,14 @@
-#!/usr/bin/env python3
-"""
-Main Python script to visualize monitoring metrics
-"""
+#!/usr/bin/env python
+"""Main Python script to visualize monitoring metrics"""
 
 import argparse
 import logging
 import os
-import sys
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from benchmon.visualization import BenchmonMNSyncVisualizer
+from benchmon.visualization import BenchmonVisualizer
 
-from benchmon.visualization import visualizer
-from benchmon.visualization import multi_node_visualizer
 
 def parsing() -> argparse.Namespace:
     """
@@ -26,38 +22,28 @@ def parsing() -> argparse.Namespace:
 
     # Repositories
     parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Traces repository path")
-    parser.add_argument("--recursive", action="store_true", default=False)#, help="Save directory (parent of traces repository)")
+    parser.add_argument("--recursive", action="store_true", default=False)
 
-    # Dool system metrics
+    # System metrics
     parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
     parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
     parser.add_argument("--cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")
-    parser.add_argument("--cpu-all-acc", action="store_true", help="Visualize all CPU cores accumulated")
+    parser.add_argument("--cpu-cores-full", type=str, default="", help="CPU cores to display")
     parser.add_argument("--cpu-cores-in", type=str, default="", help="CPU cores to display")
     parser.add_argument("--cpu-cores-out", type=str, default="", help="CPU cores to exclude")
     parser.add_argument("--mem", action="store_true", help="Visualize memory")
-    parser.add_argument("--net", action="store_true", help="Visualize network")
-    parser.add_argument("--io", action="store_true", help="Visualize io")
+    parser.add_argument("--net", action="store_true", help="Visualize network activity")
+    parser.add_argument("--net-all", action="store_true", help="Visualize network activity of all interfaces ")
+    parser.add_argument("--net-rx-only", action="store_true", help="Visualize rx network only")
+    parser.add_argument("--net-tx-only", action="store_true", help="Visualize tx network only")
+    parser.add_argument("--net-data", action="store_true", help="Label network plot with total size of networked data")
+    parser.add_argument("--disk", action="store_true", help="Visualize disk activity")
+    parser.add_argument("--disk-iops", action="store_true", help="Visualize disk iops")
+    parser.add_argument("--disk-rd-only", action="store_true", help="Visualize disk read activity only")
+    parser.add_argument("--disk-wr-only", action="store_true", help="Visualize disk write activity only")
+    parser.add_argument("--disk-data", action="store_true", help="Label disk plot with total size of operated data")
+    parser.add_argument("--ib", action="store_true", help="Visualize infiniband activity")
     parser.add_argument("--sys", action="store_true", help="Visualize all system data")
-
-    # High-frequency system metrics
-    parser.add_argument("--hf-cpu", action="store_true", help="Visualize CPU")
-    parser.add_argument("--hf-cpu-all", action="store_true", help="Visualize all CPU cores")
-    parser.add_argument("--hf-cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")
-    parser.add_argument("--hf-cpu-cores-full", type=str, default="", help="CPU cores to display")
-    parser.add_argument("--hf-mem", action="store_true", help="Visualize memory")
-    parser.add_argument("--hf-net", action="store_true", help="Visualize network activity")
-    parser.add_argument("--hf-net-all", action="store_true", help="Visualize network activity of all interfaces ")
-    parser.add_argument("--hf-net-rx-only", action="store_true", help="Visualize rx network only")
-    parser.add_argument("--hf-net-tx-only", action="store_true", help="Visualize tx network only")
-    parser.add_argument("--hf-net-data", action="store_true", help="Label network plot with total size of networked data")
-    parser.add_argument("--hf-disk", action="store_true", help="Visualize disk activity")
-    parser.add_argument("--hf-disk-iops", action="store_true", help="Visualize disk iops")
-    parser.add_argument("--hf-disk-rd-only", action="store_true", help="Visualize disk read activity only")
-    parser.add_argument("--hf-disk-wr-only", action="store_true", help="Visualize disk write activity only")
-    parser.add_argument("--hf-disk-data", action="store_true", help="Label disk plot with total size of operated data")
-    parser.add_argument("--hf-ib", action="store_true", help="Visualize infiniband activity")
-    parser.add_argument("--hf-sys", action="store_true", help="Visualize all system data")
 
     # Power profile
     parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power")
@@ -89,7 +75,6 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--fig-xrange", type=int, default=25, help="Number of xticks on x-axis")
     parser.add_argument("--fig-yrange", type=int, default=11, help="Number of yticks on y-axis")
 
-
     # Enable verbosity
     parser.add_argument("--verbose", action="store_true", help="Enable debug information")
 
@@ -111,11 +96,12 @@ def create_logger(traces_repo: str, verbose: bool) -> logging.Logger:
     """
     logger = logging.getLogger("benchmon_logger")
     logger.setLevel(logging.DEBUG)
-    fmt = f"<%(filename)s> [%(asctime)s] [%(levelname)s] %(message)s"
+    fmt = "<%(filename)s> [%(asctime)s] [%(levelname)s] %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
     fmtter = logging.Formatter(fmt=fmt, datefmt=datefmt)
 
-    file_handler = logging.FileHandler(f"{traces_repo}/benchmon-visu_{int(datetime.now().timestamp())}.log")
+    logfile = f"{traces_repo}/benchmon-visu_{int(datetime.now().timestamp())}.log"
+    file_handler = logging.FileHandler(logfile)
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(fmtter)
 
@@ -131,7 +117,7 @@ def create_logger(traces_repo: str, verbose: bool) -> logging.Logger:
 
 def main():
     """
-    Main function
+    Run main function
     """
     # Init
     args = parsing()
@@ -149,16 +135,20 @@ def main():
 
     traces_repos = [traces_repo]
     if is_recursive:
-        traces_repos = [f"{traces_repo}/{name}" for name in os.listdir(traces_repo) if os.path.isdir(os.path.join(traces_repo, name))]
+        traces_repos = [
+            f"{traces_repo}/{name}"
+            for name in os.listdir(traces_repo)
+            if os.path.isdir(os.path.join(traces_repo, name))
+        ]
 
     nodes_data = []
     for repo in traces_repos:
-        nodes_data += [visualizer.BenchmonVisualizer(args=args, logger=logger, traces_repo=repo)]
+        nodes_data += [BenchmonVisualizer(args=args, logger=logger, traces_repo=repo)]
         nodes_data[-1].run_plots()
 
     if is_recursive:
         # multi_node_visualizer.plot_sync(args, logger, nodes_data)
-        multi_node_visualizer.BenchmonMNSyncVisualizer(args, logger, nodes_data)
+        BenchmonMNSyncVisualizer(args, logger, nodes_data)
 
     logger.info("benchmon-visu closes")
 

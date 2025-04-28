@@ -1,22 +1,25 @@
-#!/usr/bin/env python3
+"""Module to process perf record data"""
 
 import os
 import logging
 import pickle
 import time
+
 import matplotlib.pyplot as plt
 
-CMAPS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 10 # @hc
-MARKERS = ["|", "s", ".", ">", "+", ",", "x", "*", "v", "^", "o", "<"] * 10 # @hc
+CMAPS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 10  # noqa: E501 (@hc)
+MARKERS = ["|", "s", ".", ">", "+", ",", "x", "*", "v", "^", "o", "<"] * 10  # @hc
 DEBUG = False
+
 
 class PerfCallRawData:
     """
     Perf callsatck raw data
     """
+
     def __init__(self, logger: logging.Logger, filename: str):
         """
-        Constructor of RawData
+        Construct RawData class
 
         Args:
             logger      (logging.Logger)    Logging object
@@ -58,22 +61,33 @@ class PerfCallRawData:
         """
         Create data samples
         """
-        self.logger.debug("Read PerfCall txt report + blocks..."); t0 = time.time()
+        self.logger.debug("Read PerfCall txt report + blocks..."); t0 = time.time()  # noqa: E702
         blocks = self.read_blocks()
         self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        self.logger.debug("Create PerfCall samples..."); t0 = time.time()
+        self.logger.debug("Create PerfCall samples..."); t0 = time.time()  # noqa: E702
         samples = []
         for block in blocks:
-            if len(block) == 0: continue        # @hc avoid empty line
-            if "cycles" not in block[0] and block[0][-1] == "\n": continue   # @hc avoid line starting with kind of Warning:\n
+            if len(block) == 0:
+                continue  # @hc avoid empty line
+
+            if "cycles" not in block[0] and block[0][-1] == "\n":
+                continue  # @hc avoid line starting with kind of Warning:\n
+
             sample_info = block[0].split()
 
             # Hard-coded exceptions
-            if ":Reg" in sample_info[1]: continue # @hc
-            try: float(sample_info[1]) # @hc Avoid second element not being a float
-            except ValueError: continue
-            if any(line[0] != "\t" for line in block[1:]): continue
+            if ":Reg" in sample_info[1]:
+                continue  # @hc
+
+            try:
+                float(sample_info[1])
+            except ValueError:
+                continue  # @hc Avoid second element not being a float
+
+            if any(line[0] != "\t" for line in block[1:]):
+                continue
+
             if len(sample_info) != 6:
                 self.logger.debug(f"{sample_info = } skipped!")
                 continue
@@ -92,10 +106,10 @@ class PerfCallRawData:
                             "path": depth.split()[2]
                         }
                         for di, depth in enumerate(block[:0:-1])
-                    ]
-                }
+                    ]  # noqa: E123
+            }
 
-            try: # Sometimes, the pid is not provided is ("pid/tid")
+            try:  # Sometimes, the pid is not provided is ("pid/tid")
                 sample["tid"] = int(sample_info[1].split("/")[1])
                 sample["pid"] = int(sample_info[1].split("/")[0])
             except IndexError:
@@ -115,18 +129,21 @@ class PerfCallRawData:
         cmds_pkl = f"{os.path.dirname(self.filename)}/pkl_dir/call_cmds.pkl"
 
         if os.access(samples_pkl, os.R_OK) and os.access(cmds_pkl, os.R_OK):
-            self.logger.debug("Load PerfCall samples + PerfCall commands list..."); t0 = time.time()
+            self.logger.debug("Load PerfCall samples + PerfCall commands list..."); t0 = time.time()  # noqa: E702
 
-            with open(samples_pkl, "rb") as _pf: samples = pickle.load(_pf)
-            with open(cmds_pkl, "rb") as _pf: cmds = pickle.load(_pf)
+            with open(samples_pkl, "rb") as _pf:
+                samples = pickle.load(_pf)
+            with open(cmds_pkl, "rb") as _pf:
+                cmds = pickle.load(_pf)
 
         else:
 
             samples = self.create_samples()
-            with open(samples_pkl, "wb") as _pf: pickle.dump(samples, _pf)
+            with open(samples_pkl, "wb") as _pf:
+                pickle.dump(samples, _pf)
 
 
-            self.logger.debug("Get PerfCall command list..."); t0 = time.time()
+            self.logger.debug("Get PerfCall command list..."); t0 = time.time()  # noqa: E702
 
             cmds = {}
             for sample in samples:
@@ -135,9 +152,10 @@ class PerfCallRawData:
                     cmds[cmd] += 1
                 except KeyError:
                     cmds[cmd] = 1
-            cmds = {ky: val for ky, val in sorted(cmds.items(), key = lambda item: -item[1])}
+            cmds = {ky: val for ky, val in sorted(cmds.items(), key=lambda item: -item[1])}
 
-            with open(cmds_pkl, "wb") as _pf: pickle.dump(cmds, _pf)
+            with open(cmds_pkl, "wb") as _pf:
+                pickle.dump(cmds, _pf)
 
         list_filename = f"{os.path.realpath(os.path.dirname(self.filename))}/list_recorded_perf_cmds.txt"
         with open(list_filename, "w") as _file:
@@ -150,13 +168,14 @@ class PerfCallRawData:
         return samples, cmds
 
 
-class PerfCallData():
+class PerfCallData:
     """
     Per callstack data with cmd
     """
+
     def __init__(self, logger: logging.Logger, cmd: str, samples: list, m2r: float, traces_repo: str):
         """
-        Constructor
+        Construct PerfCallData class for a given command
 
         Args:
             logger      (logging.Logger)    Logging object
@@ -168,8 +187,8 @@ class PerfCallData():
         self.logger = logger
         self.cmd = cmd
         self.mono_to_real_time = m2r
-        self._plt_legend_threshold = 0.01 # @pars
-        self._plt_depth_size = 2/3
+        self._plt_legend_threshold = 0.01  # @pars
+        self._plt_depth_size = 2 / 3
 
         self.traces_repo = traces_repo
 
@@ -187,29 +206,33 @@ class PerfCallData():
         cmd_tids = f"{self.traces_repo}/pkl_dir/call_{self.cmd}_tids.pkl"
 
         if os.access(cmd_samples, os.R_OK) and os.access(cmd_tids, os.R_OK):
-            self.logger.debug(f"Load PerfCall samples for command = {self.cmd} ..."); t0 = time.time()
+            self.logger.debug(f"Load PerfCall samples for command = {self.cmd} ..."); t0 = time.time()  # noqa: E702
 
-            with open(cmd_samples, "rb") as _pf: self.samples = pickle.load(_pf)
-            with open(cmd_tids, "rb") as _pf: self.tids = pickle.load(_pf)
+            with open(cmd_samples, "rb") as _pf:
+                self.samples = pickle.load(_pf)
+            with open(cmd_tids, "rb") as _pf:
+                self.tids = pickle.load(_pf)
 
         else:
 
-            self.logger.debug("Construct PerfCall command samples..."); t0 = time.time()
+            self.logger.debug("Construct PerfCall command samples..."); t0 = time.time()  # noqa: E702
 
             self.samples = []
-            pids = []
+            pids = []  # noqa: F841
             tids = []
             timestamps = []
             for sample in samples:
                 if sample["cmd"] == self.cmd:
-                    self.samples += [{
-                        # "pid": sample["pid"],
-                        "tid": sample["tid"],
-                        "timestamp": sample["timestamp"],
-                        "cycles": sample["cycles"],
-                        "callstack": sample["callstack"],
-                        "ncalls": len(sample["callstack"])
-                        }]
+                    self.samples += [
+                        {
+                            # "pid": sample["pid"],
+                            "tid": sample["tid"],
+                            "timestamp": sample["timestamp"],
+                            "cycles": sample["cycles"],
+                            "callstack": sample["callstack"],
+                            "ncalls": len(sample["callstack"]),
+                        }
+                    ]
                     # pids += [sample["pid"]]
                     tids += [sample["tid"]]
                     timestamps += [sample["timestamp"]]
@@ -217,8 +240,10 @@ class PerfCallData():
             # self.pids = {pid: rel_pid for rel_pid, pid in enumerate(set(pids))} # @hc
             self.tids = {tid: rel_tid for rel_tid, tid in enumerate(set(tids))}
 
-            with open(cmd_samples, "wb") as _pf: pickle.dump(self.samples, _pf)
-            with open(cmd_tids, "wb") as _pf: pickle.dump(self.tids, _pf)
+            with open(cmd_samples, "wb") as _pf:
+                pickle.dump(self.samples, _pf)
+            with open(cmd_tids, "wb") as _pf:
+                pickle.dump(self.tids, _pf)
 
         self.nt = len(self.tids)
         self.nsamples = len(self.samples)
@@ -235,9 +260,6 @@ class PerfCallData():
         Args:
             depth (int): Depth value
         """
-        if DEBUG: print("\tCount calls...")
-
-        t0 = time.time()
         calls = {}
         for sample in self.samples:
             if sample["ncalls"] > depth:
@@ -247,12 +269,10 @@ class PerfCallData():
                 except KeyError:
                     calls[name] = 1
 
-        if DEBUG: print(f"\t...{round(time.time() - t0, 3)} s\n")
-
         return calls
 
 
-    def plot(self, depths: list, xticks: list = [], xlim: list = [], legend_ncol: int = 4) -> int:
+    def plot(self, depths: list, xticks: list, xlim: list, legend_ncol: int = 4) -> int:
         """
         Plot callstack
 
@@ -263,8 +283,6 @@ class PerfCallData():
             legend_ncol (int): Number of columns for call legend
         """
         for depth in depths:
-            if DEBUG: print(f"Plot {depth} of {depths}...")
-            t0 = time.time()
 
             calls = self._depth_data(depth)
             colors = {call: CMAPS[color % len(CMAPS)] for color, call in enumerate(calls)}
@@ -291,25 +309,24 @@ class PerfCallData():
                 plot, = plt.plot(
                     call_line[call]["stamps"],
                     call_line[call]["sample_vals"],
-                    linestyle = "",
-                    marker = MARKERS[depth],
-                    color = call_line[call]["color"]
-                    )
+                    linestyle="",
+                    marker=MARKERS[depth],
+                    color=call_line[call]["color"],
+                )
                 if calls[call] / self.nsamples > self._plt_legend_threshold:
                     plot.set_label(f"{depth}: {call}")
 
-            if DEBUG: print(f"...{round(time.time() - t0, 3)} s\n")
-
         # Y axis options
-        plt.ylim([min(depths) - 1/4 - 1/8 * len(depths), max(depths) + 1 + 1/4 * len(depths)])
+        plt.ylim([min(depths) - 1 / 4 - 1 / 8 * len(depths), max(depths) + 1 + 1 / 4 * len(depths)])
         yvals = []
         ylabels = []
 
         # Threads ticks
         for depth in depths:
             for tid in range(self.nt):
-                ylabels += [""] #[f"{tid}"]
-                if tid == 0: ylabels[-1] = f"CallStack {depth}" #+ ylabels[-1]
+                ylabels += [""]  # [f"{tid}"]
+                if tid == 0:
+                    ylabels[-1] = f"CallStack {depth}"  # + ylabels[-1]
                 yvals += [depth + self._plt_depth_size / self.nt * tid]
 
         # Without threads ticks

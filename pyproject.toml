@@ -2,16 +2,34 @@
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+packages = { find = { where = ["."], include = ["benchmon*"] } }
+data-files = { bin = ["exec/*"] }
+
+[tool.setuptools.package-data]
+"benchmon.run" = ["*.sh"]
+
+[project.urls]
+repository = "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor"
+documentation = "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor"
+
 [project]
 name = "ska-sdp-benchmark-monitor"
-version = "0.1.0"
-description = "SDP Benchmark Monitor for performance analysis."
-authors = [{ name = "Manuel Stutz", email = "manuel.stutz@fhnw.ch" }]
+version = "0.0.0"
+description = "SDP Benchmark Monitor for resource monitoring and performance analysis."
 readme = "README.md"
+authors = [
+    { name = "Anass Serhani", email = "anass.serhani@inria.fr" },
+    { name = "Manuel Stutz", email = "manuel.stutz@fhnw.ch" },
+    { name = "Shan Mignot", email = "shan.mignot@oca.eu" }
+]
 requires-python = ">=3.8"
 dependencies = [
-    "psutil",
-    "ping3",
-    "numpy",
-    "matplotlib"
+  "numpy",
+  "matplotlib",
+  "ping3",
+  "psutil",
+  "requests",
+  "scipy"
 ]
+
