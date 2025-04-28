@@ -87,9 +87,9 @@ enable=unreachable,
        super-init-not-called,
        subprocess-run-check,
        redefined-outer-name,
-       missing-final-new-line,
        consider-using-with,
        reimported
+#       missing-final-new-line,
 
 
 [REPORTS]
@@ -365,7 +365,7 @@ indent-after-paren=4
 indent-string='    '
 
 # Maximum number of characters on a single line.
-max-line-length=100
+max-line-length=120
 
 # Maximum number of lines in a module.
 max-module-lines=1000
@@ -374,8 +374,7 @@ max-module-lines=1000
 # separator` is used to allow tabulation in dicts, etc.: {1  : 1,\n222: 2}.
 # `trailing-comma` allows a space between comma and closing bracket: (a, ).
 # `empty-line` allows space-only lines.
-no-space-check=trailing-comma,
-               dict-separator
+# no-space-check=bad-whitespace,trailing-comma-tuple,trailing-comma-style
 
 # Allow the body of a class to be on the same line as the declaration if body
 # contains single statement.

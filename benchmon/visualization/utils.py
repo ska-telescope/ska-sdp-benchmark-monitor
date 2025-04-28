@@ -1,7 +1,10 @@
+"""Visualization utils"""
 import glob
+from datetime import datetime
+
 import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime
+
 
 def read_ical_log_file(traces_repo: str) -> dict:
     """
@@ -28,8 +31,8 @@ def read_ical_log_file(traces_repo: str) -> dict:
         entry = line.split(" ")[6].replace("\n", "")
         ts_fmt = f"{line.split(' ')[0]}T{line.split(' ')[1]}"
         ts = datetime.strptime(ts_fmt, fmt).timestamp()
-        entry_key = entry # f"{entry[:4]}{entry[-1]}"
-        if any([stage in entry for stage in ("calibrate", "predict", "image")]):
+        entry_key = entry  # f"{entry[:4]}{entry[-1]}"
+        if any(stage in entry for stage in ("calibrate", "predict", "image")):
             try:
                 major_stages[entry_key][line.split(" ")[5]] = ts
             except KeyError:
@@ -45,7 +48,7 @@ def read_ical_log_file(traces_repo: str) -> dict:
     return major_stages
 
 
-def plot_ical_stages(major_stages: dict, ymax = 100.) -> None:
+def plot_ical_stages(major_stages: dict, ymax=100.) -> None:
     """
     Plot ical stages
 
@@ -54,13 +57,23 @@ def plot_ical_stages(major_stages: dict, ymax = 100.) -> None:
         ymax            (float) max value for y-axis
     """
     def margin(stage):
-        if "cali" in stage: return 0
-        elif "pred" in stage: return 1
-        elif "imag" in stage: return 2
-        else: return 3
+        if "cali" in stage: return 0    # noqa: E701 (@hc)
+        elif "pred" in stage: return 1  # noqa: E701 (@hc)
+        elif "imag" in stage: return 2  # noqa: E701 (@hc)
+        else: return 3                  # noqa: E701 (@hc)
 
-    for idx, stage in enumerate(major_stages):
+    for stage in major_stages:
         ydash = np.linspace(- ymax * .1, ymax * 1.1)
 
-        plt.plot(major_stages[stage]["Start"] * np.ones_like(ydash), ydash, "k--", linewidth=.75)
-        plt.text(major_stages[stage]["Start"], ymax * (1.1 - .04 * margin(stage)), stage, va="baseline", ha="left", size="x-small", weight="semibold")
+        plt.plot(major_stages[stage]["Start"] * np.ones_like(ydash),
+                 ydash,
+                 "k--",
+                 linewidth=.75)
+
+        plt.text(major_stages[stage]["Start"],
+                 ymax * (1.1 - .04 * margin(stage)),
+                 stage,
+                 va="baseline",
+                 ha="left",
+                 size="x-small",
+                 weight="semibold")

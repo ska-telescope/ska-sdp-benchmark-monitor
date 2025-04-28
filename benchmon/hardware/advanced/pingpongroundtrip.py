@@ -1,3 +1,5 @@
+"""Ping Pong trip module"""
+
 import itertools
 import os
 import logging
@@ -12,8 +14,8 @@ log = logging.getLogger(__name__)
 
 def arrange_pairs_min_overlap(pairs):
     """
-        Take a list of pairs and order it in a way that creates as few overlap as possible.
-        This enables most efficient usage of the nodes
+    Take a list of pairs and order it in a way that creates as few overlap as possible.
+    This enables most efficient usage of the nodes
     """
     result = []
     while pairs:
@@ -40,11 +42,14 @@ def arrange_pairs_min_overlap(pairs):
 
 
 def get_random_data(size):
-    with open('/dev/urandom', 'rb') as f:
+    """docstring,"""
+    with open("/dev/urandom", "rb") as f:
         return f.read(size)
 
 
 class PingPongMeasure:
+    """docstring,"""
+
     num_ping: int = 10
     ping_payload: bytes = b"Ping"
     end_payload: bytes = b"BENCHMON_END"
@@ -54,6 +59,7 @@ class PingPongMeasure:
     socket_timeout = 30
 
     def measure(self, port=51434):
+        """docstring,"""
         original_port = port
         self.current_node = os.environ.get("SLURMD_NODENAME")
         nodes = slurm_utils.get_node_list()
@@ -68,7 +74,8 @@ class PingPongMeasure:
 
         data = {self.current_node: []}
 
-        # Generate all possible directed unique pairs (permutations) of nodes and order them in a way with the least amount of overlap
+        # Generate all possible directed unique pairs (permutations) of nodes
+        # and order them in a way with the least amount of overlap
         pairs = arrange_pairs_min_overlap(list(itertools.permutations(nodes, 2)))
 
         # Test between all pairs of nodes
@@ -89,11 +96,12 @@ class PingPongMeasure:
 
     # Function for server-side of ping-pong test
     def server_ping_pong(self, port):
+        """docstring,"""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
             connected = False
             while not connected:
                 try:
-                    server_socket.bind(('', port))
+                    server_socket.bind(("", port))
                     connected = True
                 except OSError as e:
                     log.error(f"[{self.current_node}][S] Could not bind socket! Got OSError: {e}. Retrying.")
@@ -125,7 +133,7 @@ class PingPongMeasure:
                 data = get_random_data(num_bits_rcvd)
                 bytes_sent = 0
                 while bytes_sent < num_bits_rcvd:
-                    chunk = data[bytes_sent:bytes_sent + 1024]
+                    chunk = data[bytes_sent: bytes_sent + 1024]
                     conn.sendall(chunk)
                     bytes_sent += len(chunk)
                 conn.sendall(self.end_payload)
@@ -135,7 +143,8 @@ class PingPongMeasure:
             server_socket.close()
 
     # Function for client-side of ping-pong test
-    def client_ping_pong(self, server_ip, port, data_size=1024*1024*10):
+    def client_ping_pong(self, server_ip, port, data_size=1024 * 1024 * 10):
+        """docstring,"""
         test_data = get_random_data(data_size)
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
@@ -163,7 +172,9 @@ class PingPongMeasure:
             if not data:
                 raise IOError("PingPong data lost - no answer from the server")
 
-            log.debug(f"[{self.current_node}][C] Received ping response. Sending large amount of data: {data_size} bits.")
+            log.debug(
+                f"[{self.current_node}][C] Received ping response. Sending large amount of data: {data_size} bits."
+            )
 
             rtt = (end_time - start_time) * 1000  # Convert to milliseconds
 
@@ -173,7 +184,7 @@ class PingPongMeasure:
             # Send data to server in chunks
             bytes_sent = 0
             while bytes_sent < data_size:
-                chunk = test_data[bytes_sent:bytes_sent + 1024]
+                chunk = test_data[bytes_sent: bytes_sent + 1024]
                 client_socket.sendall(chunk)
                 bytes_sent += len(chunk)
             log.debug(f"[{self.current_node}][C] Done sending chunks - sending end payload.")

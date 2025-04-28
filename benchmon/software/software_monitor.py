@@ -1,3 +1,5 @@
+"""Docstring @todo."""
+
 import json
 import logging
 import os
@@ -8,16 +10,23 @@ from ..common.utils import execute_cmd
 
 logger = logging.getLogger(__name__)
 
+
 class SoftwareMonitor:
+    """Docstring @todo."""
+
     def __init__(self, args):
+        """Docstring @todo."""
+
         logging.basicConfig(stream=sys.stdout, level=logging.DEBUG if args.verbose else logging.INFO)
         self.save_dir = args.save_dir
         self.verbose = args.verbose
         os.makedirs(self.save_dir, exist_ok=True)
 
     def run(self):
+        """Docstring @todo."""
+
         logger.info("Starting Software Monitor")
-        hostname = execute_cmd('hostname')
+        hostname = execute_cmd("hostname")
 
         data = {}
 
@@ -31,11 +40,11 @@ class SoftwareMonitor:
 
         # Get python environment
         logger.info("Reading Python Environment")
-        data['pyenv'] = pyenv.PythonEnv().read()
+        data["pyenv"] = pyenv.PythonEnv().read()
 
         # Get Loaded Modules
         logger.info("Reading Loaded Modules")
-        data['modules'] = modules.ModuleReader().read()
+        data["modules"] = modules.ModuleReader().read()
 
         # Dump to json
         logger.info("Save Data to file")

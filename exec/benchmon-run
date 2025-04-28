@@ -1,30 +1,24 @@
-#!/usr/bin/env python3
-"""
-Main script to monitor system resources
-"""
+#!/usr/bin/env python
+"""Main script to monitor system resources"""
+
 import argparse
 import logging
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-
-try:
-    import benchmon
-    import benchmon.run as rc
-except ImportError as e:
-    print("Could not import benchmon!")
-    print(sys.executable, sys.version)
-    print('sys.path:')
-    for i in range(len(sys.path)):
-        print('%2d) %s' % (i + 1, sys.path[i]))
-    raise
+from benchmon.run import RunMonitor
 
 JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
 HOSTNAME = os.uname()[1]
 PID = os.getpid()
 
+
 def parse_args():
+    """
+    Parse benchmon-run arguments
+
+    Returns:
+        argaprse.ArgumentParser Argument namespace
+    """
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
     # add arguments
@@ -32,39 +26,15 @@ def parse_args():
         "-d",
         "--save-dir",
         default=f"{os.getcwd()}/benchmon_traces_{JOBID}",
-        help="Base directory where metrics will be saved. This directory should be available from all compute nodes Default is $PWD/benchmon_traces_$JOBID"
+        help="Base directory where metrics will be saved"
     )
 
     parser.add_argument(
-        '-p',
-        '--prefix',
-        default=None,
-        nargs='?',
-        help='''Prefix of the file to be created. If provided, metrics will be located at $SAVE_DIR/$PREFIX-benchmon-%%n.csv.
-Supported variables are:
-  %%j - Slurm Job ID
-  %%n - Host Name
-Default value is "benchmon-%%n".''',
-    )
-
-    # Is it necessary?
-    parser.add_argument(
-        '--sampling-freq',
-    )
-
-    parser.add_argument(
-        '-v',
-        '--verbose',
-        action='store_true',
+        "-v",
+        "--verbose",
+        action="store_true",
         default=False,
-        help="Enable verbose mode. Display debug messages",
-    )
-
-    parser.add_argument(
-        '--dool',
-        type=str,
-        default="",
-        help="Path to the dool executable. If unset, a dool executable is searched in the PATH"
+        help="Enable verbose mode. Display debug messages"
     )
 
     parser.add_argument(
@@ -75,11 +45,10 @@ Default value is "benchmon-%%n".''',
     )
 
     parser.add_argument(
-        "--system-sampling-interval",
-        "--sys-sampl-intv",
+        "--sys-freq",
         type=int,
-        default=1,
-        help="Sampling interval to collect system metrics. Default value is 1 second",
+        default=10,
+        help="System monitoring frequency. Default: 10 Hz"
     )
 
     parser.add_argument(
@@ -94,7 +63,7 @@ Default value is "benchmon-%%n".''',
         "--pow-sampl-intv",
         type=int,
         default=250,
-        help="Sampling interval to collect power metrics. Default value is 250 milliseconds",
+        help="Sampling interval to collect power metrics. Default value is 250 milliseconds"
     )
 
     parser.add_argument(
@@ -131,20 +100,6 @@ Default value is "benchmon-%%n".''',
         help="Keep perf data file"
     )
 
-    parser.add_argument(
-        "--high-freq-system",
-        "--hf-sys",
-        action="store_true",
-        help="Enable high frequency system monitoring"
-    )
-
-    parser.add_argument(
-        "--hf-sys-freq",
-        type=int,
-        default=10,
-        help="High-frequency profiling frequency. Default: 10 Hz"
-    )
-
     return parser.parse_args()
 
 
@@ -153,7 +108,7 @@ def get_benchmon_pid(logger: logging.Logger) -> None:
     Get benchmon-run pid
     """
     filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
-    with open(filename, 'w') as fn:
+    with open(filename, "w") as fn:
         fn.write(f"{PID}")
 
     logger.debug(f"PID file created: {filename}")
@@ -184,7 +139,10 @@ def create_logger(save_dir: str, verbose: bool) -> logging.Logger:
     return logger
 
 
-if __name__ == '__main__':
+def main():
+    """
+    Run main function of benchmon-run
+    """
     args = parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
@@ -198,9 +156,17 @@ if __name__ == '__main__':
     logger.debug(f"benchmon-run arguments: \n{args_str}")
 
     get_benchmon_pid(logger)
-    rm = rc.RunMonitor(args, logger)
-    rm.run()
+    runmonitor = RunMonitor(args, logger)
+    runmonitor.run()
 
     logger.info("benchmon-run stops")
-    logger.info(f"Traces saved in: {os.path.realpath(args.save_dir)}/benchmon_traces_{HOSTNAME}")
-    logger.info(f"Full log file: {os.path.realpath(args.save_dir)}/benchmon_{HOSTNAME}.log")
+    logger.info(
+        f"Traces saved in: {os.path.realpath(args.save_dir)}/benchmon_traces_{HOSTNAME}"
+    )
+    logger.info(
+        f"Full log file: {os.path.realpath(args.save_dir)}/benchmon_{HOSTNAME}.log"
+    )
+
+
+if __name__ == "__main__":
+    main()

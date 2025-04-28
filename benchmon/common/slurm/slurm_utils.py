@@ -1,3 +1,5 @@
+"""Docstring @todo."""
+
 import os
 
 from benchmon.common.utils import execute_cmd
@@ -5,6 +7,8 @@ from benchmon.common.utils import execute_cmd
 
 # Function to get the list of nodes from the SLURM environment
 def get_node_list():
+    """Docstring @todo."""
+
     # Using SLURM_JOB_NODELIST to get the list of nodes
     node_list = os.getenv("SLURM_JOB_NODELIST")
     if not node_list:

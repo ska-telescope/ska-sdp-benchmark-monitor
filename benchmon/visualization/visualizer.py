@@ -1,20 +1,22 @@
 """
 Visualization manager
 """
+
 import argparse
 import logging
 import os
 import sys
 import time
-import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime
 
-from .system_metrics import HighFreqData
-from .power_metrics import PerfPowerData
-from .power_metrics import G5KPowerData
-from .call_profile import PerfCallRawData
+import matplotlib.pyplot as plt
+import numpy as np
+
 from .call_profile import PerfCallData
+from .call_profile import PerfCallRawData
+from .power_metrics import G5KPowerData
+from .power_metrics import PerfPowerData
+from .system_metrics import SystemData
 from .utils import read_ical_log_file, plot_ical_stages
 
 
@@ -27,20 +29,21 @@ class BenchmonVisualizer:
         logger                  (logging.Logger)    : Logging object
         traces_repo             (str)               : Traces repository
         hostname                (str)               : Hostname
-        system_native_metrics   (HighFreqData)      : Object of system native metrics
+        system_metrics          (SystemData)        : Object of system metrics
         power_g5k_metrics       (G5KPowerData)      : Object of g5k power metrics
         power_perf_metrics      (PerfPowerData)     : Object of perf power metrics
         call_traces             (PerfCallData)      : Object of callstack recorded by perf
         n_subplots              (int)               : Number of subplots
         xlim                    (list)              :
         xticks                  (list)              :
-        is_any_hf_sys           (bool)              :
+        is_any_sys              (bool)              :
         call_depths             (list)              : List of depths (int) for the callstack visualization
         call_chosen_cmd         (str)               : The chosen command to plot for the callstack visualization
         call_recorded_cmds      (list)              : List of the recorded commands
         call_monotonic_to_real  (float)             : Convert monotonic time (of perf record) to posix time
         inline_calls_prof       (dict)              : Profile of {cmd: [list-of-timestamps]} to annotate plots
     """
+
     def __init__(self, args: argparse.Namespace, logger: logging.Logger, traces_repo: str) -> None:
         """
         Initialize BenchmonVisualizer
@@ -57,7 +60,7 @@ class BenchmonVisualizer:
         os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
 
         self.hostname = os.path.basename(os.path.realpath(traces_repo))[16:]
-        self.system_native_metrics = None
+        self.system_metrics = None
         self.power_g5k_metrics = None
         self.power_perf_metrics = None
         self.call_traces = None
@@ -66,7 +69,7 @@ class BenchmonVisualizer:
         self.xlim = []
         self.xticks = []
 
-        self.is_any_hf_sys = False
+        self.is_any_sys = False
         self.call_depths = []
         self.call_chosen_cmd = ""
         self.call_recorded_cmds = []
@@ -87,45 +90,51 @@ class BenchmonVisualizer:
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
 
-
     def load_system_metrics(self) -> None:
         """
-        Load native system metrics
+        Load system metrics
         """
-        is_hf_cores_full = bool(self.args.hf_cpu_cores_full)
-        is_hf_net = self.args.hf_net or self.args.hf_net_all or self.args.hf_net_data
-        is_hf_disk = self.args.hf_disk or self.args.hf_disk_iops or self.args.hf_disk_iops
+        is_cores_full = bool(self.args.cpu_cores_full)
+        is_net = self.args.net or self.args.net_all or self.args.net_data
+        is_disk = self.args.disk or self.args.disk_iops or self.args.disk_iops
 
-        _n_cores_full = len(self.args.hf_cpu_cores_full.split(",")) if is_hf_cores_full  else 0
+        _n_cores_full = len(self.args.cpu_cores_full.split(",")) if is_cores_full else 0
 
-        self.is_any_hf_sys = self.args.hf_cpu or self.args.hf_cpu_all or self.args.hf_cpu_freq or is_hf_cores_full \
-                            or self.args.hf_mem or is_hf_net or is_hf_disk or self.args.hf_ib
+        self.is_any_sys = self.args.cpu or self.args.cpu_all or self.args.cpu_freq or \
+            is_cores_full or self.args.mem or is_net or is_disk or self.args.ib
 
         csv_reports = {}
-        conds = {"mem": self.args.hf_mem, "cpu": self.args.hf_cpu or self.args.hf_cpu_all or is_hf_cores_full,
-                "cpufreq": self.args.hf_cpu_freq, "net": is_hf_net, "disk": is_hf_disk, "ib": self.args.hf_ib}
+        conds = {
+            "mem": self.args.mem,
+            "cpu": self.args.cpu or self.args.cpu_all or is_cores_full,
+            "cpufreq": self.args.cpu_freq,
+            "net": is_net,
+            "disk": is_disk,
+            "ib": self.args.ib
+        }
         for key in conds.keys():
-            csv_reports[f"csv_{key}_report"] = f"{self.traces_repo}/hf_{key}_report.csv" if conds[key] else None
+            csv_reports[f"csv_{key}_report"] = f"{self.traces_repo}/{key}_report.csv" if conds[key] else None
 
-        if self.is_any_hf_sys:
-            self.system_native_metrics = HighFreqData(logger=self.logger, traces_repo=self.traces_repo, **csv_reports)
+        if self.is_any_sys:
+            self.system_metrics = SystemData(logger=self.logger,
+                                             traces_repo=self.traces_repo,
+                                             **csv_reports)
 
-        self.n_subplots += self.args.hf_cpu + self.args.hf_cpu_all + self.args.hf_cpu_freq + _n_cores_full \
-                            + self.args.hf_mem + is_hf_net + is_hf_disk + self.args.hf_ib
-
+        self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
+            + self.args.mem + is_net + is_disk + self.args.ib
 
     def load_power_metrics(self) -> None:
         """
         Load power metrics recorded with perf (rapl) and grid5000 tools
         """
         if self.args.pow:
-            self.power_perf_metrics = PerfPowerData(logger=self.logger, csv_filename=f"{self.traces_repo}/pow_report.csv")
+            self.power_perf_metrics = PerfPowerData(logger=self.logger,
+                                                    csv_filename=f"{self.traces_repo}/pow_report.csv")
 
         if self.args.pow_g5k:
             self.power_g5k_metrics = G5KPowerData(traces_dir=self.traces_repo)
 
         self.n_subplots += (self.args.pow or self.args.pow_g5k)
-
 
     def load_call_metrics(self) -> None:
         """
@@ -134,7 +143,8 @@ class BenchmonVisualizer:
         if self.args.call or self.args.inline_call or self.args.inline_call_cmd:
             with open(f"{self.traces_repo}/mono_to_real_file.txt", "r") as file:
                 self.call_monotonic_to_real = float(file.readline())
-            call_raw = PerfCallRawData(logger=self.logger, filename=f"{self.traces_repo}/call_report.txt")
+            call_raw = PerfCallRawData(logger=self.logger,
+                                       filename=f"{self.traces_repo}/call_report.txt")
             samples, self.call_recorded_cmds = call_raw.cmds_list()
 
             if self.args.call_cmd:
@@ -142,7 +152,11 @@ class BenchmonVisualizer:
             else:
                 self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
 
-            self.call_traces = PerfCallData(logger=self.logger, cmd=self.call_chosen_cmd, samples=samples, m2r=self.call_monotonic_to_real, traces_repo=self.traces_repo)
+            self.call_traces = PerfCallData(logger=self.logger,
+                                            cmd=self.call_chosen_cmd,
+                                            samples=samples,
+                                            m2r=self.call_monotonic_to_real,
+                                            traces_repo=self.traces_repo)
             if self.args.call_depth:
                 self.call_depths = [depth for depth in range(self.args.call_depth)]
             elif self.args.call_depths:
@@ -150,7 +164,6 @@ class BenchmonVisualizer:
             self.n_subplots += self.args.call * (2 if len(self.call_depths) > 2 else 1)
 
             self.inline_calls_prof = self.get_inline_calls_prof(samples)
-
 
     def get_inline_calls_prof(self, samples: list) -> dict:
         """
@@ -162,7 +175,8 @@ class BenchmonVisualizer:
         Returns:
             dict: command as key and value is a list of timestamps
         """
-        self.logger.debug("Create PerfPower inline profile..."); t0 = time.time()
+        self.logger.debug("Create PerfPower inline profile...")
+        t0 = time.time()
 
         # Hard-coded system command to remove
         kernel_calls = [
@@ -176,10 +190,13 @@ class BenchmonVisualizer:
             user_calls_keys = self.args.inline_call_cmd.split(",")
 
         else:
-            INLINE_CMDS_THRESHOLD = 0.01
+            _inline_cmds_threshold = 0.01
             user_calls_keys = []
             for key in self.call_recorded_cmds:
-                if self.call_recorded_cmds[key] / self.call_recorded_cmds[self.call_chosen_cmd] > INLINE_CMDS_THRESHOLD:
+                if (
+                    self.call_recorded_cmds[key] / self.call_recorded_cmds[self.call_chosen_cmd]
+                    > _inline_cmds_threshold
+                ):
                     user_calls_keys += [key]
 
             self.logger.debug(f"{user_calls_keys = }")
@@ -193,25 +210,25 @@ class BenchmonVisualizer:
         inline_calls_prof = {key: [] for key in user_calls_keys}
 
         msg = "\tInline commands: "
-        for cmd in user_calls_keys: msg += f"{{{cmd}: {self.call_recorded_cmds[cmd]} samples}} "
+        for cmd in user_calls_keys:
+            msg += f"{{{cmd}: {self.call_recorded_cmds[cmd]} samples}} "
         self.logger.debug(msg)
 
         for sample in samples:
-            if sample["cmd"] in user_calls_keys: # and  sample["cpu"] == "[000]":
+            if sample["cmd"] in user_calls_keys:  # and  sample["cpu"] == "[000]":
                 inline_calls_prof[sample["cmd"]] += [sample["timestamp"] + self.call_monotonic_to_real]
 
         # Remove duplicated wrt decimal
-        ROUND_VAL = 2
+        _round_val = 2
         msg = "\tInline commands (Lightened): "
         for cmd in user_calls_keys:
-            inline_calls_prof[cmd] = np.unique(np.array(inline_calls_prof[cmd]).round(ROUND_VAL))
+            inline_calls_prof[cmd] = np.unique(np.array(inline_calls_prof[cmd]).round(_round_val))
             msg += f"{{{cmd}: {len(inline_calls_prof[cmd])} samples}} "
         self.logger.debug(msg)
 
         self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return inline_calls_prof
-
 
     def get_xaxis_params(self, xmargin=0.02) -> None:
         """
@@ -221,22 +238,31 @@ class BenchmonVisualizer:
             xmargin (float): xmaring percent
         """
         # @hc
-        try: t0, tf = self.system_native_metrics.hf_cpu_stamps[0], self.system_native_metrics.hf_cpu_stamps[-1]
+        try:
+            t0, tf = self.system_metrics.cpu_stamps[0], self.system_metrics.cpu_stamps[-1]
         except AttributeError:
-            try: t0, tf = self.system_native_metrics.hf_cpufreq_stamps[0], self.system_native_metrics.hf_cpufreq_stamps[-1]
+            try:
+                t0, tf = self.system_metrics.cpufreq_stamps[0], self.system_metrics.cpufreq_stamps[-1]
             except AttributeError:
-                try: t0, tf = self.system_native_metrics.hf_mem_stamps[0], self.system_native_metrics.hf_mem_stamps[-1]
+                try:
+                    t0, tf = self.system_metrics.mem_stamps[0], self.system_metrics.mem_stamps[-1]
                 except AttributeError:
-                    try: t0, tf = self.system_native_metrics.hf_net_stamps[0], self.system_native_metrics.hf_net_stamps[-1]
+                    try:
+                        t0, tf = self.system_metrics.net_stamps[0], self.system_metrics.net_stamps[-1]
                     except AttributeError:
-                        try: t0, tf = self.system_native_metrics.hf_disk_stamps[0], self.system_native_metrics.hf_disk_stamps[-1]
+                        try:
+                            t0, tf = self.system_metrics.disk_stamps[0], self.system_metrics.disk_stamps[-1]
                         except AttributeError:
-                            try: t0, tf = self.system_native_metrics.hf_ib_stamps[0], self.system_native_metrics.hf_ib_stamps[-1]
-                            except AttributeError: sys.exit(1)
+                            try:
+                                t0, tf = self.system_metrics.ib_stamps[0], self.system_metrics.ib_stamps[-1]
+                            except AttributeError:
+                                sys.exit(1)
 
         fmt = "%Y-%m-%dT%H:%M:%S"
-        if self.args.start_time: t0 = datetime.strptime(self.args.start_time, fmt).timestamp()
-        if self.args.end_time: tf = datetime.strptime(self.args.end_time, fmt).timestamp()
+        if self.args.start_time:
+            t0 = datetime.strptime(self.args.start_time, fmt).timestamp()
+        if self.args.end_time:
+            tf = datetime.strptime(self.args.end_time, fmt).timestamp()
 
         xticks_val = np.linspace(t0, tf, self.args.fig_xrange)
 
@@ -257,22 +283,20 @@ class BenchmonVisualizer:
         dx = (tf - t0) * xmargin
         self.xlim = [t0 - dx, tf + dx]
 
-
     def apply_xaxis_params(self) -> None:
         """
         Apply x-axis params to objects
         """
-        if self.is_any_hf_sys:
-            self.system_native_metrics.xlim = self.xlim
-            self.system_native_metrics.xticks = self.xticks
-            self.system_native_metrics.yrange = self.args.fig_yrange
-
+        if self.is_any_sys:
+            self.system_metrics.xlim = self.xlim
+            self.system_metrics.xticks = self.xticks
+            self.system_metrics.yrange = self.args.fig_yrange
 
     def run_plots(self) -> None:
         """
         Run plotting
         """
-        fig, axs = plt.subplots(self.n_subplots, sharex=True)
+        fig, _ = plt.subplots(self.n_subplots, sharex=True)
         fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
         fig.add_gridspec(self.n_subplots, hspace=0)
 
@@ -280,86 +304,105 @@ class BenchmonVisualizer:
         annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
 
         # CPU plot
-        if self.args.hf_cpu:
-            self.logger.debug("Plotting (hf) cpu")
-            ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            self.system_native_metrics.plot_hf_cpu(annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages: plot_ical_stages(self.ical_stages)
+        if self.args.cpu:
+            self.logger.debug("Plotting  cpu")
+            ax = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
+            self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages)
 
         # Full individual core plot
-        if bool(self.args.hf_cpu_cores_full):
-            for core_number in self.args.hf_cpu_cores_full.split(","):
-                self.logger.debug(f"Plotting (hf) full cpu core {core_number}")
-                ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-                self.system_native_metrics.plot_hf_cpu(number=core_number,
-                                                       annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages: plot_ical_stages(self.ical_stages)
+        if bool(self.args.cpu_cores_full):
+            for core_number in self.args.cpu_cores_full.split(","):
+                self.logger.debug(f"Plotting  full cpu core {core_number}")
+                ax = plt.subplot(self.n_subplots, 1, sbp)
+                sbp += 1
+                self.system_metrics.plot_cpu(number=core_number,
+                                             annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages)
 
         # CPU per core plot
-        if self.args.hf_cpu_all:
-            self.logger.debug("Plotting (hf) cpu per core")
-            ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            self.system_native_metrics.plot_hf_cpu_per_core(cores_in=self.args.cpu_cores_in,
-                                                            cores_out=self.args.cpu_cores_out,
-                                                            annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages: plot_ical_stages(self.ical_stages)
+        if self.args.cpu_all:
+            self.logger.debug("Plotting  cpu per core")
+            ax = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
+            self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
+                                                  cores_out=self.args.cpu_cores_out,
+                                                  annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages)
 
         # CPU cores frequency plot
-        if self.args.hf_cpu_freq:
-            self.logger.debug("Plotting (hf) cpu cores frequency")
-            ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            freqmax = self.system_native_metrics.plot_hf_cpufreq(cores_in=self.args.cpu_cores_in,
-                                                                 cores_out=self.args.cpu_cores_out,
-                                                                 annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=freqmax)
+        if self.args.cpu_freq:
+            self.logger.debug("Plotting  cpu cores frequency")
+            ax = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
+            freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
+                                                       cores_out=self.args.cpu_cores_out,
+                                                       annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages, ymax=freqmax)
 
         # Memory/swap plot
-        if self.args.hf_mem:
-            self.logger.debug("Plotting (hf) memory/swap")
-            ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            memmax = self.system_native_metrics.plot_hf_memory_usage(annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=memmax)
+        if self.args.mem:
+            self.logger.debug("Plotting  memory/swap")
+            ax = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
+            memmax = self.system_metrics.plot_memory_usage(annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages, ymax=memmax)
 
         # Network plot
-        if self.args.hf_net:
-            self.logger.debug("Plotting (hf) network")
-            ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            netmax = self.system_native_metrics.plot_hf_network(all_interfaces=self.args.hf_net_all,
-                                                                is_rx_only=self.args.hf_net_rx_only,
-                                                                is_tx_only=self.args.hf_net_tx_only,
-                                                                is_netdata_label=self.args.hf_net_data,
-                                                                annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=netmax)
+        if self.args.net or self.args.net_all or self.args.net_data:
+            self.logger.debug("Plotting  network")
+            ax = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
+            netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
+                                                      is_rx_only=self.args.net_rx_only,
+                                                      is_tx_only=self.args.net_tx_only,
+                                                      is_netdata_label=self.args.net_data,
+                                                      annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages, ymax=netmax)
 
         # Infiniband plot
-        if self.args.hf_ib:
-            self.logger.debug("Plotting (hf) infiniband")
-            ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            ibmax = self.system_native_metrics.plot_hf_ib(annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=ibmax)
+        if self.args.ib:
+            self.logger.debug("Plotting  infiniband")
+            ax = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
+            ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages, ymax=ibmax)
 
         # Disk plot
-        if self.args.hf_disk:
-            self.logger.debug("Plotting (hf) disk")
-            ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
-            diskmax = self.system_native_metrics.plot_hf_disk(is_with_iops=self.args.hf_disk_iops,
-                                                              is_rd_only=self.args.hf_disk_rd_only,
-                                                              is_wr_only=self.args.hf_disk_wr_only,
-                                                              is_diskdata_label=self.args.hf_disk_data,
-                                                              annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=diskmax)
+        if self.args.disk:
+            self.logger.debug("Plotting  disk")
+            ax = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
+            diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
+                                                    is_rd_only=self.args.disk_rd_only,
+                                                    is_wr_only=self.args.disk_wr_only,
+                                                    is_diskdata_label=self.args.disk_data,
+                                                    annotate_with_cmds=annotate_with_cmds)
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages, ymax=diskmax)
 
         # (perf+g5k) Power plot
         if self.args.pow or self.args.pow_g5k:
             self.logger.debug("Plotting perf power")
-            ax = plt.subplot(self.n_subplots, 1, sbp); sbp += 1
+            ax = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
             powmax = [0]
             if self.args.pow:
                 powmax += [self.power_perf_metrics.plot_events()]
             if self.args.pow_g5k:
                 powmax += [self.power_g5k_metrics.plot_g5k_pow_profiles()]
-            if annotate_with_cmds: annotate_with_cmds(ymax=max(powmax))
-            if self.ical_stages: plot_ical_stages(self.ical_stages, ymax=max(powmax))
+            if annotate_with_cmds:
+                annotate_with_cmds(ymax=max(powmax))
+            if self.ical_stages:
+                plot_ical_stages(self.ical_stages, ymax=max(powmax))
 
             plt.xticks(*self.xticks)
             plt.xlim(self.xlim)
@@ -370,8 +413,11 @@ class BenchmonVisualizer:
         # (perf) Calltrace plot
         if self.args.call:
             self.logger.debug("Plotting perf call graph")
-            plt.subplot(self.n_subplots, 1, (sbp,sbp+1), sharex=ax)
-            self.call_traces.plot(self.call_depths, xticks=self.xticks, xlim=self.xlim, legend_ncol=self.args.fig_call_legend_ncol)
+            plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=ax)
+            self.call_traces.plot(self.call_depths,
+                                  xticks=self.xticks,
+                                  xlim=self.xlim,
+                                  legend_ncol=self.args.fig_call_legend_ncol)
 
         fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
         plt.subplots_adjust(hspace=.5)
@@ -390,7 +436,6 @@ class BenchmonVisualizer:
             fig.savefig(figname, format=fmt, dpi=dpi[self.args.fig_dpi])
             self.logger.info(f"Figure saved: {os.path.realpath(figname)}")
 
-
     def annotate_with_cmds(self, ymax: float = 100.) -> None:
         """
         Annotate plots with perf cmds
@@ -404,8 +449,24 @@ class BenchmonVisualizer:
         ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
         ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
         for idx, call in enumerate(self.inline_calls_prof):
-            call_ts_limited = self.inline_calls_prof[call][np.logical_and(self.inline_calls_prof[call] > self.xlim[0], self.inline_calls_prof[call] < self.xlim[1])]
-            if len(call_ts_limited) == 0: continue
-            plt.plot(call_ts_limited, ypos(idx) * np.ones(len(call_ts_limited)), ".", ms=4, c=cm[idx])
-            plt.text(np.mean(call_ts_limited), ypos(idx)*1.5, call, va="top", ha="center", c=cm[idx], weight="bold")
+            call_ts_limited = self.inline_calls_prof[call][
+                np.logical_and(self.inline_calls_prof[call] > self.xlim[0],
+                               self.inline_calls_prof[call] < self.xlim[1])
+            ]
+
+            if len(call_ts_limited) == 0:
+                continue
+
+            plt.plot(call_ts_limited,
+                     ypos(idx) * np.ones(len(call_ts_limited)),
+                     ".", ms=4, c=cm[idx])
+
+            plt.text(np.mean(call_ts_limited),
+                     ypos(idx) * 1.5,
+                     call,
+                     va="top",
+                     ha="center",
+                     c=cm[idx],
+                     weight="bold")
+
         plt.ylim(ylim(idx))

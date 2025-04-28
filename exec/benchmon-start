@@ -24,17 +24,17 @@ args="$args $save_dir_arg"
 if [[ $level == 0 ]]; then
     $(dirname $0)/benchmon-hardware $save_dir_arg
     $(dirname $0)/benchmon-software $save_dir_arg
-    args="--sys --hf-sys --hf-sys-freq 1 $args"
+    args="--sys --sys-freq 1 $args"
 
 elif [[ $level == 1 ]]; then
     $(dirname $0)/benchmon-hardware $save_dir_arg
     $(dirname $0)/benchmon-software $save_dir_arg
-    args="--sys --hf-sys --hf-sys-freq 5 --call --call-prof-freq 2 $args" # --pow --pow-freq 10
+    args="--sys --sys-freq 5 --call --call-prof-freq 2 $args" # --pow --pow-freq 10
 
 elif [[ $level == 2 ]]; then
     $(dirname $0)/benchmon-hardware $save_dir_arg
     $(dirname $0)/benchmon-software $save_dir_arg
-    args="--sys --hf-sys --hf-sys-freq 100 --call --call-prof-freq 50 $args" # --pow --pow-freq 10
+    args="--sys --sys-freq 100 --call --call-prof-freq 50 $args" # --pow --pow-freq 10
 
 fi
 

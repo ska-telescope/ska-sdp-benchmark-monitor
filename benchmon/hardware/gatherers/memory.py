@@ -1,12 +1,17 @@
+"""Docstring @todo."""
+
 import logging
+
 from benchmon.common.utils import execute_cmd
 
 log = logging.getLogger(__name__)
 
 
 class MemoryReader:
+    """Docstring @todo."""
 
     def read(self):
+        """Docstring @todo."""
         return self.get_memory_info()
 
     def get_memory_info(self):
@@ -25,7 +30,7 @@ class MemoryReader:
         We are interested in the "total" column
         """
 
-        lines = execute_cmd('free -b -t -w').split('\n')
+        lines = execute_cmd("free -b -t -w").split("\n")
 
         # Prepare a dictionary to store the parsed values
         parsed_data = {}
