@@ -43,6 +43,7 @@ class SystemData:
             self.get_cpu_profile(csv_cpu_report=csv_cpu_report)
 
         if csv_cpufreq_report:
+            self.ncpu_freq = 0
             self.cpufreq_prof = {}
             self.cpufreq_stamps = np.array([])
             self.cpufreq_min = None
@@ -415,9 +416,19 @@ class SystemData:
         self.cpufreq_min = cpu_freq_parsing[0] or None
         self.cpufreq_max = cpu_freq_parsing[1] or None
 
+        # Get ncpu
+        ts_0 = cpufreq_report_lines[1][0]
+        ts = ts_0
+        line_idx = 1
+        while ts == ts_0:
+            line_idx += 1
+            ts = cpufreq_report_lines[line_idx][0]
+
+            self.ncpu_freq += 1
+
         # Init cpu time series
         cpufreq_ts = {}
-        for cpu_nb in range(self.ncpu):
+        for cpu_nb in range(self.ncpu_freq):
             cpufreq_ts[f"cpu{cpu_nb}"] = []
 
         # Read lines
@@ -425,11 +436,11 @@ class SystemData:
             cpufreq_ts[line[1]] += [float(line[2])]
 
         HZ_UNIT = 1e6  # noqa: N806
-        for cpu_nb in range(self.ncpu):
+        for cpu_nb in range(self.ncpu_freq):
             cpufreq_ts[f"cpu{cpu_nb}"] = np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / HZ_UNIT
 
         self.cpufreq_prof = cpufreq_ts
-        self.cpufreq_stamps = [float(line[0]) for line in cpufreq_report_lines[1:: self.ncpu]]
+        self.cpufreq_stamps = [float(line[0]) for line in cpufreq_report_lines[1:: self.ncpu_freq]]
         self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
@@ -440,7 +451,7 @@ class SystemData:
         """
         HZ_UNIT = 1e6  # noqa: N806
 
-        cores = [core for core in range(self.ncpu)]
+        cores = [core for core in range(self.ncpu_freq)]
         if len(cores_in) > 0:
             cores = [int(core) for core in cores_in.split(",")]
         elif len(cores_in) == 0 and len(cores_out) > 0:
@@ -456,8 +467,8 @@ class SystemData:
         for idx, core in enumerate(cores):
             plt.plot(self.cpufreq_stamps, self.cpufreq_prof[f"cpu{core}"], color=cm[idx], label=f"core-{core}")
 
-        for cpu in range(self.ncpu):
-            freq_mean += self.cpufreq_prof[f"cpu{cpu}"] / self.ncpu
+        for cpu in range(self.ncpu_freq):
+            freq_mean += self.cpufreq_prof[f"cpu{cpu}"] / self.ncpu_freq
         plt.plot(self.cpufreq_stamps, freq_mean, "k.-", label="mean")
 
         cpu_freq_max = 6  # Hard-coded 6 HZ
@@ -472,7 +483,7 @@ class SystemData:
         plt.yticks(cpu_freq_max / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU frequencies (GHz)")
         plt.grid()
-        plt.legend(loc=0, ncol=self.ncpu // ceil(self.ncpu / 16), fontsize="6")
+        plt.legend(loc=0, ncol=self.ncpu_freq // ceil(self.ncpu_freq / 16), fontsize="6")
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=cpu_freq_max)
