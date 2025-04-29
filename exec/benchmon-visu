@@ -133,13 +133,13 @@ def main():
         args_str += f"\t--{key} {value}\n"
     logger.debug(f"{args_str}")
 
-    traces_repos = [traces_repo]
+    traces_repos = []
     if is_recursive:
-        traces_repos = [
-            f"{traces_repo}/{name}"
-            for name in os.listdir(traces_repo)
-            if os.path.isdir(os.path.join(traces_repo, name))
-        ]
+        for name in os.listdir(traces_repo):
+            if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
+                traces_repos += [f"{traces_repo}/{name}"]
+    else:
+        traces_repos += [traces_repo]
 
     nodes_data = []
     for repo in traces_repos:

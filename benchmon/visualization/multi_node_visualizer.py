@@ -53,7 +53,7 @@ class BenchmonMNSyncVisualizer:
         Args:
             nodes_data (list): list of nodes data
         """
-        nsbp = self.args.cpu + self.args.mem + self.args.net + self.args.ib + + self.args.disk  # \
+        nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net + self.args.ib + self.args.disk  # \
         # + (self.args.pow or self.args.pow_g5k)
 
         fig, _ = plt.subplots(nsbp, sharex=True)
@@ -66,6 +66,11 @@ class BenchmonMNSyncVisualizer:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_cpu(nodes_data=nodes_data)
+
+        if self.args.cpu_freq:
+            plt.subplot(nsbp, 1, sbp)
+            sbp += 1
+            self.plot_sync_cpufreq(nodes_data=nodes_data)
 
         if self.args.mem:
             plt.subplot(nsbp, 1, sbp)
@@ -128,6 +133,27 @@ class BenchmonMNSyncVisualizer:
         yrng = 10
         plt.yticks(100 / yrng * np.arange(yrng + 1))
         self.set_frame(label="Total CPU usage (%)")
+
+
+    def plot_sync_cpufreq(self, nodes_data: list) -> None:
+        """
+        Plot cpufreq sync
+
+        Args:
+            nodes_data (list): list of nodes data
+        """
+        ts_sync = []
+        cpufreq_sync = []
+        for data in nodes_data:
+            ts = data.system_metrics.cpufreq_stamps
+            cpufreq = data.system_metrics.cpufreq_vals["mean"]
+            plt.plot(ts, cpufreq, label=data.hostname)
+
+            ts_sync += [ts]
+            cpufreq_sync += [cpufreq]
+
+        self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
+        self.set_frame(label="Mean CPU frequency (GHz)")
 
 
     def plot_sync_mem(self, nodes_data: list) -> None:

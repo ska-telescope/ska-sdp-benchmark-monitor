@@ -45,6 +45,7 @@ class SystemData:
         if csv_cpufreq_report:
             self.ncpu_freq = 0
             self.cpufreq_prof = {}
+            self.cpufreq_vals = {}
             self.cpufreq_stamps = np.array([])
             self.cpufreq_min = None
             self.cpufreq_max = None
@@ -407,41 +408,77 @@ class SystemData:
         Read cpu frequency csv report
         Get profile
         """
-        self.logger.debug("Read CPUFreq csv report..."); t0 = time.time()  # noqa: E702
-        cpufreq_report_lines = self.read_csv_line_as_list(csv_report=csv_cpufreq_report)
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        cpufreq_pkl = f"{self.traces_repo}/pkl_dir/cpufreq_prof.pkl"
+        ts_pkl = f"{self.traces_repo}/pkl_dir/cpufreq_stamps.pkl"
+        freqvals_pkl = f"{self.traces_repo}/pkl_dir/cpufreq_vals.pkl"
 
-        self.logger.debug("Create CPUFreq profile..."); t0 = time.time()  # noqa: E702
-        cpu_freq_parsing = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
-        self.cpufreq_min = cpu_freq_parsing[0] or None
-        self.cpufreq_max = cpu_freq_parsing[1] or None
+        if os.access(cpufreq_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+            self.logger.debug("Load CPU profile..."); t0 = time.time()  # noqa: E702
 
-        # Get ncpu
-        ts_0 = cpufreq_report_lines[1][0]
-        ts = ts_0
-        line_idx = 1
-        while ts == ts_0:
-            line_idx += 1
-            ts = cpufreq_report_lines[line_idx][0]
+            with open(cpufreq_pkl, "rb") as _pf:
+                self.cpufreq_prof = pickle.load(_pf)
+            with open(ts_pkl, "rb") as _pf:
+                self.cpufreq_stamps = pickle.load(_pf)
+            with open(freqvals_pkl, "rb") as _pf:
+                self.cpufreq_vals = pickle.load(_pf)
 
-            self.ncpu_freq += 1
+            self.cpufreq_min = self.cpufreq_vals["min"]
+            self.cpufreq_max = self.cpufreq_vals["max"]
+            self.ncpu_freq = len(self.cpufreq_prof)
 
-        # Init cpu time series
-        cpufreq_ts = {}
-        for cpu_nb in range(self.ncpu_freq):
-            cpufreq_ts[f"cpu{cpu_nb}"] = []
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        # Read lines
-        for line in cpufreq_report_lines[1:]:
-            cpufreq_ts[line[1]] += [float(line[2])]
+        else:
 
-        HZ_UNIT = 1e6  # noqa: N806
-        for cpu_nb in range(self.ncpu_freq):
-            cpufreq_ts[f"cpu{cpu_nb}"] = np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / HZ_UNIT
+            self.logger.debug("Read CPUFreq csv report..."); t0 = time.time()  # noqa: E702
+            cpufreq_report_lines = self.read_csv_line_as_list(csv_report=csv_cpufreq_report)
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        self.cpufreq_prof = cpufreq_ts
-        self.cpufreq_stamps = [float(line[0]) for line in cpufreq_report_lines[1:: self.ncpu_freq]]
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.logger.debug("Create CPUFreq profile..."); t0 = time.time()  # noqa: E702
+            cpu_freq_parsing = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
+            self.cpufreq_min = cpu_freq_parsing[0] or None
+            self.cpufreq_max = cpu_freq_parsing[1] or None
+
+            # Get ncpu
+            ts_0 = cpufreq_report_lines[1][0]
+            ts = ts_0
+            line_idx = 1
+            while ts == ts_0:
+                line_idx += 1
+                ts = cpufreq_report_lines[line_idx][0]
+
+                self.ncpu_freq += 1
+
+            # Init cpu time series
+            cpufreq_ts = {}
+            for cpu_nb in range(self.ncpu_freq):
+                cpufreq_ts[f"cpu{cpu_nb}"] = []
+
+            # Read lines
+            for line in cpufreq_report_lines[1:]:
+                cpufreq_ts[line[1]] += [float(line[2])]
+
+            HZ_UNIT = 1e6  # noqa: N806
+            for cpu_nb in range(self.ncpu_freq):
+                cpufreq_ts[f"cpu{cpu_nb}"] = np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / HZ_UNIT
+
+            self.cpufreq_prof = cpufreq_ts
+            self.cpufreq_stamps = [float(line[0]) for line in cpufreq_report_lines[1:: self.ncpu_freq]]
+
+            self.cpufreq_vals["mean"] = np.zeros_like(self.cpufreq_stamps)
+            for cpu in range(self.ncpu_freq):
+                self.cpufreq_vals["mean"] += self.cpufreq_prof[f"cpu{cpu}"] / self.ncpu_freq
+            self.cpufreq_vals["min"] = self.cpufreq_min
+            self.cpufreq_vals["max"] = self.cpufreq_max
+
+            with open(cpufreq_pkl, "wb") as _pf:
+                pickle.dump(self.cpufreq_prof, _pf)
+            with open(ts_pkl, "wb") as _pf:
+                pickle.dump(self.cpufreq_stamps, _pf)
+            with open(freqvals_pkl, "wb") as _pf:
+                pickle.dump(self.cpufreq_vals, _pf)
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 
@@ -461,22 +498,19 @@ class SystemData:
 
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu + 1))
 
-        _nstamps = len(self.cpufreq_stamps)
-        freq_mean = np.zeros(_nstamps)
-
         for idx, core in enumerate(cores):
             plt.plot(self.cpufreq_stamps, self.cpufreq_prof[f"cpu{core}"], color=cm[idx], label=f"core-{core}")
 
-        for cpu in range(self.ncpu_freq):
-            freq_mean += self.cpufreq_prof[f"cpu{cpu}"] / self.ncpu_freq
-        plt.plot(self.cpufreq_stamps, freq_mean, "k.-", label="mean")
+        plt.plot(self.cpufreq_stamps, self.cpufreq_vals["mean"], "k.-", label="mean")
 
         cpu_freq_max = 6  # Hard-coded 6 HZ
         if self.cpufreq_min and self.cpufreq_max:
             cpu_freq_min = float(self.cpufreq_min) / HZ_UNIT
             cpu_freq_max = float(self.cpufreq_max) / HZ_UNIT
-            plt.plot(self.cpufreq_stamps, cpu_freq_max * np.ones(_nstamps), "gray", linestyle="--", label="hw max/min")
-            plt.plot(self.cpufreq_stamps, cpu_freq_min * np.ones(_nstamps), "gray", linestyle="--")
+            plt.plot(self.cpufreq_stamps, cpu_freq_max * np.ones_like(self.cpufreq_stamps),
+                     color="gray", linestyle="--", label="hw max/min")
+            plt.plot(self.cpufreq_stamps, cpu_freq_min * np.ones_like(self.cpufreq_stamps),
+                     color="gray", linestyle="--")
 
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
