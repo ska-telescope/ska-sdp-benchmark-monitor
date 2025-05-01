@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdint>
 #include <fstream>
 #include <ostream>
 #include <sched.h>
@@ -16,21 +17,21 @@ std::ostream &read_cpu(std::ostream &stream)
 {
     const auto now = std::chrono::system_clock::now();
     const auto duration = now.time_since_epoch();
-    const auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    const uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
     std::ifstream file("/proc/stat");
-    while (!file.eof())
+    std::string line;
+    while (std::getline(file, line))
     {
-        std::string line;
-        std::getline(file, line);
         if (!line.starts_with("cpu"))
             break;
 
+        const auto result = scn::scan<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
+                                      uint32_t, uint32_t, uint32_t>(line, "{} {} {} {} {} {} {} {} {} {} {}");
+        if (!result)
+            continue;
         const auto [cpuid_value, user_value, nice_value, system_value, idle_value, iowait_value, irq_value,
-                    softirq_value, steal_value, guest_value, guestnice_value] =
-            scn::scan<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
-                      uint32_t, uint32_t>(line, "{} {} {} {} {} {} {} {} {} {} {}")
-                ->values();
+                    softirq_value, steal_value, guest_value, guestnice_value] = result->values();
         const auto cpuid = io::cpuid_str_to_uint(cpuid_value);
 
         io::write_binary(stream, timestamp);
@@ -45,9 +46,6 @@ std::ostream &read_cpu(std::ostream &stream)
         io::write_binary(stream, steal_value);
         io::write_binary(stream, guest_value);
         io::write_binary(stream, guestnice_value);
-#ifndef BINARY
-        stream << std::endl;
-#endif
     }
 
     return stream;

@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+trap 'echo "Caught SIGINT, exiting..."; running=false' INT
+
 freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
 
@@ -17,7 +19,8 @@ echo -n "" > $report_ib_stat
 
 echo "timestamp,ib-interf:port,metric-key,metric-value" > $report_ib_stat
 
-while true
+running=true
+while $running
 do
     timestamp="$(date +'%s.%N')"
     buff=""

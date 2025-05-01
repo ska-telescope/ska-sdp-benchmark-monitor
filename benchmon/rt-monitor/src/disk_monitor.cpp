@@ -1,5 +1,7 @@
 #include "monitor_io.h"
+#include <array>
 #include <chrono>
+#include <cstring>
 #include <fstream>
 #include <memory>
 #include <scn/scan.h>
@@ -17,7 +19,7 @@ void start(const double time_interval, const std::string &out_path, const bool &
                                                  "\"%s,%s,\", $1, $2}' | sed 's/,$/\\n/'");
     io::write_binary(file, n_major_blocks);
     io::write_binary(file, n_all_blocks);
-    io::write_binary(file, sector_size_str);
+    io::write_binary(file, sector_size_str + "\n");
 
     while (running)
     {
@@ -38,11 +40,17 @@ void start(const double time_interval, const std::string &out_path, const bool &
                           uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
                           uint64_t, uint64_t>(line, "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}")
                     ->values();
+            if (device.starts_with("loop") || device.starts_with("dm"))
+                continue;
 
             io::write_binary(file, timestamp);
             io::write_binary(file, major);
             io::write_binary(file, minor);
-            io::write_binary(file, device);
+            std::array<char, 32> device_char;
+            std::fill(device_char.begin(), device_char.end(), '\0');
+            const size_t device_name_size = std::min(device_char.size(), device.size());
+            std::copy_n(device.cbegin(), device_name_size, device_char.begin());
+            io::write_binary(file, device_char);
             io::write_binary(file, rd_completed);
             io::write_binary(file, rd_merged);
             io::write_binary(file, sectors_read);

@@ -38,7 +38,11 @@ void start(const double time_interval, const std::string &out_path, const bool &
                 if (token.back() == ':')
                 {
                     token.pop_back();
-                    io::write_binary(file, token);
+                    std::array<char, 32> interface_char;
+                    std::fill(interface_char.begin(), interface_char.end(), '\0');
+                    const size_t interface_char_size = std::min(interface_char.size(), token.size());
+                    std::copy_n(token.cbegin(), interface_char_size, interface_char.begin());
+                    io::write_binary(file, interface_char);
                     continue;
                 }
                 try
@@ -51,9 +55,6 @@ void start(const double time_interval, const std::string &out_path, const bool &
                     std::cerr << "Invalid input in /proc/net/dev" << std::endl;
                 }
             }
-#ifndef BINARY
-            file << std::endl;
-#endif
         }
 
         std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(time_interval * 1000)));

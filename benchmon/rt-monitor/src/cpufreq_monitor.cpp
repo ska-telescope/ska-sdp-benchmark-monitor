@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <scn/scan.h>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -49,9 +51,34 @@ std::vector<std::string> get_online_cpu_scaling_freq_paths()
     return paths;
 }
 
+std::pair<uint64_t, uint64_t> get_freq_min_max()
+{
+    uint64_t min_freq = 0, max_freq = 0;
+
+    std::string cpu0_path = "/sys/devices/system/cpu/cpu0/cpufreq/";
+    std::ifstream min_freq_file(cpu0_path + "cpuinfo_min_freq");
+    std::ifstream max_freq_file(cpu0_path + "cpuinfo_max_freq");
+
+    if (min_freq_file.is_open())
+    {
+        min_freq_file >> min_freq;
+    }
+
+    if (max_freq_file.is_open())
+    {
+        max_freq_file >> max_freq;
+    }
+
+    return {min_freq, max_freq};
+}
+
 void start(const double time_interval, const std::string &out_path, const bool &running)
 {
     auto file = io::make_buffer(out_path);
+
+    const auto [freq_min, freq_max] = get_freq_min_max();
+    io::write_binary(file, freq_min);
+    io::write_binary(file, freq_max);
 
     const auto cpu_freq_paths = get_online_cpu_scaling_freq_paths();
     while (running)
@@ -64,14 +91,14 @@ void start(const double time_interval, const std::string &out_path, const bool &
         {
             const auto &path = cpu_freq_paths[i];
             std::ifstream freq_file(path);
-            uint32_t frequency;
-            freq_file >> frequency;
+
+            std::string line;
+            std::getline(freq_file, line);
+            const auto [frequency] = scn::scan<uint32_t>(line, "{}")->values();
+
             io::write_binary(file, timestamp);
             io::write_binary(file, i);
             io::write_binary(file, frequency);
-#ifndef BINARY
-            file << std::endl;
-#endif
         }
         std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(time_interval * 1000)));
     }

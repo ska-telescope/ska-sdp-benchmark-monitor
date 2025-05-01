@@ -103,7 +103,6 @@ class BenchmonVisualizer:
         self.is_any_sys = self.args.cpu or self.args.cpu_all or self.args.cpu_freq or \
             is_cores_full or self.args.mem or is_net or is_disk or self.args.ib
 
-        csv_reports = {}
         conds = {
             "mem": self.args.mem,
             "cpu": self.args.cpu or self.args.cpu_all or is_cores_full,
@@ -112,13 +111,20 @@ class BenchmonVisualizer:
             "disk": is_disk,
             "ib": self.args.ib
         }
-        for key in conds.keys():
-            csv_reports[f"csv_{key}_report"] = f"{self.traces_repo}/{key}_report.csv" if conds[key] else None
 
+        csv_reports = {}
+        csv_reports[f"csv_ib_report"] = f"{self.traces_repo}/ib_report.csv" if conds["ib"] else None
+
+        bin_reports = {}
+        for key in conds.keys():
+            if key == "ib":
+                continue
+            bin_reports[f"bin_{key}_report"] = f"{self.traces_repo}/{key}_report.bin" if conds[key] else None
         if self.is_any_sys:
             self.system_metrics = SystemData(logger=self.logger,
                                              traces_repo=self.traces_repo,
-                                             **csv_reports)
+                                             **csv_reports,
+                                             **bin_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
             + self.args.mem + is_net + is_disk + self.args.ib

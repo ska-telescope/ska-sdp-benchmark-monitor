@@ -37,6 +37,7 @@ class RunMonitor:
 
         # System monitoring
         self.sys_filename = lambda device: f"{device}_report.csv"  # @nc
+        self.bin_sys_filename = lambda device: f"{device}_report.bin"  # @nc
         self.is_system = args.system
         self.sys_freq = args.sys_freq
 
@@ -118,9 +119,25 @@ class RunMonitor:
         sh_repo = os.path.dirname(os.path.realpath(__file__))
         exec_sh_file = lambda device: f"{sh_repo}/{device}_mon.sh"
 
-        # CPU + CPUfreq + Memory + Network + Disk monitoring processes
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):  # , "timing_mapping"):
+        self.sys_process.append(subprocess.Popen(args=["rt-monitor",
+                                                       "--sampling-frequency",
+                                                       f"{freq}",
+                                                       "--cpu",
+                                                       f"{self.save_dir}/{self.bin_sys_filename("cpu")}",
+                                                       "--mem",
+                                                       f"{self.save_dir}/{self.bin_sys_filename("mem")}",
+                                                       "--disk",
+                                                       f"{self.save_dir}/{self.bin_sys_filename("disk")}",
+                                                       "--cpu-freq",
+                                                       f"{self.save_dir}/{self.bin_sys_filename("cpufreq")}",
+                                                       "--net",
+                                                       f"{self.save_dir}/{self.bin_sys_filename("net")}"],
+                                                       stdout=subprocess.PIPE,
+                                                       stderr=subprocess.STDOUT,
+                                                       text=True))
 
+        # IB monitoring process
+        for device in ["ib"]:  # , "timing_mapping"):
             msg = f"{exec_sh_file(device)} {freq} {self.save_dir}/{self.sys_filename(device)}"
             self.logger.debug(f"Starting: {msg}")
 

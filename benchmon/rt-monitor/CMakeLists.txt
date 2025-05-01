@@ -6,6 +6,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(FetchContent)
+
+FetchContent_Declare(
+    scnlib
+    GIT_REPOSITORY https://github.com/eliaskosunen/scnlib.git
+    GIT_TAG master
+)
+
+FetchContent_MakeAvailable(scnlib)
+
 set(header_files "inc/cpu_monitor.h"
                  "inc/cpufreq_monitor.h"
                  "inc/disk_monitor.h"
@@ -21,11 +31,7 @@ set(source_files "src/cpu_monitor.cpp"
                  "src/net_monitor.cpp")
 
 add_executable(rt-monitor ${header_files} ${source_files})
-
 target_include_directories(rt-monitor PUBLIC inc)
+target_link_libraries(rt-monitor PUBLIC scn)
 
-find_package(fmt REQUIRED)
-target_link_libraries(rt-monitor PRIVATE fmt::fmt)
-
-find_package(scn REQUIRED)
-target_link_libraries(rt-monitor PRIVATE scn::scn)
+install(TARGETS rt-monitor DESTINATION .)

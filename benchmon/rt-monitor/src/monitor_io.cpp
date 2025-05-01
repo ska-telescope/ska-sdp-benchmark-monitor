@@ -7,17 +7,12 @@ namespace rt_monitor::io
 {
 template <> std::ostream &write_binary(std::ostream &stream, std::string arr)
 {
-#ifndef BINARY
-    stream << arr << ",";
-#else
-    stream << arr;
-#endif
-    return stream;
+    return stream << arr;
 }
 
 std::string exec(const std::string &command)
 {
-    std::array<char, 128> buffer;
+    std::array<char, 32> buffer;
     std::string result;
 
     if (auto pipe = std::unique_ptr<FILE, int (*)(FILE *)>(popen(command.c_str(), "r"), pclose))
