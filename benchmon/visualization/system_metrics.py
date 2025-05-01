@@ -13,8 +13,8 @@ from math import ceil
 
 import numpy as np
 import matplotlib.pyplot as plt
-
 from benchmon.visualization import system_binary_reader
+
 
 def read_binary_samples(file_path: str, sampler_type: system_binary_reader.generic_sample):
     samples_list = []
@@ -24,6 +24,7 @@ def read_binary_samples(file_path: str, sampler_type: system_binary_reader.gener
             samples_list.append(sampler.binary_to_dict(data))
     return samples_list
 
+
 def read_c_string(file):
     chars = []
     while True:
@@ -32,10 +33,13 @@ def read_c_string(file):
             break
         chars.append(byte)
     return b''.join(chars).decode('utf-8')
+
+
 class SystemData:
     """
     System resource monitoring database
     """
+
 
     def __init__(self,
                  logger: logging.Logger,
@@ -143,8 +147,6 @@ class SystemData:
             cpu_ts_raw[cpu] = {key: [] for key in cpu_metric_keys}
 
         # Read lines
-        time_index = 0
-        cpu_index = 1
         timestamps_raw = []
 
         t0 = time.time()
@@ -332,7 +334,7 @@ class SystemData:
 
         return samples_list
 
-    def get_mem_profile(self, bin_mem_report:str) -> int:
+    def get_mem_profile(self, bin_mem_report: str) -> int:
         """
         Get memory profile
         """
@@ -353,9 +355,6 @@ class SystemData:
 
             ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"  # noqa: F841, E501, N806, B950
 
-            _chosen_keys = ["timestamp", "MemTotal", "MemFree", "Buffers", "Cached",
-                            "Slab", "SwapTotal", "SwapFree", "SwapCached"]
-
             self.logger.debug("Read Memory report..."); t0 = time.time()  # noqa: E702
             samples_list = self.read_mem_bin_report(bin_mem_report=bin_mem_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
@@ -363,13 +362,13 @@ class SystemData:
             self.logger.debug("Create Memory profile..."); t0 = time.time()  # noqa: E702
 
             hf = system_binary_reader.hf_mem_sample()
-            memory_dict_ = {key : [] for key, _, enabled in hf.field_definitions if enabled}
+            memory_dict_ = {key: [] for key, _, enabled in hf.field_definitions if enabled}
             for data in samples_list:
                 for key in memory_dict_:
                     memory_dict_[key].append(data[key])
-            
-            self.mem_prof =  {key: np.array(values, dtype=np.float64) for key, values in memory_dict_.items()}
-            self.mem_stamps= [np.float64(timestamp) / 1e9 for timestamp in memory_dict_["timestamp"]]
+
+            self.mem_prof = {key: np.array(values, dtype=np.float64) for key, values in memory_dict_.items()}
+            self.mem_stamps = [np.float64(timestamp) / 1e9 for timestamp in memory_dict_["timestamp"]]
 
             with open(mem_pkl, "wb") as _pf:
                 pickle.dump(self.mem_prof, _pf)
@@ -431,7 +430,7 @@ class SystemData:
 
         return min_cpufreq, max_cpufreq, samples_list
 
-    def get_cpufreq_prof(self, bin_cpufreq_report:str):
+    def get_cpufreq_prof(self, bin_cpufreq_report: str):
         """
         Read cpu frequency report
         Get profile
@@ -565,7 +564,8 @@ class SystemData:
             line_idx += 1
             ts = samples_list[line_idx]["timestamp"]
         nnet_interf = len(self.net_interfs)
-        self.net_metric_keys = [key for key, _, enabled in system_binary_reader.hf_net_sample().field_definitions if key not in ["timestamp", "interface"] and enabled]
+        self.net_metric_keys = [key for key, _, enabled in system_binary_reader.hf_net_sample().field_definitions
+                                if key not in ["timestamp", "interface"] and enabled]
 
         net_ts_raw = {}
         for interf in self.net_interfs:
@@ -730,19 +730,18 @@ class SystemData:
         Read disk monitoring report
         """
         disk_sampler = system_binary_reader.hf_disk_sample()
-        n_major_blocks = 0
-        n_all_blocks = 0
         sector_sizes = {}
         samples_list = []
         with open(bin_disk_report, "rb") as file:
-            n_major_blocks = np.frombuffer(file.read(8), dtype=np.uint64)[0]
-            n_all_blocks = np.frombuffer(file.read(8), dtype=np.uint64)[0]
+            np.frombuffer(file.read(8), dtype=np.uint64)[0]  # n_major_blocks
+            np.frombuffer(file.read(8), dtype=np.uint64)[0]  # n_all_blocks
             sector_sizes_str = read_c_string(file).split(",")
-            sector_sizes = { key : int(value) for key,value in zip(sector_sizes_str[0::2], sector_sizes_str[1::2]) }
+            sector_sizes = {key: int(value) for key, value in zip(sector_sizes_str[0::2], sector_sizes_str[1::2])}
             while data := file.read(disk_sampler.get_pack_size()):
                 samples_list.append(disk_sampler.binary_to_dict(data))
 
-        self.disk_field_keys = [key for key, _, enabled in disk_sampler.field_definitions if enabled and key not in ["timestamp", "major", "minor", "device_name"]]
+        self.disk_field_keys = [key for key, _, enabled in disk_sampler.field_definitions
+                                if enabled and key not in ["timestamp", "major", "minor", "device_name"]]
 
         # get major blocks and associated sector size
         self.maj_blks_sects = sector_sizes

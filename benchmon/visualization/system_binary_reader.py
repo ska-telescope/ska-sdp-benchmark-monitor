@@ -1,11 +1,4 @@
-import asyncio
-import multiprocessing
-import os
-from pathlib import Path
-import time
 import numpy as np
-
-import numpy
 import struct
 from typing import List, Dict, Type
 
@@ -26,9 +19,12 @@ class generic_sample:
         self.field_definitions = field_definitions
 
         # Type to format character dictionary for Python binary pack/unpack.
-        type_map = {numpy.uint8: "B",numpy.uint16: "H",numpy.uint32: "I",numpy.uint64: "Q",numpy.float32: "f",numpy.float64: "d",numpy.int8: "b",numpy.int16: "h",numpy.int32: "i",numpy.int64: "q",numpy.double: "d",numpy.longdouble: "d",numpy.bool_: "?",str: "32s",}
+        type_map = {np.uint8: "B", np.uint16: "H", np.uint32: "I", np.uint64: "Q", np.float32: "f", np.float64: "d",
+                    np.int8: "b", np.int16: "h", np.int32: "i", np.int64: "q", np.double: "d", np.longdouble: "d",
+                    np.bool_: "?", str: "32s"}
         # Builds the format string for Python binary pack/unpack.
-        self.format_string_static = " ".join(type_map[field_type] for _, field_type, enabled in field_definitions if enabled)
+        self.format_string_static = " ".join(type_map[field_type] for _, field_type,
+                                             enabled in field_definitions if enabled)
         self.pack_size = struct.calcsize(self.format_string_static)
         self.enabled_fields = [field for field in self.field_definitions if field[2]]
 
@@ -114,7 +110,8 @@ class hf_cpu_sample(generic_sample):
     """
     A class representing a high-frequency CPU sample, inheriting from `generic_sample`.
 
-    This class is used to define and initialize the structure of a CPU sample with various fields related to CPU usage statistics.
+    This class is used to define and initialize the structure of a CPU sample with various fields related to CPU usage
+    statistics.
 
     Attributes:
         timestamp (np.float64:  The timestamp of the sample in seconds since the epoch.
@@ -138,20 +135,21 @@ class hf_cpu_sample(generic_sample):
         """
         Initializes the class with field definitions for monitoring data.
 
-        The field definitions specify the structure of the data to be monitored, including the field name, data type, and whether the field is enabled.
+        The field definitions specify the structure of the data to be monitored, including the field name, data type,
+        and whether the field is enabled.
         """
         field_definitions = [
             ["timestamp", np.uint64, True],
-            ["cpu",       np.uint32, True],
-            ["user",      np.uint32, True],
-            ["nice",      np.uint32, True],
-            ["system",    np.uint32, True],
-            ["idle",      np.uint32, True],
-            ["iowait",    np.uint32, True],
-            ["irq",       np.uint32, True],
-            ["softirq",   np.uint32, True],
-            ["steal",     np.uint32, True],
-            ["guest",     np.uint32, True],
+            ["cpu", np.uint32, True],
+            ["user", np.uint32, True],
+            ["nice", np.uint32, True],
+            ["system", np.uint32, True],
+            ["idle", np.uint32, True],
+            ["iowait", np.uint32, True],
+            ["irq", np.uint32, True],
+            ["softirq", np.uint32, True],
+            ["steal", np.uint32, True],
+            ["guest", np.uint32, True],
             ["guestnice", np.uint32, True],
         ]
         super().__init__(field_definitions)
@@ -161,7 +159,8 @@ class hf_cpufreq_sample(generic_sample):
     """
     A class representing a sample of CPU frequency data.
 
-    This class inherits from `generic_sample` and is used to define the structure of a CPU frequency sample, including the timestamp, CPU ID, and CPU frequency.
+    This class inherits from `generic_sample` and is used to define the structure of a CPU frequency sample, including
+    the timestamp, CPU ID, and CPU frequency.
 
     Attributes:
         timestamp (np.uint64): The timestamp of the sample in timestamp format.
@@ -173,11 +172,12 @@ class hf_cpufreq_sample(generic_sample):
         """
         Initializes the class with field definitions for monitoring data.
 
-        The field definitions specify the structure of the data to be monitored, including the field name, data type, and whether the field is enabled.
+        The field definitions specify the structure of the data to be monitored, including the field name, data type,
+        and whether the field is enabled.
         """
         field_definitions = [
             ["timestamp", np.uint64, True],
-            ["cpu",       np.uint32, True],
+            ["cpu", np.uint32, True],
             ["frequency", np.uint32, True],
         ]
         super().__init__(field_definitions)
@@ -186,7 +186,7 @@ class hf_cpufreq_sample(generic_sample):
 class hf_disk_sample(generic_sample):
     """
     A class representing a sample of disk-related metrics.
-    
+
     This class inherits from `generic_sample` and is used to define the structure of a disk monitoring sample.
 
     Attributes:
@@ -220,30 +220,31 @@ class hf_disk_sample(generic_sample):
         """
         Initializes the class with a predefined set of field definitions.
 
-        The field definitions specify the structure of the data to be monitored, including the field name, data type, and whether the field is enabled.
+        The field definitions specify the structure of the data to be monitored, including the field name, data type,
+        and whether the field is enabled.
         """
         field_definitions = [
-            ["timestamp",   np.uint64, True],
-            ["major",       np.uint32, True],
-            ["minor",       np.uint32, True],
-            ["device_name", str,       True],
-            ["#rd-cd",      np.uint64, True],
-            ["#rd-md",      np.uint64, True],
-            ["sect-rd",     np.uint64, True],
-            ["time-rd",     np.uint64, True],
-            ["#wr-cd",      np.uint64, True],
-            ["#wr-md",      np.uint64, True],
-            ["sect-wr",     np.uint64, True],
-            ["time-wr",     np.uint64, True],
-            ["#io-ip",      np.uint64, True],
-            ["time-io",     np.uint64, True],
+            ["timestamp", np.uint64, True],
+            ["major", np.uint32, True],
+            ["minor", np.uint32, True],
+            ["device_name", str, True],
+            ["#rd-cd", np.uint64, True],
+            ["#rd-md", np.uint64, True],
+            ["sect-rd", np.uint64, True],
+            ["time-rd", np.uint64, True],
+            ["#wr-cd", np.uint64, True],
+            ["#wr-md", np.uint64, True],
+            ["sect-wr", np.uint64, True],
+            ["time-wr", np.uint64, True],
+            ["#io-ip", np.uint64, True],
+            ["time-io", np.uint64, True],
             ["time-wei-io", np.uint64, True],
-            ["#disc-cd",    np.uint64, True],
-            ["#disc-md",    np.uint64, True],
-            ["sect-disc",   np.uint64, True],
-            ["time-disc",   np.uint64, True],
-            ["#flush-req",  np.uint64, True],
-            ["time-flush",  np.uint64, True],
+            ["#disc-cd", np.uint64, True],
+            ["#disc-md", np.uint64, True],
+            ["sect-disc", np.uint64, True],
+            ["time-disc", np.uint64, True],
+            ["#flush-req", np.uint64, True],
+            ["time-flush", np.uint64, True],
         ]
         super().__init__(field_definitions)
 
@@ -252,7 +253,8 @@ class hf_mem_sample(generic_sample):
     """
     A class representing a sample of memory-related metrics.
 
-    The field definitions specify the structure of the data to be monitored, including the field name, data type, and whether the field is enabled.
+    The field definitions specify the structure of the data to be monitored, including the field name, data type, and
+    whether the field is enabled.
 
     Attributes:
         time (np.float64):              Timestamp of the sample.
@@ -317,65 +319,66 @@ class hf_mem_sample(generic_sample):
         """
         Initializes the class with a predefined set of field definitions.
 
-        The field definitions represent various system memory metrics, each defined by a name, data type, and a boolean indicating whether the field is enabled.
+        The field definitions represent various system memory metrics, each defined by a name, data type, and a boolean
+        indicating whether the field is enabled.
         """
         field_definitions = [
-            ["timestamp",         np.uint64, True ],
-            ["MemTotal",          np.uint64, True ],
-            ["MemFree",           np.uint64, True ],
-            ["MemAvailable",      np.uint64, False],
-            ["Buffers",           np.uint64, True ],
-            ["Cached",            np.uint64, True ],
-            ["SwapCached",        np.uint64, True ],
-            ["Active",            np.uint64, False],
-            ["Inactive",          np.uint64, False],
-            ["Active(anon)",      np.uint64, False],
-            ["Inactive(anon)",    np.uint64, False],
-            ["Active(file)",      np.uint64, False],
-            ["Inactive(file)",    np.uint64, False],
-            ["Unevictable",       np.uint64, False],
-            ["Mlocked",           np.uint64, False],
-            ["SwapTotal",         np.uint64, True ],
-            ["SwapFree",          np.uint64, True ],
-            ["Zswap",             np.uint64, False],
-            ["Zswapped",          np.uint64, False],
-            ["Dirty",             np.uint64, False],
-            ["Writeback",         np.uint64, False],
-            ["AnonPages",         np.uint64, False],
-            ["Mapped",            np.uint64, False],
-            ["Shmem",             np.uint64, False],
-            ["KReclaimable",      np.uint64, False],
-            ["Slab",              np.uint64, True ],
-            ["SReclaimable",      np.uint64, False],
-            ["SUnreclaim",        np.uint64, False],
-            ["KernelStack",       np.uint64, False],
-            ["PageTables",        np.uint64, False],
-            ["SecPageTables",     np.uint64, False],
-            ["NFS_Unstable",      np.uint64, False],
-            ["Bounce",            np.uint64, False],
-            ["WritebackTmp",      np.uint64, False],
-            ["CommitLimit",       np.uint64, False],
-            ["Committed_AS",      np.uint64, False],
-            ["VmallocTotal",      np.uint64, False],
-            ["VmallocUsed",       np.uint64, False],
-            ["VmallocChunk",      np.uint64, False],
-            ["Percpu",            np.uint64, False],
+            ["timestamp", np.uint64, True],
+            ["MemTotal", np.uint64, True],
+            ["MemFree", np.uint64, True],
+            ["MemAvailable", np.uint64, False],
+            ["Buffers", np.uint64, True],
+            ["Cached", np.uint64, True],
+            ["SwapCached", np.uint64, True],
+            ["Active", np.uint64, False],
+            ["Inactive", np.uint64, False],
+            ["Active(anon)", np.uint64, False],
+            ["Inactive(anon)", np.uint64, False],
+            ["Active(file)", np.uint64, False],
+            ["Inactive(file)", np.uint64, False],
+            ["Unevictable", np.uint64, False],
+            ["Mlocked", np.uint64, False],
+            ["SwapTotal", np.uint64, True],
+            ["SwapFree", np.uint64, True],
+            ["Zswap", np.uint64, False],
+            ["Zswapped", np.uint64, False],
+            ["Dirty", np.uint64, False],
+            ["Writeback", np.uint64, False],
+            ["AnonPages", np.uint64, False],
+            ["Mapped", np.uint64, False],
+            ["Shmem", np.uint64, False],
+            ["KReclaimable", np.uint64, False],
+            ["Slab", np.uint64, True],
+            ["SReclaimable", np.uint64, False],
+            ["SUnreclaim", np.uint64, False],
+            ["KernelStack", np.uint64, False],
+            ["PageTables", np.uint64, False],
+            ["SecPageTables", np.uint64, False],
+            ["NFS_Unstable", np.uint64, False],
+            ["Bounce", np.uint64, False],
+            ["WritebackTmp", np.uint64, False],
+            ["CommitLimit", np.uint64, False],
+            ["Committed_AS", np.uint64, False],
+            ["VmallocTotal", np.uint64, False],
+            ["VmallocUsed", np.uint64, False],
+            ["VmallocChunk", np.uint64, False],
+            ["Percpu", np.uint64, False],
             ["HardwareCorrupted", np.uint64, False],
-            ["AnonHugePages",     np.uint64, False],
-            ["ShmemHugePages",    np.uint64, False],
-            ["ShmemPmdMapped",    np.uint64, False],
-            ["FileHugePages",     np.uint64, False],
-            ["FilePmdMapped",     np.uint64, False],
-            ["Unaccepted",        np.uint64, False],
-            ["Hugepages_Total",   np.uint64, False],
-            ["Hugepages_Free",    np.uint64, False],
-            ["Hugepages_Rsvd",    np.uint64, False],
-            ["Hugepages_Surp",    np.uint64, False],
-            ["Hugepagesize",      np.uint64, False],
-            ["Hugetlb",           np.uint64, False],
-            ["DirectMap4k",       np.uint64, False],
-            ["DirectMap2M",       np.uint64, False],
-            ["DirectMap1G",       np.uint64, False],
+            ["AnonHugePages", np.uint64, False],
+            ["ShmemHugePages", np.uint64, False],
+            ["ShmemPmdMapped", np.uint64, False],
+            ["FileHugePages", np.uint64, False],
+            ["FilePmdMapped", np.uint64, False],
+            ["Unaccepted", np.uint64, False],
+            ["Hugepages_Total", np.uint64, False],
+            ["Hugepages_Free", np.uint64, False],
+            ["Hugepages_Rsvd", np.uint64, False],
+            ["Hugepages_Surp", np.uint64, False],
+            ["Hugepagesize", np.uint64, False],
+            ["Hugetlb", np.uint64, False],
+            ["DirectMap4k", np.uint64, False],
+            ["DirectMap2M", np.uint64, False],
+            ["DirectMap1G", np.uint64, False],
         ]
         super().__init__(field_definitions)
 
@@ -384,7 +387,8 @@ class hf_net_sample(generic_sample):
     """
     A class representing a sample of network traffic related metrics.
 
-    This class extends `generic_sample` and defines a set of fields that capture network interface statistics, including metrics for bytes, packets, errors, and other transmission and reception details.
+    This class extends `generic_sample` and defines a set of fields that capture network interface statistics,
+    including metrics for bytes, packets, errors, and other transmission and reception details.
 
     Attributes:
         timestamp (np.float64):    The timestamp of the sample.
@@ -411,26 +415,27 @@ class hf_net_sample(generic_sample):
         """
         Initializes the class with a predefined set of field definitions.
 
-        The field definitions specify the structure of the data to be monitored, including the field name, data type, and whether the field is enabled.
+        The field definitions specify the structure of the data to be monitored, including the field name, data type,
+        and whether the field is enabled.
         """
         field_definitions = [
-            ["timestamp",     np.uint64, True],
-            ["interface",     str,       True],
-            ["rx-bytes",      np.uint64, True],
-            ["rx-packets",    np.uint64, True],
-            ["rx-errs",       np.uint64, True],
-            ["rx-drop",       np.uint64, True],
-            ["rx-fifo",       np.uint64, True],
-            ["rx-frame",      np.uint64, True],
+            ["timestamp", np.uint64, True],
+            ["interface", str, True],
+            ["rx-bytes", np.uint64, True],
+            ["rx-packets", np.uint64, True],
+            ["rx-errs", np.uint64, True],
+            ["rx-drop", np.uint64, True],
+            ["rx-fifo", np.uint64, True],
+            ["rx-frame", np.uint64, True],
             ["rx-compressed", np.uint64, True],
-            ["rx-multicast",  np.uint64, True],
-            ["tx-bytes",      np.uint64, True],
-            ["tx-packets",    np.uint64, True],
-            ["tx-errs",       np.uint64, True],
-            ["tx-drop",       np.uint64, True],
-            ["tx-fifo",       np.uint64, True],
-            ["tx-colls",      np.uint64, True],
-            ["tx-carrier",    np.uint64, True],
+            ["rx-multicast", np.uint64, True],
+            ["tx-bytes", np.uint64, True],
+            ["tx-packets", np.uint64, True],
+            ["tx-errs", np.uint64, True],
+            ["tx-drop", np.uint64, True],
+            ["tx-fifo", np.uint64, True],
+            ["tx-colls", np.uint64, True],
+            ["tx-carrier", np.uint64, True],
             ["tx-compressed", np.uint64, True],
         ]
         super().__init__(field_definitions)

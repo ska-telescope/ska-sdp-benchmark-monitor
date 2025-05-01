@@ -124,22 +124,28 @@ class RunMonitor:
         sh_repo = os.path.dirname(os.path.realpath(__file__))
         exec_sh_file = lambda device: f"{sh_repo}/{device}_mon.sh"
 
-        self.sys_process.append(subprocess.Popen(args=["rt-monitor",
-                                                       "--sampling-frequency",
-                                                       f"{freq}",
-                                                       "--cpu",
-                                                       f"{self.save_dir}/{self.bin_sys_filename("cpu")}",
-                                                       "--mem",
-                                                       f"{self.save_dir}/{self.bin_sys_filename("mem")}",
-                                                       "--disk",
-                                                       f"{self.save_dir}/{self.bin_sys_filename("disk")}",
-                                                       "--cpu-freq",
-                                                       f"{self.save_dir}/{self.bin_sys_filename("cpufreq")}",
-                                                       "--net",
-                                                       f"{self.save_dir}/{self.bin_sys_filename("net")}"],
-                                                       stdout=subprocess.PIPE,
-                                                       stderr=subprocess.STDOUT,
-                                                       text=True))
+        try:
+            self.sys_process.append(subprocess.Popen(
+                args=[
+                    "rt-monitor",
+                    "--sampling-frequency",
+                    f"{freq}",
+                    "--cpu",
+                    f"{self.save_dir}/{self.bin_sys_filename('cpu')}",
+                    "--mem",
+                    f"{self.save_dir}/{self.bin_sys_filename('mem')}",
+                    "--disk",
+                    f"{self.save_dir}/{self.bin_sys_filename('disk')}",
+                    "--cpu-freq",
+                    "{self.save_dir}/{self.bin_sys_filename('cpufreq')}",
+                    "--net",
+                    f"{self.save_dir}/{self.bin_sys_filename('net')}"
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True))
+        except FileNotFoundError:
+            self.logger.error("Unable to find the monitor executable file.")
 
         # IB monitoring process
         for device in ["ib"]:  # , "timing_mapping"):

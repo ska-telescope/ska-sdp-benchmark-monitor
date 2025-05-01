@@ -1,6 +1,9 @@
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <thread>
 
 #include "monitor_io.h"

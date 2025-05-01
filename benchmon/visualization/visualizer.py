@@ -113,7 +113,7 @@ class BenchmonVisualizer:
         }
 
         csv_reports = {}
-        csv_reports[f"csv_ib_report"] = f"{self.traces_repo}/ib_report.csv" if conds["ib"] else None
+        csv_reports["csv_ib_report"] = f"{self.traces_repo}/ib_report.csv" if conds["ib"] else None
 
         bin_reports = {}
         for key in conds.keys():
