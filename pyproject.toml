@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools", "wheel", "cmake"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -8,6 +8,7 @@ data-files = { bin = ["exec/*"] }
 
 [tool.setuptools.package-data]
 "benchmon.run" = ["*.sh"]
+"bin" = ["rt-monitor"]
 
 [project.urls]
 repository = "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor"

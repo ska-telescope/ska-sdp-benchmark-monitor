@@ -4,7 +4,6 @@
 #include <limits>
 #include <ostream>
 #include <vector>
-#define BINARY
 
 namespace rt_monitor::io
 {
@@ -46,12 +45,7 @@ inline uint32_t cpuid_str_to_uint(const std::string &str)
  */
 template <typename T> std::ostream &write_binary(std::ostream &stream, const T value)
 {
-#ifndef BINARY
-    stream << value << ",";
-#else
-    stream.write(reinterpret_cast<const char *>(&value), sizeof(value));
-#endif
-    return stream;
+    return stream.write(reinterpret_cast<const char *>(&value), sizeof(value));
 }
 
 /**

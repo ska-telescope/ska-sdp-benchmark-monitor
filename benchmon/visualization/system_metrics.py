@@ -14,7 +14,24 @@ from math import ceil
 import numpy as np
 import matplotlib.pyplot as plt
 
+from benchmon.visualization import system_binary_reader
 
+def read_binary_samples(file_path: str, sampler_type: system_binary_reader.generic_sample):
+    samples_list = []
+    sampler = sampler_type()
+    with open(file_path, "rb") as file:
+        while data := file.read(sampler.get_pack_size()):
+            samples_list.append(sampler.binary_to_dict(data))
+    return samples_list
+
+def read_c_string(file):
+    chars = []
+    while True:
+        byte = file.read(1)
+        if not byte or byte == b'\n':
+            break
+        chars.append(byte)
+    return b''.join(chars).decode('utf-8')
 class SystemData:
     """
     System resource monitoring database
@@ -23,11 +40,11 @@ class SystemData:
     def __init__(self,
                  logger: logging.Logger,
                  traces_repo: str,
-                 csv_cpu_report: str,
-                 csv_cpufreq_report: str,
-                 csv_mem_report: str,
-                 csv_net_report: str,
-                 csv_disk_report: str,
+                 bin_cpu_report: str,
+                 bin_cpufreq_report: str,
+                 bin_mem_report: str,
+                 bin_net_report: str,
+                 bin_disk_report: str,
                  csv_ib_report: str):
         """
         Construct and profile system resource usage profile
@@ -35,28 +52,28 @@ class SystemData:
         self.logger = logger
         self.traces_repo = traces_repo
 
-        if csv_cpu_report:
+        if bin_cpu_report:
             self.ncpu = 0
             self.cpus = []
             self.cpu_prof = {}
             self.cpu_stamps = np.array([])
-            self.get_cpu_profile(csv_cpu_report=csv_cpu_report)
+            self.get_cpu_profile(bin_cpu_report=bin_cpu_report)
 
-        if csv_cpufreq_report:
+        if bin_cpufreq_report:
             self.ncpu_freq = 0
             self.cpufreq_prof = {}
             self.cpufreq_vals = {}
             self.cpufreq_stamps = np.array([])
             self.cpufreq_min = None
             self.cpufreq_max = None
-            self.get_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report)
+            self.get_cpufreq_prof(bin_cpufreq_report=bin_cpufreq_report)
 
-        if csv_mem_report:
+        if bin_mem_report:
             self.mem_prof = {}
             self.mem_stamps = np.array([])
-            self.get_mem_profile(csv_mem_report=csv_mem_report)
+            self.get_mem_profile(bin_mem_report=bin_mem_report)
 
-        if csv_net_report:
+        if bin_net_report:
             self.net_prof = {}
             self.net_data = {}
             self.net_metric_keys = {}
@@ -66,9 +83,9 @@ class SystemData:
             self.net_tx_total = np.array([])
             self.net_rx_data = 0
             self.net_tx_data = 0
-            self.get_net_prof(csv_net_report=csv_net_report)
+            self.get_net_prof(bin_net_report=bin_net_report)
 
-        if csv_disk_report:
+        if bin_disk_report:
             self.disk_prof = {}
             self.disk_data = {}
             self.disk_field_keys = {}
@@ -79,7 +96,7 @@ class SystemData:
             self.disk_wr_total = np.array([])
             self.disk_rd_data = 0
             self.disk_wr_data = 0
-            self.get_disk_prof(csv_disk_report=csv_disk_report)
+            self.get_disk_prof(bin_disk_report=bin_disk_report)
 
         if csv_ib_report:
             self.ib_prof = {}
@@ -97,35 +114,33 @@ class SystemData:
         self.xlim = None
         self.yrange = None
 
-    def read_cpu_csv_report(self, csv_cpu_report: str):
+    def read_cpu_bin_report(self, bin_cpu_report: str):
         """
         Read cpu report
         """
-        # Read line of cpu csv report
         t0 = time.time()
-        cpu_report_lines = self.read_csv_line_as_list(csv_report=csv_cpu_report)
         self.logger.debug(f"\t open+read = {round(time.time() - t0, 3)} s")
 
-        # Get cpus, number of cpu cores + global
-        ts_0 = cpu_report_lines[1][0]
+        samples_list = read_binary_samples(bin_cpu_report, system_binary_reader.hf_cpu_sample)
+
+        self.cpus = []
+        ts_0 = samples_list[0]["timestamp"]
         ts = ts_0
-        line_idx = 1
+        idx = 0
         while ts == ts_0:
-            self.cpus += [cpu_report_lines[line_idx][1]]
-            line_idx += 1
-            ts = cpu_report_lines[line_idx][0]
+            self.cpus.append(samples_list[idx]["cpu"])
+            idx += 1
+            ts = samples_list[idx]["timestamp"]
+
         ncpu_glob = len(self.cpus)
         self.ncpu = ncpu_glob - 1
 
-        # CPU metric keys {"user": 2, "nice": 3, "system": 4, "idle": 5, "iowait": 6,
-        #                  "irq": 7, "softirq": 8, "steal": 9, "guest": 10, "guestnice": 11}
-        _sidx = 2
-        cpu_metric_keys = {key: idx + _sidx for idx, key in enumerate(cpu_report_lines[0][_sidx:])}
+        cpu_metric_keys = {key for key, _, _ in system_binary_reader.hf_cpu_sample().field_definitions}
 
         # Init cpu time series
         cpu_ts_raw = {}
         for cpu in self.cpus:
-            cpu_ts_raw[cpu] = {key: [] for key in cpu_metric_keys.keys()}
+            cpu_ts_raw[cpu] = {key: [] for key in cpu_metric_keys}
 
         # Read lines
         time_index = 0
@@ -133,18 +148,19 @@ class SystemData:
         timestamps_raw = []
 
         t0 = time.time()
-        for line in cpu_report_lines[1:]:
+        for data in samples_list:
             for key in cpu_metric_keys:
-                cpu_ts_raw[line[cpu_index]][key] += [float(line[cpu_metric_keys[key]])]
+                cpu_ts_raw[data["cpu"]][key].append(data[key])
+
         self.logger.debug(f"\t fill dict = {round(time.time() - t0, 3)} s")
 
         t0 = time.time()
-        timestamps_raw = [float(line[time_index]) for line in cpu_report_lines[1::ncpu_glob]]
+        timestamps_raw = [float(data["timestamp"] / 1e9) for data in samples_list[1::ncpu_glob]]
         self.logger.debug(f"\t ts_raw = {round(time.time() - t0, 3)} s")
 
         return cpu_ts_raw, timestamps_raw
 
-    def get_cpu_profile(self, csv_cpu_report=str) -> int:
+    def get_cpu_profile(self, bin_cpu_report=str) -> int:
         """
         Get cpu profile
         """
@@ -164,8 +180,9 @@ class SystemData:
 
         else:
 
-            self.logger.debug("Read CPU csv report..."); t0 = time.time()  # noqa: E702
-            cpu_ts_raw, timestamps_raw = self.read_cpu_csv_report(csv_cpu_report=csv_cpu_report)
+            max_int = np.iinfo(np.uint32).max
+            self.logger.debug("Read CPU report..."); t0 = time.time()  # noqa: E702
+            cpu_ts_raw, timestamps_raw = self.read_cpu_bin_report(bin_cpu_report=bin_cpu_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
             self.logger.debug("Create CPU profile..."); t0 = time.time()  # noqa: E702
@@ -180,12 +197,12 @@ class SystemData:
             t0i = time.time()
             cpu_ts = {}
             for key in cpu_ts_raw.keys():
-                cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw["cpu"].keys()}
+                cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw[max_int].keys()}
             self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
 
             t0i = time.time()
             for stamp in range(nstamps):
-                for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw["cpu"].keys()):
+                for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw[max_int].keys()):
                     cpu_ts[key][metric_key][stamp] = (
                         cpu_ts_raw[key][metric_key][stamp + 1] - cpu_ts_raw[key][metric_key][stamp]
                     )
@@ -195,10 +212,11 @@ class SystemData:
             for key in cpu_ts.keys():
                 for stamp in range(nstamps):
                     cpu_total = 0
-                    for metric_key in cpu_ts["cpu"].keys():
-                        cpu_total += cpu_ts[key][metric_key][stamp]
+                    for metric_key in cpu_ts[max_int].keys():
+                        if metric_key != "timestamp":
+                            cpu_total += cpu_ts[key][metric_key][stamp]
 
-                    for metric_key in cpu_ts["cpu"].keys():
+                    for metric_key in cpu_ts[max_int].keys():
                         cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
             self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
 
@@ -220,7 +238,7 @@ class SystemData:
         """
         Plot average cpu usage
         """
-        core = f"cpu{number}"
+        core = np.iinfo(np.uint32).max if number == "" else number
         alpha = 0.8
         prefix = f"{number}: " if number else ""
 
@@ -302,17 +320,19 @@ class SystemData:
 
         return 0
 
-    def read_mem_csv_report(self, csv_mem_report: str):
+    def read_mem_bin_report(self, bin_mem_report: str):
         """
         Read memory report
         """
-        mem_report_lines = self.read_csv_line_as_list(csv_report=csv_mem_report)
+        hf = system_binary_reader.hf_mem_sample()
+        samples_list = []
+        with open(bin_mem_report, "rb") as file:
+            while data := file.read(hf.get_pack_size()):
+                samples_list.append(hf.binary_to_dict(data))
 
-        keys_with_idx = {key: idx for idx, key in enumerate(mem_report_lines[0][:-1])}
+        return samples_list
 
-        return mem_report_lines, keys_with_idx
-
-    def get_mem_profile(self, csv_mem_report: str) -> int:
+    def get_mem_profile(self, bin_mem_report:str) -> int:
         """
         Get memory profile
         """
@@ -336,23 +356,20 @@ class SystemData:
             _chosen_keys = ["timestamp", "MemTotal", "MemFree", "Buffers", "Cached",
                             "Slab", "SwapTotal", "SwapFree", "SwapCached"]
 
-            self.logger.debug("Read Memory csv report..."); t0 = time.time()  # noqa: E702
-            mem_report_lines, keys_with_idx = self.read_mem_csv_report(csv_mem_report=csv_mem_report)
+            self.logger.debug("Read Memory report..."); t0 = time.time()  # noqa: E702
+            samples_list = self.read_mem_bin_report(bin_mem_report=bin_mem_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
             self.logger.debug("Create Memory profile..."); t0 = time.time()  # noqa: E702
 
-            memory_dict = {key: [] for key in _chosen_keys}
-
-            for line in mem_report_lines[1:]:
-                for key in memory_dict:
-                    memory_dict[key] += [float(line[keys_with_idx[key]])]
-
-            for key in memory_dict:
-                memory_dict[key] = np.array(memory_dict[key])
-
-            self.mem_prof = memory_dict
-            self.mem_stamps = memory_dict["timestamp"]
+            hf = system_binary_reader.hf_mem_sample()
+            memory_dict_ = {key : [] for key, _, enabled in hf.field_definitions if enabled}
+            for data in samples_list:
+                for key in memory_dict_:
+                    memory_dict_[key].append(data[key])
+            
+            self.mem_prof =  {key: np.array(values, dtype=np.float64) for key, values in memory_dict_.items()}
+            self.mem_stamps= [np.float64(timestamp) / 1e9 for timestamp in memory_dict_["timestamp"]]
 
             with open(mem_pkl, "wb") as _pf:
                 pickle.dump(self.mem_prof, _pf)
@@ -403,9 +420,20 @@ class SystemData:
 
         return total_max
 
-    def get_cpufreq_prof(self, csv_cpufreq_report: str):
+    def read_cpufreq_bin_report(self, bin_cpufreq_report: str):
+        hf = system_binary_reader.hf_cpufreq_sample()
+        samples_list = []
+        with open(bin_cpufreq_report, "rb") as file:
+            min_cpufreq = np.uint64(int.from_bytes(file.read(8), byteorder='little', signed=False))
+            max_cpufreq = np.uint64(int.from_bytes(file.read(8), byteorder='little', signed=False))
+            while data := file.read(hf.get_pack_size()):
+                samples_list.append(hf.binary_to_dict(data))
+
+        return min_cpufreq, max_cpufreq, samples_list
+
+    def get_cpufreq_prof(self, bin_cpufreq_report:str):
         """
-        Read cpu frequency csv report
+        Read cpu frequency report
         Get profile
         """
         cpufreq_pkl = f"{self.traces_repo}/pkl_dir/cpufreq_prof.pkl"
@@ -430,44 +458,41 @@ class SystemData:
 
         else:
 
-            self.logger.debug("Read CPUFreq csv report..."); t0 = time.time()  # noqa: E702
-            cpufreq_report_lines = self.read_csv_line_as_list(csv_report=csv_cpufreq_report)
+            self.logger.debug("Read CPUFreq report..."); t0 = time.time()  # noqa: E702
+            cpufreq_min, cpufreq_max, samples_list = self.read_cpufreq_bin_report(bin_cpufreq_report=bin_cpufreq_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
             self.logger.debug("Create CPUFreq profile..."); t0 = time.time()  # noqa: E702
-            cpu_freq_parsing = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
-            self.cpufreq_min = cpu_freq_parsing[0] or None
-            self.cpufreq_max = cpu_freq_parsing[1] or None
+            self.cpufreq_min = cpufreq_min or None
+            self.cpufreq_max = cpufreq_max or None
 
-            # Get ncpu
-            ts_0 = cpufreq_report_lines[1][0]
+            self.ncpu_freq = 0
+            ts_0 = samples_list[0]["timestamp"]
             ts = ts_0
-            line_idx = 1
+            line_idx = 0
             while ts == ts_0:
                 line_idx += 1
-                ts = cpufreq_report_lines[line_idx][0]
-
+                ts = samples_list[line_idx]["timestamp"]
                 self.ncpu_freq += 1
 
-            # Init cpu time series
-            cpufreq_ts = {}
+            cpufreq_ts = []
             for cpu_nb in range(self.ncpu_freq):
-                cpufreq_ts[f"cpu{cpu_nb}"] = []
+                cpufreq_ts.append([])
 
             # Read lines
-            for line in cpufreq_report_lines[1:]:
-                cpufreq_ts[line[1]] += [float(line[2])]
+            for data in samples_list:
+                cpufreq_ts[data["cpu"]].append(data["frequency"])
 
             HZ_UNIT = 1e6  # noqa: N806
             for cpu_nb in range(self.ncpu_freq):
-                cpufreq_ts[f"cpu{cpu_nb}"] = np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / HZ_UNIT
+                cpufreq_ts[cpu_nb] = np.array(cpufreq_ts[cpu_nb]) / HZ_UNIT
 
             self.cpufreq_prof = cpufreq_ts
-            self.cpufreq_stamps = [float(line[0]) for line in cpufreq_report_lines[1:: self.ncpu_freq]]
+            self.cpufreq_stamps = [float(data["timestamp"] / 1e9) for data in samples_list[0::self.ncpu_freq]]
 
             self.cpufreq_vals["mean"] = np.zeros_like(self.cpufreq_stamps)
             for cpu in range(self.ncpu_freq):
-                self.cpufreq_vals["mean"] += self.cpufreq_prof[f"cpu{cpu}"] / self.ncpu_freq
+                self.cpufreq_vals["mean"] += self.cpufreq_prof[cpu] / self.ncpu_freq
             self.cpufreq_vals["min"] = self.cpufreq_min
             self.cpufreq_vals["max"] = self.cpufreq_max
 
@@ -499,7 +524,7 @@ class SystemData:
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu + 1))
 
         for idx, core in enumerate(cores):
-            plt.plot(self.cpufreq_stamps, self.cpufreq_prof[f"cpu{core}"], color=cm[idx], label=f"core-{core}")
+            plt.plot(self.cpufreq_stamps, self.cpufreq_prof[core], color=cm[idx], label=f"core-{core}")
 
         plt.plot(self.cpufreq_stamps, self.cpufreq_vals["mean"], "k.-", label="mean")
 
@@ -524,46 +549,36 @@ class SystemData:
 
         return cpu_freq_max
 
-    def read_net_csv_report(self, csv_net_report: str):
+    def read_net_bin_report(self, bin_net_report: str):
         """
-        Read network csv report
+        Read network report
         """
-        net_report_lines = self.read_csv_line_as_list(csv_report=csv_net_report)
+        samples_list = read_binary_samples(bin_net_report, system_binary_reader.hf_net_sample)
 
         # Get network interfaces
-        ts_0 = net_report_lines[1][0]
+        ts_0 = samples_list[0]["timestamp"]
         ts = ts_0
-        line_idx = 1
+        line_idx = 0
+        self.net_interfs = []
         while ts == ts_0:
-            self.net_interfs += [net_report_lines[line_idx][1]]
+            self.net_interfs += [samples_list[line_idx]["interface"]]
             line_idx += 1
-            ts = net_report_lines[line_idx][0]
+            ts = samples_list[line_idx]["timestamp"]
         nnet_interf = len(self.net_interfs)
+        self.net_metric_keys = [key for key, _, enabled in system_binary_reader.hf_net_sample().field_definitions if key not in ["timestamp", "interface"] and enabled]
 
-        # self.net_metric_keys = { # https://www.kernel.org/doc/html/v6.7/networking/statistics.html
-        #     "rx-bytes": 2, "rx-packets": 3, "rx-errs": 4, "rx-drop": 5,
-        #     "rx-fifo": 6, "rx-frame": 7, "rx-compressed": 8, "rx-multicast": 9,
-        #     "tx-bytes": 10, "tx-packets": 11, "tx-errs": 12, "tx-drop": 13,
-        #     "tx-fifo": 14, "tx-colls": 15, "tx-carrier": 16, "tx-compressed": 17
-        # }
-        _sidx = 2
-        self.net_metric_keys = {key: idx + _sidx for idx, key in enumerate(net_report_lines[0][_sidx:])}
-
-        _interf_idx = 1
         net_ts_raw = {}
         for interf in self.net_interfs:
             net_ts_raw[interf] = {key: [] for key in self.net_metric_keys}
 
-        _samples_idx = 1
-        for report_line in net_report_lines[_samples_idx:]:
+        for sample in samples_list:
             for key in self.net_metric_keys:
-                net_ts_raw[report_line[_interf_idx]][key] += [float(report_line[self.net_metric_keys[key]])]
+                net_ts_raw[sample["interface"]][key].append(float(sample[key]))
 
-        timestamps_raw = [float(item[0]) for item in net_report_lines[_samples_idx:][::nnet_interf]]
-
+        timestamps_raw = [float(item["timestamp"]) / 1e9 for item in samples_list[::nnet_interf]]
         return net_ts_raw, timestamps_raw
 
-    def get_net_prof(self, csv_net_report: str):
+    def get_net_prof(self, bin_net_report: str):
         """
         Get network profile
         """
@@ -586,8 +601,8 @@ class SystemData:
 
         else:
 
-            self.logger.debug("Read Network csv report..."); t0 = time.time()  # noqa: E702
-            net_ts_raw, timestamps_raw = self.read_net_csv_report(csv_net_report=csv_net_report)
+            self.logger.debug("Read Network report..."); t0 = time.time()  # noqa: E702
+            net_ts_raw, timestamps_raw = self.read_net_bin_report(bin_net_report=bin_net_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
             self.logger.debug("Create Network profile..."); t0 = time.time()  # noqa: E702
@@ -710,46 +725,38 @@ class SystemData:
 
         return netmax
 
-    def read_disk_csv_report(self, csv_disk_report: str):
+    def read_disk_bin_report(self, bin_disk_report: str):
         """
-        Read disk monitoring csv report
+        Read disk monitoring report
         """
-        disk_report_lines = self.read_csv_line_as_list(csv_report=csv_disk_report)
+        disk_sampler = system_binary_reader.hf_disk_sample()
+        n_major_blocks = 0
+        n_all_blocks = 0
+        sector_sizes = {}
+        samples_list = []
+        with open(bin_disk_report, "rb") as file:
+            n_major_blocks = np.frombuffer(file.read(8), dtype=np.uint64)[0]
+            n_all_blocks = np.frombuffer(file.read(8), dtype=np.uint64)[0]
+            sector_sizes_str = read_c_string(file).split(",")
+            sector_sizes = { key : int(value) for key,value in zip(sector_sizes_str[0::2], sector_sizes_str[1::2]) }
+            while data := file.read(disk_sampler.get_pack_size()):
+                samples_list.append(disk_sampler.binary_to_dict(data))
 
-        # useful indexes for the csv report
-        _maj_blk_indx = 0  # noqa: F841
-        _all_blk_indx = 1  # noqa: F841
-        _sect_blk_indx = 2
-        _header_indx = 3
-        _samples_idx = 4
-
-        _blk_idx = 3  # Horizontal
-
-        # self.disk_field_keys = { # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
-        #     "#rd-cd": 4, "#rd-md": 5, "sect-rd": 6, "time-rd": 7,
-        #     "#wr-cd": 8, "#wr-md": 9, "sect-wr": 10, "time-wr": 11,
-        #     "#io-ip": 12, "time-io": 13, "time-wei-io": 14,
-        #     "#disc-cd": 15, "#disc-md": 16, "sect-disc": 17, "time-disc": 18,
-        #     "#flush-req": 19, "time-flush": 20
-        # }
-        _sidx = 4
-        self.disk_field_keys = {key: idx + _sidx for idx, key in enumerate(disk_report_lines[_header_indx][_sidx:])}
+        self.disk_field_keys = [key for key, _, enabled in disk_sampler.field_definitions if enabled and key not in ["timestamp", "major", "minor", "device_name"]]
 
         # get major blocks and associated sector size
-        self.maj_blks_sects = dict(zip(disk_report_lines[_sect_blk_indx][0::2],
-                                       [int(sect) for sect in disk_report_lines[_sect_blk_indx][1::2]]))
+        self.maj_blks_sects = sector_sizes
 
         # all disk blocks
-        ts_0 = disk_report_lines[_samples_idx][0]
+        ts_0 = samples_list[0]["timestamp"]
         ts = ts_0
-        line_idx = _samples_idx
+        line_idx = 0
         ndisk_blk = 0
         while ts == ts_0:
             line_idx += 1
             ndisk_blk += 1
-            ts = disk_report_lines[line_idx][0]
-        # ndisk_blk = int(disk_report_lines[_all_blk_indx][0])
-        self.disk_blks = [disk_report_lines[_samples_idx + idx][_blk_idx] for idx in range(ndisk_blk)]
+            ts = samples_list[line_idx]["timestamp"]
+        self.disk_blks = [samples_list[idx]["device_name"] for idx in range(ndisk_blk)]
 
         # raw disk measure stamps
         disk_ts_raw = {}
@@ -757,19 +764,20 @@ class SystemData:
             disk_ts_raw[blk] = {key: [] for key in self.disk_field_keys}
 
         for idx in range(ndisk_blk):
-            disk_ts_raw[self.disk_blks[idx]]["major"] = int(disk_report_lines[_samples_idx + idx][1])  # major index: 1
-            disk_ts_raw[self.disk_blks[idx]]["minor"] = int(disk_report_lines[_samples_idx + idx][2])  # minor index: 2
+            disk_ts_raw[self.disk_blks[idx]]["major"] = int(samples_list[idx]["major"])  # major index: 1
+            disk_ts_raw[self.disk_blks[idx]]["minor"] = int(samples_list[idx]["minor"])  # minor index: 2
 
-        for report_line in disk_report_lines[_samples_idx:]:
-            for key in self.disk_field_keys:
-                disk_ts_raw[report_line[_blk_idx]][key] += [float(report_line[self.disk_field_keys[key]])]
+        for idx, sample in enumerate(samples_list):
+            for key, value in sample.items():
+                if key not in ["timestamp", "device_name", "major", "minor"]:
+                    disk_ts_raw[sample["device_name"]][key].append(float(value))
 
         # raw time stamps
-        timestamps_raw = [float(item[0]) for item in disk_report_lines[_samples_idx:][::ndisk_blk]]
+        timestamps_raw = [float(sample["timestamp"]) / 1e9 for sample in samples_list[::ndisk_blk]]
 
         return disk_ts_raw, timestamps_raw
 
-    def get_disk_prof(self, csv_disk_report: str):
+    def get_disk_prof(self, bin_disk_report: str):
         """
         Get disk profile
         """
@@ -795,8 +803,8 @@ class SystemData:
 
         else:
 
-            self.logger.debug("Read Disk csv report..."); t0 = time.time()  # noqa: E702
-            disk_ts_raw, timestamps_raw = self.read_disk_csv_report(csv_disk_report=csv_disk_report)
+            self.logger.debug("Read Disk report..."); t0 = time.time()  # noqa: E702
+            disk_ts_raw, timestamps_raw = self.read_disk_bin_report(bin_disk_report=bin_disk_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
             self.logger.debug("Create Disk profile..."); t0 = time.time()  # noqa: E702
@@ -817,10 +825,6 @@ class SystemData:
             for blk in self.disk_blks:
                 self.disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
                 self.disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
-                # for field_key in self.disk_field_keys:
-                #     for stamp in range(nstamps):
-                #         self.disk_prof[blk][field_key][stamp] = (disk_ts_raw[blk][field_key][stamp + 1]
-                # - disk_ts_raw[blk][field_key][stamp])
 
             # Sectors and data n bytes
             BYTES_UNIT = 1024**2  # noqa: N806
