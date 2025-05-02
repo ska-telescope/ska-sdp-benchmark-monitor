@@ -7,8 +7,9 @@ root_pid=${PPID}
 skip_pid=$$
 freq="10"
 output="journal.txt"
-ps_fields="ppid,pid,tid,cpuid,etimes,lstart,cmd"
-awk_fields='$1, $2, $3, $4'
+# Defaults to just timing
+ps_fields="ppid,pid,tid,etimes,lstart,cmd";
+awk_fields='$1, $2, $3'
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -28,9 +29,9 @@ while [[ $# -gt 0 ]]; do
             output=$2
             shift 2
             ;;
-        "-t" | "--timing-only")
-            ps_fields="ppid,pid,tid,etimes,lstart,cmd";
-            awk_fields='$1, $2, $3'
+        "-m" | "--mapping")
+	    ps_fields="ppid,pid,tid,cpuid,etimes,lstart,cmd"
+            awk_fields='$1, $2, $3, $4'
 	    shift
 	    ;;
         *)
