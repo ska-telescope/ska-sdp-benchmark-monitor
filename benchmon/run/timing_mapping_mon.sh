@@ -1,15 +1,46 @@
 #!/usr/bin/bash
 
-# Pass frequency as first argument, output filename as second, no-mapping as third to skipping mapping 
-freq=$1
-output=$2
-if [ "$3" = 'no-mapping' ]; then
-    ps_fields="ppid,pid,tid,etimes,lstart,cmd";
-    awk_fields='$1, $2, $3'
-else
-    ps_fields="ppid,pid,tid,cpuid,etimes,lstart,cmd"
-    awk_fields='$1, $2, $3, $4'
-fi
+# Default execution parameter values
+# Look at all processes under the same parent process
+root_pid=${PPID}
+# Skip recording data on timing_mapping.sh
+skip_pid=$$
+freq="10"
+output="journal.txt"
+ps_fields="ppid,pid,tid,cpuid,etimes,lstart,cmd"
+awk_fields='$1, $2, $3, $4'
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        "-p" | "--pid")
+	    root_pid=$2
+            shift 2
+            ;;
+        "-s" | "--skip")
+            skip_pid=$2
+	    shift 2
+	    ;;
+        "-f" | "--freq")
+            freq=$2
+            shift 2
+            ;;
+        "-o" | "--output")
+            output=$2
+            shift 2
+            ;;
+        "-t" | "--timing-only")
+            ps_fields="ppid,pid,tid,etimes,lstart,cmd";
+            awk_fields='$1, $2, $3'
+	    shift
+	    ;;
+        *)
+            echo "Unsupported argument. Use either"
+	    echo "$0 -p 1 -s 2 -f 10 -o journal.txt -t"
+	    echo "$0 --pid 1 --skip 2 --freq 10 --output journal.txt --timing-only"
+            exit 2
+            ;;
+    esac
+done
 
 # Manage termination
 trap 'echo "#" "$(ps -o $ps_fields|head -1)" "$(sort -s -nk3 <(echo "$journal"))" > $output; exit 0' SIGTERM
@@ -17,13 +48,8 @@ trap 'echo "#" "$(ps -o $ps_fields|head -1)" "$(sort -s -nk3 <(echo "$journal"))
 # Determine sampling period
 sampl=$(bc <<< "scale=6; 1/$freq")
 
-# We assume we want to measure processes running under the same parent process
-root_pid=${PPID}
-# and want to skip the measuring process itself
-skip_pid=$$
-
 # Get all info from ps to have coherent time stamps
-# Identify what to save to journal with diff (without etime)
+# Identify what to save to journal with diff (without etimes)
 # then save the complete record to have the elapsed time too
 
 # Collect all data with ps to then process it: e all processes, T including threads, o to define output
@@ -31,7 +57,6 @@ skip_pid=$$
 # last to have them untruncated
 # ps's native sorting does not seem compatible with listing threads: revert to sort on tid
 psfull="ps --no-header -eTwwo $ps_fields | sort -nk3"
-echo "$psfull"
 
 # Recursively search for child processes and threads with awk
 psold_full="$(eval $psfull | awk -vpp=$root_pid -vp=$skip_pid 'function r(s,e){if(s!=e) {print ps_string[s];s=child_id[s];while(s){sub(",","",s);t=s;sub(",.*","",t);sub("[0-9]+","",s);r(t,e)}}}{child_id[$1]=child_id[$1]","$3;ps_string[$3]=$0}END{r(pp,p)}')"
