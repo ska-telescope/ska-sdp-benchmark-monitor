@@ -40,6 +40,12 @@ class RunMonitor:
         self.is_system = args.system
         self.sys_freq = args.sys_freq
 
+        # Timing mapping
+        self.is_tm_m = args.timing_mapping_mapping
+        self.tm_ppid = args.timing_mapping_ppid
+        self.tm_freq = args.timing_mapping_frequency
+        self.is_tm = self.is_tm_m or self.tm_ppid or self.tm_freq or self.timing_mapping
+
         # Power monitoring parameters
         self.pow_filename = "pow_report.csv"
         self.is_power = args.power
@@ -74,6 +80,7 @@ class RunMonitor:
 
         # Init process variables
         self.sys_process = []
+        self.tm_process = None
         self.perfpow_process = None
         self.perfcall_process = None
 
@@ -89,6 +96,9 @@ class RunMonitor:
 
         if self.is_system:
             self.run_sys_monitoring()
+
+        if self.is_tm:
+            self.run_tm_monitoring()
 
         if self.is_power:
             self.run_perf_pow()
@@ -119,7 +129,7 @@ class RunMonitor:
         exec_sh_file = lambda device: f"{sh_repo}/{device}_mon.sh"
 
         # CPU + CPUfreq + Memory + Network + Disk monitoring processes
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):  # , "timing_mapping"):
+        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):
 
             msg = f"{exec_sh_file(device)} {freq} {self.save_dir}/{self.sys_filename(device)}"
             self.logger.debug(f"Starting: {msg}")
@@ -134,6 +144,25 @@ class RunMonitor:
                     text=True
                 )
             ]
+
+    def run_tm_monitoring(self):
+        """
+        Run process timing mapping processes
+        """
+        cmd = ["bash", f"{os.path.dirname(os.path.realpath(__file__))}/timing_mapping_mon.sh",
+               "-f", f"{self.tm_freq}", "-p", f"{self.tm_ppid}",
+               "-o", f"{self.save_dir}/{self.sys_filename('timing_mapping')}",]
+
+        if self.is_tm_m:
+            cmd += ["-m"]
+
+        self.tm_process = subprocess.Popen(args=cmd,
+                                           stdout=subprocess.PIPE,
+                                           stderr=subprocess.STDOUT,
+                                           text=True)
+
+        msg = " ".join(cmd)
+        self.logger.debug(f"Starting: {msg}")
 
 
     def run_perf_pow(self):
@@ -281,6 +310,12 @@ class RunMonitor:
             process_stdout = self.perfpow_process.stdout.read()  # @hc
 
             self.logger.debug(f"Terminated perf (power) with stdout: {process_stdout}")
+
+        # Kill timing mapping process
+        if self.tm_process:
+            self.tm_process.terminate()
+            process_stdout = self.tm_process.stdout.read()
+            self.logger.debug(f"Terminated timing mapping monitoring with stdout: {process_stdout}")
 
         # Kill sys processes
         for process in self.sys_process:
