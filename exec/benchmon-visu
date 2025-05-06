@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Main Python script to visualize monitoring metrics"""
 
 import argparse
@@ -77,6 +77,7 @@ def parsing() -> argparse.Namespace:
 
     # Enable verbosity
     parser.add_argument("--verbose", action="store_true", help="Enable debug information")
+    parser.add_argument("--test", action="store_true", help="Test without reading dbs")
 
     args = parser.parse_args()
 
@@ -130,11 +131,13 @@ def main():
 
     args_str = "benchmon-visu arguments: \n"
     for key, value in vars(args).items():
-        args_str += f"\t--{key} {value}\n"
+        args_str += f"\t--{key.replace('_', '-')} {value}\n"
     logger.debug(f"{args_str}")
 
     traces_repos = []
-    if is_recursive:
+    if args.test:
+        pass
+    elif is_recursive:
         for name in os.listdir(traces_repo):
             if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
                 traces_repos += [f"{traces_repo}/{name}"]
@@ -147,7 +150,6 @@ def main():
         nodes_data[-1].run_plots()
 
     if is_recursive:
-        # multi_node_visualizer.plot_sync(args, logger, nodes_data)
         BenchmonMNSyncVisualizer(args, logger, nodes_data)
 
     logger.info("benchmon-visu closes")

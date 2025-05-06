@@ -89,6 +89,8 @@ coverage.xml
 .pytest_cache/
 cover/
 mytest
+tests/tmp
+.benchmon-run_pid*
 
 # Translations
 *.mo

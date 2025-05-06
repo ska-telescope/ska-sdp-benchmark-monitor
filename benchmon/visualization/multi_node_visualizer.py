@@ -53,8 +53,8 @@ class BenchmonMNSyncVisualizer:
         Args:
             nodes_data (list): list of nodes data
         """
-        nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net + self.args.ib + self.args.disk  # \
-        # + (self.args.pow or self.args.pow_g5k)
+        nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net \
+            + self.args.ib + self.args.disk + (self.args.pow or self.args.pow_g5k)
 
         fig, _ = plt.subplots(nsbp, sharex=True)
         fig.set_size_inches(self.args.fig_width, nsbp * self.args.fig_height_unit)
@@ -92,9 +92,10 @@ class BenchmonMNSyncVisualizer:
             sbp += 1
             self.plot_sync_disk(nodes_data=nodes_data)
 
-        # if self.args.pow or self.args.pow_g5k:
-        #     plt.subplot(nsbp, 1, sbp); sbp += 1
-        #     self.plot_sync_pow(nodes_data=nodes_data)
+        if self.args.pow or self.args.pow_g5k:
+            plt.subplot(nsbp, 1, sbp)
+            sbp += 1
+            self.plot_sync_pow(nodes_data=nodes_data)
 
         plt.subplots_adjust(hspace=0.5)
         plt.tight_layout()
@@ -289,7 +290,7 @@ class BenchmonMNSyncVisualizer:
         rx_data = 0
         for data in nodes_data:
             ts = data.system_metrics.ib_stamps
-            ib_rx = data.systems.ib_rx_total
+            ib_rx = data.system_metrics.ib_rx_total
             plt.plot(ts, ib_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.ib_rx_data)} MB)")
 
             ts_sync += [ts]

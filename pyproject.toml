@@ -33,3 +33,19 @@ dependencies = [
   "scipy"
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "flake8",
+]
+
+[tool.pytest.ini_options]
+addopts = [
+  "-vsra",
+  "--cov=benchmon/run",
+  "--cov=benchmon/visualization",
+  "--cov-report=term-missing"
+]
+testpaths = ["tests"]
+python_files = "test_*.py"

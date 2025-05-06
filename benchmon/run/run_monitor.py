@@ -78,10 +78,13 @@ class RunMonitor:
         self.perfcall_process = None
 
 
-    def run(self):
+    def run(self, timeout: int = None):
         """
         Run, terminate, post-process processes
         (Wrapper of monitoring functions)
+
+        Args:
+            timeout (int)   Timeout for testing purpose
         """
         self.t0 = time.time()
 
@@ -96,7 +99,9 @@ class RunMonitor:
         if self.is_call:
             self.run_perf_call()
 
-        if self.is_system:
+        if timeout:
+            time.sleep(timeout)
+        elif self.is_system:
             self.sys_process[0].wait()
         elif self.is_power:
             self.perfpow_process.wait()
@@ -212,6 +217,10 @@ class RunMonitor:
         """
         _site = HOSTNAME.split(".")[1]
         _cluster = HOSTNAME.split(".")[0]
+
+        requests.packages.urllib3.disable_warnings(
+            requests.packages.urllib3.exceptions.InsecureRequestWarning
+        )
 
         self.t1 = time.time()
 
