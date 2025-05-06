@@ -775,7 +775,7 @@ class SystemData:
         """
         disk_pkl = f"{self.traces_repo}/pkl_dir/disk_prof.pkl"
         dat_pkl = f"{self.traces_repo}/pkl_dir/disk_data.pkl"
-        maj_pkl = f"{self.traces_repo}/pkl_dir/k_maj.pkl"
+        maj_pkl = f"{self.traces_repo}/pkl_dir/disk_maj.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/disk_stamps.pkl"
 
         if all(os.access(pkl_file, os.R_OK) for pkl_file in (disk_pkl, dat_pkl, maj_pkl, ts_pkl)):

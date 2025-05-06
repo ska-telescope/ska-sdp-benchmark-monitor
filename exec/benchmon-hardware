@@ -1,4 +1,4 @@
-#!/usr/bin/env
+#!/usr/bin/env python3
 """Main script to monitor benchmark metrics from SDP benchmark runs."""
 
 import argparse
