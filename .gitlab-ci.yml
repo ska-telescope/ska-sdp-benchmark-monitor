@@ -1,29 +1,81 @@
 image: registry.gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor:ci
 
 stages:
-  - pretest
+  - setup
+  - lint
   - test
-  - pages
   - scan
+  # - pages
 
-lint-test:
-  stage: pretest
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  VENV_DIR: "$CI_PROJECT_DIR/.venv"
+
+.test_env:
+  before_script:
+    - python --version
+    - pip --version
+    - pip install virtualenv
+    - virtualenv $VENV_DIR
+    - source $VENV_DIR/bin/activate
+
+install:
+  stage: setup
+  extends: [.test_env]
+  script:
+    - pip install -U pip setuptools wheel
+    - pip install .[test]
+  artifacts:
+    paths:
+      - $VENV_DIR
+    expire_in: 1h
+
+lint:
+  stage: lint
+  extends: [.test_env]
+  script:
+    - flake8 .
+
+test_flake8:
+  stage: test
+  extends: [.test_env]
   tags:
     - k8srunner
   script:
-    - mkdir -p build
-    - pylint --exit-zero bin/ benchmon/ > build/linting.xml
-  artifacts:
-    paths:
-      - build/
-    expire_in: 1 day
+    - pytest --no-cov tests/test_flake8.py
 
-#unit-test:
-#  stage: test
-#  tags:
-#    - k8srunner
-#  script:
-#    - #todo: call pytest to run future unit tests
+test_run_monitor:
+  stage: test
+  extends: [.test_env]
+  tags:
+    - k8srunner
+  script:
+    - pytest --no-cov tests/test_run_monitor.py::test_repo_log_pid
+
+test_benchmon_visu:
+  stage: test
+  extends: [.test_env]
+  tags:
+    - k8srunner
+  script:
+    - pytest --no-cov tests/test_benchmon-visu_func.py
+    # - pytest --no-cov tests/test_benchmon-visu.py
+
+test_visualizer:
+  stage: test
+  extends: [.test_env]
+  tags:
+    - k8srunner
+  script:
+    - pytest --no-cov tests/test_visualizer.py
+
+test_metrics:
+  stage: test
+  extends: [.test_env]
+  tags:
+    - k8srunner
+  script:
+    - pytest --no-cov tests/test_metrics.py
 
 # Reproduce steps from RTD
 #docs-test:
@@ -45,17 +97,17 @@ lint-test:
 #      - build/
 #    expire_in: 1 day
 
-pages-pages:
-  stage: pages
-  tags:
-    - k8srunner
-  script:
-    - mkdir -p public/reports
-    - mv build/linting.xml public/reports/linting.xml
-    #- mv build/tests.xml public/reports/unit-tests.xml
-  artifacts:
-    paths:
-      - public
+# pages-pages:
+#   stage: pages
+#   tags:
+#     - k8srunner
+#   script:
+#     - mkdir -p public/reports
+#     - mv build/linting.xml public/reports/linting.xml
+#     #- mv build/tests.xml public/reports/unit-tests.xml
+#   artifacts:
+#     paths:
+#       - public
 
 # Create Gitlab CI badges from CI metrics
 # https://developer.skatelescope.org/en/latest/tools/continuousintegration.html#automated-collection-of-ci-health-metrics-as-part-of-the-ci-pipeline
