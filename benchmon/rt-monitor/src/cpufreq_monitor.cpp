@@ -2,13 +2,16 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <scn/scan.h>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "cpufreq_monitor.h"
 #include "monitor_io.h"
+#include "pause_manager.h"
 
 namespace rt_monitor::cpufreq
 {
@@ -72,7 +75,7 @@ std::pair<uint64_t, uint64_t> get_freq_min_max()
     return {min_freq, max_freq};
 }
 
-void start(const double time_interval, const std::string &out_path, const bool &running)
+void start(const double time_interval, const std::string &out_path)
 {
     auto file = io::make_buffer(out_path);
 
@@ -81,8 +84,16 @@ void start(const double time_interval, const std::string &out_path, const bool &
     io::write_binary(file, freq_max);
 
     const auto cpu_freq_paths = get_online_cpu_scaling_freq_paths();
-    while (running)
+    while (!pause_manager::stopped())
     {
+        if (pause_manager::paused())
+        {
+            spdlog::trace("CPU frequency monitoring paused");
+            std::unique_lock<std::mutex> lock(pause_manager::mutex());
+            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
+        }
+        
+        spdlog::trace("reading a CPU frequency monitoring sample");
         const auto now = std::chrono::system_clock::now();
         const auto duration = now.time_since_epoch();
         const auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
@@ -102,5 +113,6 @@ void start(const double time_interval, const std::string &out_path, const bool &
         }
         std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(time_interval * 1000)));
     }
+    spdlog::trace("CPU frequency monitoring stopped");
 }
 } // namespace rt_monitor::cpufreq

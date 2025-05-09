@@ -4,17 +4,19 @@
 #include <ostream>
 #include <sched.h>
 #include <scn/scan.h>
+#include <spdlog/spdlog.h>
 #include <thread>
 
-#include <iostream>
 
 #include "cpu_monitor.h"
 #include "monitor_io.h"
+#include "pause_manager.h"
 
 namespace rt_monitor::cpu
 {
 std::ostream &read_cpu(std::ostream &stream)
 {
+    spdlog::trace("reading a CPU monitoring sample");
     const auto now = std::chrono::system_clock::now();
     const auto duration = now.time_since_epoch();
     const uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
@@ -51,13 +53,20 @@ std::ostream &read_cpu(std::ostream &stream)
     return stream;
 }
 
-void start(const double time_interval, const std::string &out_path, const bool &running)
+void start(const double time_interval, const std::string &out_path)
 {
     auto file = io::make_buffer(out_path);
-    while (running)
+    while (!pause_manager::stopped())
     {
+        if (pause_manager::paused())
+        {
+            spdlog::trace("CPU monitoring paused");
+            std::unique_lock<std::mutex> lock(pause_manager::mutex());
+            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
+        }
         read_cpu(file);
         std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(time_interval * 1000)));
     }
+    spdlog::trace("CPU monitoring stopped");
 }
 } // namespace rt_monitor::cpu

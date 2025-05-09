@@ -34,6 +34,7 @@ class RunMonitor:
         self.save_dir = f"{self.save_dir}/benchmon_traces_{HOSTNAME}"
 
         self.verbose = args.verbose
+        self.start_after = args.start_after
 
         # System monitoring
         self.sys_filename = lambda device: f"{device}_report.csv"  # @nc
@@ -87,6 +88,8 @@ class RunMonitor:
         Args:
             timeout (int)   Timeout for testing purpose
         """
+        if self.start_after:
+            time.sleep(self.start_after)
         self.t0 = time.time()
 
         os.makedirs(self.save_dir, exist_ok=True)

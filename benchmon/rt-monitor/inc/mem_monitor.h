@@ -18,5 +18,5 @@ namespace rt_monitor::mem
  * @param running A reference to a boolean flag that controls the monitoring process. Monitoring continues as long as
  * this flag is true.
  */
-void start(const double time_interval, const std::string &out_path, const bool &running);
+void start(const double time_interval, const std::string &out_path);
 } // namespace rt_monitor::mem
