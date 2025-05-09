@@ -4,6 +4,7 @@
 import argparse
 import logging
 import os
+import time
 
 from benchmon.run import RunMonitor
 
@@ -100,6 +101,13 @@ def parse_args():
         help="Keep perf data file"
     )
 
+    parser.add_argument(
+        "--start-after",
+        type=int,
+        default=0,
+        help="Wait a certain time (in seconds) before starting monitoring. Default: 0"
+    )
+
     return parser.parse_args()
 
 
@@ -154,8 +162,8 @@ def main():
     for key, value in vars(args).items():
         args_str += f"\t--{key} {value}\n"
     logger.debug(f"benchmon-run arguments: \n{args_str}")
-
     get_benchmon_pid(logger)
+
     runmonitor = RunMonitor(args, logger)
     runmonitor.run()
 
