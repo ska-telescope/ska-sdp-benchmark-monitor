@@ -15,7 +15,7 @@ log.info("Add parent directory to sys.path.")
 sys.path.insert(0, parent_dir)
 
 try:
-    import benchmon
+    # import benchmon
     import benchmon.hardware as hwc
 except ImportError as e:  # noqa: F841
     log.error("Could not import benchmon!")
@@ -62,7 +62,7 @@ def parse_args():
 
 
 if __name__ == '__main__':
-    log.info(f'benchmon-hardware version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))
+    # log.info(f'benchmon-hardware version {benchmon.__version__}', sys.executable, str(sys.version).replace('\n', ' '))
     log.info("Beginning gathering of hardware context.")
     args = parse_args()
     hw = hwc.HardwareMonitor(args)
