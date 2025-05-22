@@ -89,7 +89,7 @@ class PerfCallRawData:
                 continue
 
             if len(sample_info) != 6:
-                self.logger.debug(f"{sample_info = } skipped!")
+                self.logger.debug(f"{sample_info=} skipped!")
                 continue
 
             sample = {

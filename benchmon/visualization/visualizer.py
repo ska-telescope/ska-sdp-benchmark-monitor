@@ -199,7 +199,7 @@ class BenchmonVisualizer:
                 ):
                     user_calls_keys += [key]
 
-            self.logger.debug(f"{user_calls_keys = }")
+            self.logger.debug(f"{user_calls_keys=}")
             user_calls_keys_raw = user_calls_keys.copy()
             for command in user_calls_keys_raw:
                 for kcall in kernel_calls:
