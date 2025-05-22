@@ -21,7 +21,8 @@ readme = "README.md"
 authors = [
     { name = "Anass Serhani", email = "anass.serhani@inria.fr" },
     { name = "Manuel Stutz", email = "manuel.stutz@fhnw.ch" },
-    { name = "Shan Mignot", email = "shan.mignot@oca.eu" }
+    { name = "Shan Mignot", email = "shan.mignot@oca.eu" },
+    { name = "Hamza Chouh", email = "hamza.chouh@epfl.ch" }
 ]
 requires-python = ">=3.8"
 dependencies = [

@@ -2,6 +2,7 @@
 Muti-node visualizatinon synchronizer
 """
 
+
 import os
 
 import matplotlib.pyplot as plt

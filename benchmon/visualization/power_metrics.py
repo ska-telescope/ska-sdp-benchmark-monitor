@@ -277,7 +277,7 @@ class G5KPowerData:
                      color=metrics_style[metric]["color"],
                      ls=metrics_style[metric]["ls"],
                      marker=metrics_style[metric]["marker"],
-                     label=f"{pre_label}{metrics_style[metric]['label']} ({round(energy,1)} Wh)")
+                     label=f"{pre_label}{metrics_style[metric]['label']} ({round(energy, 1)} Wh)")
 
             if len(vals) > 1:
                 _ymax = max(_ymax, max(vals))
