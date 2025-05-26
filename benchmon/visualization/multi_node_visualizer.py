@@ -187,7 +187,7 @@ class BenchmonMNSyncVisualizer:
             if len(yticks) < self.args.fig_yrange:
                 break
         plt.yticks(yticks)
-        self.set_frame(label="Memory (GB)")
+        self.set_frame(label="Memory (GiB)")
 
 
     def plot_sync_net(self, nodes_data: list) -> None:

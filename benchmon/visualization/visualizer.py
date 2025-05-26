@@ -243,19 +243,19 @@ class BenchmonVisualizer:
             t0, tf = self.system_metrics.cpu_stamps[0], self.system_metrics.cpu_stamps[-1]
         except AttributeError:
             try:
-                t0, tf = self.system_metrics.cpufreq_stamps[0], self.system_metrics.cpufreq_stamps[-1]
+                t0, tf = self.system_metrics.mem_stamps[0], self.system_metrics.mem_stamps[-1]
             except AttributeError:
                 try:
-                    t0, tf = self.system_metrics.mem_stamps[0], self.system_metrics.mem_stamps[-1]
+                    t0, tf = self.system_metrics.net_stamps[0], self.system_metrics.net_stamps[-1]
                 except AttributeError:
                     try:
-                        t0, tf = self.system_metrics.net_stamps[0], self.system_metrics.net_stamps[-1]
+                        t0, tf = self.system_metrics.disk_stamps[0], self.system_metrics.disk_stamps[-1]
                     except AttributeError:
                         try:
-                            t0, tf = self.system_metrics.disk_stamps[0], self.system_metrics.disk_stamps[-1]
+                            t0, tf = self.system_metrics.ib_stamps[0], self.system_metrics.ib_stamps[-1]
                         except AttributeError:
                             try:
-                                t0, tf = self.system_metrics.ib_stamps[0], self.system_metrics.ib_stamps[-1]
+                                t0, tf = self.system_metrics.cpufreq_stamps[0], self.system_metrics.cpufreq_stamps[-1]
                             except AttributeError:
                                 sys.exit(1)
 

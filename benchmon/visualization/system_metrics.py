@@ -394,7 +394,7 @@ class SystemData:
                 break
         plt.yticks(yticks)
 
-        plt.ylabel("Memory (GB)")
+        plt.ylabel("Memory (GiB)")
         plt.legend(loc=1)
         plt.grid()
 
@@ -438,6 +438,12 @@ class SystemData:
             cpu_freq_parsing = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
             self.cpufreq_min = cpu_freq_parsing[0] or None
             self.cpufreq_max = cpu_freq_parsing[1] or None
+
+            if len(cpufreq_report_lines) <= 1:  # @hard-coded For VM when --cpufreq is enabled
+                cpufreq_report_lines += [["0.0", "cpu0", "0"]]
+                cpufreq_report_lines += [["1.0", "cpu0", "0"]]
+
+                self.logger.warning("Dont plot cpu frequencies (dont use --cpu-freq) on virtual machines")
 
             # Get ncpu
             ts_0 = cpufreq_report_lines[1][0]
@@ -630,7 +636,7 @@ class SystemData:
         """
         Plot network activity
         """
-        BYTES_UNIT = 1024**2  # noqa: N806  (MB)
+        BYTES_UNIT = 1000**2  # noqa: N806  (MB)
         _alpha = 0.5
         _mrksz = 3.5
 
@@ -823,7 +829,7 @@ class SystemData:
                 # - disk_ts_raw[blk][field_key][stamp])
 
             # Sectors and data n bytes
-            BYTES_UNIT = 1024**2  # noqa: N806
+            BYTES_UNIT = 1000**2  # noqa: N806
             fields = ["sect-rd", "sect-wr", "sect-disc"]
             for blk in self.disk_blks:
                 bytes_by_sector = self.maj_blks_sects[[item for item in self.maj_blks_sects if item in blk][0]]
@@ -1019,7 +1025,7 @@ class SystemData:
                 self.ib_data[interf] = {key: 0 for key in self.ib_metric_keys}  # noqa: C420
 
             # Fill in
-            BYTES_UNIT = (1 / 4) * 1024**2  # noqa: N806 (MB)
+            BYTES_UNIT = (1 / 4) * 1000**2  # noqa: N806 (MB)
             for interf in self.ib_interfs:
                 for metric_key in self.ib_metric_keys:
                     for stamp in range(nstamps):
