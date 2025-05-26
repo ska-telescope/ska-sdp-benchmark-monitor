@@ -11,7 +11,7 @@ data-files = { bin = ["exec/*"] }
 
 [project.urls]
 repository = "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor"
-documentation = "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor"
+documentation = "https://ska-telescope-ska-sdp-benchmark-monitor.readthedocs.io"
 
 [project]
 name = "ska-sdp-benchmark-monitor"
