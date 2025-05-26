@@ -1,0 +1,5 @@
+sphinx<7.2
+sphinx_rtd_theme
+sphinx_pyproject
+sphinx-markdown-tables
+recommonmark
