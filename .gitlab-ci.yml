@@ -77,25 +77,22 @@ test_metrics:
   script:
     - pytest --no-cov tests/test_metrics.py
 
-# Reproduce steps from RTD
-#docs-test:
-#  stage: test
-#  tags:
-#    - k8srunner
-#  before_script:
-#    - conda create -n docs python=$PYVER -y
-#    - conda activate docs
-#    - python -m pip install --upgrade --no-cache-dir pip 'setuptools<58.3.0'
-#    - python -m pip install --exists-action=w --no-cache-dir mock==1.0.1 pillow==5.4.1 'alabaster>=0.7,<0.8,!=0.7.5' commonmark==0.8.1 recommonmark==0.5.0
-#    - python -m pip install --exists-action=w --no-cache-dir -r docs/requirements.txt
-#    - python -m pip install --exists-action=w --no-cache-dir -r requirements.txt
-#  script:
-#    - cd docs
-#    - python -m sphinx -T -b html -d build/doctrees -D language=en src/ build/html
-#  artifacts:
-#    paths:
-#      - build/
-#    expire_in: 1 day
+test_doc:
+  stage: test
+  extends: [.test_env]
+  tags:
+    - k8srunner
+  script:
+    - python -m pip install --upgrade --no-cache-dir pip setuptools
+    - python -m pip install --upgrade --no-cache-dir sphinx
+    - python -m pip install --exists-action=w --no-cache-dir -r docs/requirements.txt
+    - cd docs
+    - python -m sphinx -T -b html -d build/doctrees -D language=en src/ build/html
+    - make html
+  artifacts:
+    paths:
+      - build/
+    expire_in: 1h
 
 # pages-pages:
 #   stage: pages

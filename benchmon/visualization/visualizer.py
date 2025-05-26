@@ -182,7 +182,8 @@ class BenchmonVisualizer:
         kernel_calls = [
             "swapper", "bash", "awk", "cat", "date", "grep", "sleep", "perf_5.10", "perf", "prometheus-node",
             "htop", "kworker", "dbus-daemon", "ipmitool", "slurmstepd", "rcu_sched", "ldlm_bl", "socknal",
-            "systemd", "snapd", "apparmor", "sed", "kswap", "queue", "ps", "sort", "diff"
+            "systemd", "snapd", "apparmor", "sed", "kswap", "queue", "ps", "sort", "diff", "kipmi", "orted",
+            "nvidia-modprobe", "async"
         ]
 
         # Create list of keys for user calls (remove command if less thant 5% of the larger command)
@@ -242,19 +243,19 @@ class BenchmonVisualizer:
             t0, tf = self.system_metrics.cpu_stamps[0], self.system_metrics.cpu_stamps[-1]
         except AttributeError:
             try:
-                t0, tf = self.system_metrics.cpufreq_stamps[0], self.system_metrics.cpufreq_stamps[-1]
+                t0, tf = self.system_metrics.mem_stamps[0], self.system_metrics.mem_stamps[-1]
             except AttributeError:
                 try:
-                    t0, tf = self.system_metrics.mem_stamps[0], self.system_metrics.mem_stamps[-1]
+                    t0, tf = self.system_metrics.net_stamps[0], self.system_metrics.net_stamps[-1]
                 except AttributeError:
                     try:
-                        t0, tf = self.system_metrics.net_stamps[0], self.system_metrics.net_stamps[-1]
+                        t0, tf = self.system_metrics.disk_stamps[0], self.system_metrics.disk_stamps[-1]
                     except AttributeError:
                         try:
-                            t0, tf = self.system_metrics.disk_stamps[0], self.system_metrics.disk_stamps[-1]
+                            t0, tf = self.system_metrics.ib_stamps[0], self.system_metrics.ib_stamps[-1]
                         except AttributeError:
                             try:
-                                t0, tf = self.system_metrics.ib_stamps[0], self.system_metrics.ib_stamps[-1]
+                                t0, tf = self.system_metrics.cpufreq_stamps[0], self.system_metrics.cpufreq_stamps[-1]
                             except AttributeError:
                                 sys.exit(1)
 

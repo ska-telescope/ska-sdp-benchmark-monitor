@@ -25,8 +25,9 @@ exclude =
     .venv,
     venv,
     .mypy_cache,
-    .pytest_cache
-    mytest
+    .pytest_cache,
+    mytest,
+    .make
 
 per-file-ignores =
     __init__.py: F401, D104
