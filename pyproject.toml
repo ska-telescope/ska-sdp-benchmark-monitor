@@ -15,7 +15,7 @@ documentation = "https://ska-telescope-ska-sdp-benchmark-monitor.readthedocs.io"
 
 [project]
 name = "ska-sdp-benchmark-monitor"
-version = "0.1.0"
+version = "0.0.0"
 description = "SDP Benchmark Monitor for resource monitoring and performance analysis."
 readme = "README.md"
 authors = [

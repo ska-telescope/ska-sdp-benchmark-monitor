@@ -1,18 +1,19 @@
-image: registry.gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor:ci
-
 stages:
   - setup
   - lint
+  - build
   - test
   - publish
   - pages
   - scan
 
 variables:
+  GIT_SUBMODULE_STRATEGY: recursive
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   VENV_DIR: "$CI_PROJECT_DIR/.venv"
 
 .test_env:
+  image: registry.gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor:ci
   before_script:
     - python --version
     - pip --version
@@ -96,9 +97,13 @@ test_doc:
     expire_in: 1h
 
 include:
-  #  # Docs pages
-  #  - project: "ska-telescope/templates-repository"
-  #    file: "gitlab-ci/includes/docs.gitlab-ci.yml"
+  # Docs pages
+  - project: "ska-telescope/templates-repository"
+    file: "gitlab-ci/includes/docs.gitlab-ci.yml"
+
+  # Python
+  - project: "ska-telescope/templates-repository"
+    file: "gitlab-ci/includes/python-publish.gitlab-ci.yml"
 
   # Build and publish changelog
   - project: "ska-telescope/templates-repository"
