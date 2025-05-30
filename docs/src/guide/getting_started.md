@@ -116,9 +116,11 @@ Available options:
 ##### Callgraph Tracing
 - `--call`: Visualize call stack.
 - `--call-depth`: Set call stack depth (integer).
+- `--call-cmd`: (Optional) Set command to show in call stack plots.
 
 ##### Plot annotations
 - `--inline-call`: Annotate plots with running commands (if `--call` is enabled).
+- `--inline-call-cmd`: Comma-separated list of commands for inline call annotations.
 - `--ical-log`: Annotate with ICAL stages; the log file (`wflow-selfcal.*.log`) must be in the same directory as the traces.
 
 ##### Global visualization
@@ -130,6 +132,10 @@ Available options:
 - `--fig-fmt`: Figure format (default: `svg`).
 - `--fig-name`: Figure name.
 - `--fig-dpi`: Figure quality (`low`, `medium`, `high`; default: `medium`).
+- `--fig-width`: Figure width in inches (default: 25.6).
+- `--fig-height-unit`: Figure subplot height in inches (default: 3).
+- `--fig-xrange`: Number of ticks on the x-axis (default: 25).
+- `--fig-yrange`: Number of ticks on the y-axis (default: 11).
 **
 
 # SW/HW contexts

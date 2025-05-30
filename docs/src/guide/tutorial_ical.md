@@ -23,7 +23,7 @@ benchmon_params="--save-dir $save_dir"
 benchmon_params+=" --high-freq-system --hf-sys-freq 10"
 benchmon_params+=" --call --call-prof-freq 1"
 benchmon_params+=" --verbose"
-benchmon-multinode-start $benchmon_params
+benchmon-start $benchmon_params
 ##########################################################################################
 
 sleep 20
