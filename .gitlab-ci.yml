@@ -4,8 +4,8 @@ stages:
   - setup
   - lint
   - test
+  - publish
   - scan
-  # - pages
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
@@ -111,3 +111,6 @@ test_doc:
 include:
   - project: 'ska-telescope/templates-repository'
     file: 'gitlab-ci/includes/finaliser.gitlab-ci.yml'
+
+  - project: "ska-telescope/templates-repository"
+    file: "gitlab-ci/includes/release.gitlab-ci.yml"
