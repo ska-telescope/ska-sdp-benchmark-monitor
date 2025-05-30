@@ -1,5 +1,0 @@
-#!/usr/bin/bash
-
-HOSTS=$(echo $(scontrol show hostname) | tr -s " " ",")
-
-mpirun -host $HOSTS $(dirname $0)/benchmon-start $* &

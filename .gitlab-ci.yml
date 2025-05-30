@@ -5,6 +5,7 @@ stages:
   - lint
   - test
   - publish
+  - pages
   - scan
 
 variables:
@@ -94,23 +95,16 @@ test_doc:
       - build/
     expire_in: 1h
 
-# pages-pages:
-#   stage: pages
-#   tags:
-#     - k8srunner
-#   script:
-#     - mkdir -p public/reports
-#     - mv build/linting.xml public/reports/linting.xml
-#     #- mv build/tests.xml public/reports/unit-tests.xml
-#   artifacts:
-#     paths:
-#       - public
-
-# Create Gitlab CI badges from CI metrics
-# https://developer.skatelescope.org/en/latest/tools/continuousintegration.html#automated-collection-of-ci-health-metrics-as-part-of-the-ci-pipeline
 include:
-  - project: 'ska-telescope/templates-repository'
-    file: 'gitlab-ci/includes/finaliser.gitlab-ci.yml'
+  #  # Docs pages
+  #  - project: "ska-telescope/templates-repository"
+  #    file: "gitlab-ci/includes/docs.gitlab-ci.yml"
 
+  # Build and publish changelog
   - project: "ska-telescope/templates-repository"
     file: "gitlab-ci/includes/release.gitlab-ci.yml"
+
+  # .post step finalisers e.g.: badges
+  - project: "ska-telescope/templates-repository"
+    file: "gitlab-ci/includes/finaliser.gitlab-ci.yml"
+
