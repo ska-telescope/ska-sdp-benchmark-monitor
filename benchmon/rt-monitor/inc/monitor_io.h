@@ -39,9 +39,6 @@ inline uint32_t cpuid_str_to_uint(const std::string &str)
  * @param stream The output stream to write to.
  * @param value The value to be written to the stream.
  * @return std::ostream& A reference to the output stream.
- *
- * @note If the macro BINARY is defined, the value is written in binary format.
- *       Otherwise, the value is written in text format followed by a comma.
  */
 template <typename T> std::ostream &write_binary(std::ostream &stream, const T value)
 {

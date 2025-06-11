@@ -66,17 +66,51 @@ std::pair<uint64_t, uint64_t> get_freq_min_max()
     {
         min_freq_file >> min_freq;
     }
+    else
+    {
+        spdlog::error("Failed to fetch CPU min frequency. Please check the availability and access permissions of "
+                      "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq");
+    }
 
     if (max_freq_file.is_open())
     {
         max_freq_file >> max_freq;
     }
+    else
+    {
+        spdlog::error("Failed to fetch CPU max frequency. Please check the availability and access permissions of "
+                      "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
+    }
 
     return {min_freq, max_freq};
 }
 
+void read_cpu_frequency_sample(const std::vector<std::string> &cpu_freq_paths, std::ostream &file)
+{
+    spdlog::trace("reading a CPU frequency monitoring sample");
+    const auto now = std::chrono::system_clock::now();
+    const auto duration = now.time_since_epoch();
+    const auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+
+    for (uint32_t i = 0; i < cpu_freq_paths.size(); ++i)
+    {
+        const auto &path = cpu_freq_paths[i];
+        std::ifstream freq_file(path);
+
+        std::string line;
+        std::getline(freq_file, line);
+        const auto [frequency] = scn::scan<uint32_t>(line, "{}")->values();
+
+        io::write_binary(file, timestamp);
+        io::write_binary(file, i);
+        io::write_binary(file, frequency);
+    }
+}
+
 void start(const double time_interval, const std::string &out_path)
 {
+    bool sampling_warning_provided = false;
+
     auto file = io::make_buffer(out_path);
 
     const auto [freq_min, freq_max] = get_freq_min_max();
@@ -92,26 +126,25 @@ void start(const double time_interval, const std::string &out_path)
             std::unique_lock<std::mutex> lock(pause_manager::mutex());
             pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
         }
-        
-        spdlog::trace("reading a CPU frequency monitoring sample");
-        const auto now = std::chrono::system_clock::now();
-        const auto duration = now.time_since_epoch();
-        const auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
-        for (uint32_t i = 0; i < cpu_freq_paths.size(); ++i)
+        const auto begin = std::chrono::high_resolution_clock::now();
+        read_cpu_frequency_sample(cpu_freq_paths, file);
+        const auto end = std::chrono::high_resolution_clock::now();
+        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+        auto time_to_wait = time_interval - sampling_time;
+        if (time_to_wait < 0.)
         {
-            const auto &path = cpu_freq_paths[i];
-            std::ifstream freq_file(path);
-
-            std::string line;
-            std::getline(freq_file, line);
-            const auto [frequency] = scn::scan<uint32_t>(line, "{}")->values();
-
-            io::write_binary(file, timestamp);
-            io::write_binary(file, i);
-            io::write_binary(file, frequency);
+            if (!sampling_warning_provided)
+            {
+                spdlog::warn("The sampling period of {} ms might be too low for CPU frequency monitoring. The last sampling time "
+                             "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
+                             static_cast<int>(time_interval), sampling_time);
+                sampling_warning_provided = true;
+            }
+            time_to_wait = 0.;
         }
-        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(time_interval * 1000)));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
     spdlog::trace("CPU frequency monitoring stopped");
 }
