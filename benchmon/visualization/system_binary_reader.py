@@ -23,8 +23,8 @@ class generic_sample:
                     np.int8: "b", np.int16: "h", np.int32: "i", np.int64: "q", np.double: "d", np.longdouble: "d",
                     np.bool_: "?", str: "32s"}
         # Builds the format string for Python binary pack/unpack.
-        self.format_string_static = " ".join(type_map[field_type] for _, field_type,
-                                             enabled in field_definitions if enabled)
+        self.format_string_static = "<" + " ".join(type_map[field_type] for _, field_type,
+                                                   enabled in field_definitions if enabled)
         self.pack_size = struct.calcsize(self.format_string_static)
         self.enabled_fields = [field for field in self.field_definitions if field[2]]
 
@@ -191,9 +191,9 @@ class hf_disk_sample(generic_sample):
 
     Attributes:
         timestamp (np.float64):                The timestamp timestamp of the sample.
-        major (np.uint8):                      The major device number.
-        minor (np.uint8):                      The minor device number.
-        device_name (str): The                 name of the device.
+        major (np.uint32):                     The major device number.
+        minor (np.uint32):                     The minor device number.
+        device_id (np.uint32):                 The index of the device.
         reads_completed (np.uint64):           The number of read operations completed.
         reads_merged (np.uint64):              The number of read operations merged.
         sectors_read (np.uint64):              The number of sectors read.
@@ -227,7 +227,7 @@ class hf_disk_sample(generic_sample):
             ["timestamp", np.uint64, True],
             ["major", np.uint32, True],
             ["minor", np.uint32, True],
-            ["device_name", str, True],
+            ["device_id", np.uint32, True],
             ["#rd-cd", np.uint64, True],
             ["#rd-md", np.uint64, True],
             ["sect-rd", np.uint64, True],

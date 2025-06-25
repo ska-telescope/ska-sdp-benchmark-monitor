@@ -45,7 +45,6 @@ std::vector<std::string> get_online_cpu_scaling_freq_paths()
 
     std::vector<std::string> paths;
     paths.reserve(indexed_paths.size());
-    paths.emplace_back("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq");
     std::sort(indexed_paths.begin(), indexed_paths.end());
     for (const auto &[index, path] : indexed_paths)
     {
@@ -95,12 +94,19 @@ void read_cpu_frequency_sample(const std::vector<std::string> &cpu_freq_paths, s
     for (uint32_t i = 0; i < cpu_freq_paths.size(); ++i)
     {
         const auto &path = cpu_freq_paths[i];
+	spdlog::trace(path);
         std::ifstream freq_file(path);
 
         std::string line;
         std::getline(freq_file, line);
-        const auto [frequency] = scn::scan<uint32_t>(line, "{}")->values();
+	spdlog::trace(line);
+        const auto result = scn::scan<uint32_t>(line, "{}");
+        if(!result)
+        {
+            spdlog::debug("Invalid CPU frequency sample.");
+        }
 
+        const auto [frequency] = result->values();
         io::write_binary(file, timestamp);
         io::write_binary(file, i);
         io::write_binary(file, frequency);
@@ -118,6 +124,12 @@ void start(const double time_interval, const std::string &out_path)
     io::write_binary(file, freq_max);
 
     const auto cpu_freq_paths = get_online_cpu_scaling_freq_paths();
+    if(cpu_freq_paths.empty())
+    {
+        spdlog::error("No CPU frequency file available, stopping CPU frequency monitoring.");
+        return;
+    }
+
     while (!pause_manager::stopped())
     {
         if (pause_manager::paused())
@@ -149,3 +161,4 @@ void start(const double time_interval, const std::string &out_path)
     spdlog::trace("CPU frequency monitoring stopped");
 }
 } // namespace rt_monitor::cpufreq
+

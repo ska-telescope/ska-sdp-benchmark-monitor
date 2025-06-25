@@ -142,7 +142,9 @@ class RunMonitor:
                     "--cpu-freq",
                     "{self.save_dir}/{self.bin_sys_filename('cpufreq')}",
                     "--net",
-                    f"{self.save_dir}/{self.bin_sys_filename('net')}"
+                    f"{self.save_dir}/{self.bin_sys_filename('net')}",
+                    "--log-level",
+                    "err",
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -349,8 +351,11 @@ class RunMonitor:
                                check=False)
 
             if not self.is_perf_datafile_kept:
-                self.logger.debug(f"Removing perf binany file: {perf_data_file}...")
-                os.remove(perf_data_file)
+                self.logger.debug(f"Removing perf binary file: {perf_data_file}...")
+                try:
+                    os.remove(perf_data_file)
+                except Exception as e:
+                    self.logger.warning(f"Could not remove perf binary file: {perf_data_file}. Reason: {e}")
                 self.logger.debug("...done")
 
             self.logger.debug("...done")

@@ -108,6 +108,13 @@ class RunUtils:
             help="Timeout for testing"
         )
 
+        parser.add_argument(
+            "--start-after",
+            type=int,
+            default=0,
+            help="Wait a certain time (in seconds) before starting monitoring. Default: 0"
+        )
+
         return parser.parse_args()
 
 

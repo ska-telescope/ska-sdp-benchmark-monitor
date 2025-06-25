@@ -732,16 +732,25 @@ class SystemData:
         disk_sampler = system_binary_reader.hf_disk_sample()
         sector_sizes = {}
         samples_list = []
+        device_names = {}
         with open(bin_disk_report, "rb") as file:
-            np.frombuffer(file.read(8), dtype=np.uint64)[0]  # n_major_blocks
-            np.frombuffer(file.read(8), dtype=np.uint64)[0]  # n_all_blocks
-            sector_sizes_str = read_c_string(file).split(",")
-            sector_sizes = {key: int(value) for key, value in zip(sector_sizes_str[0::2], sector_sizes_str[1::2])}
+            n_sector_sizes = np.frombuffer(file.read(4), dtype=np.uint32)[0]
+            sector_sizes = {}
+
+            for i in range(n_sector_sizes):
+                name_size = np.frombuffer(file.read(4), dtype=np.uint32)[0]
+                name = file.read(name_size)
+                device_names[i] = name
+                blocksize = np.frombuffer(file.read(4), dtype=np.uint32)[0]
+                sector_sizes[name] = blocksize
+
             while data := file.read(disk_sampler.get_pack_size()):
-                samples_list.append(disk_sampler.binary_to_dict(data))
+                sample = disk_sampler.binary_to_dict(data)
+                sample["device_name"] = device_names[sample["device_id"]]
+                samples_list.append(sample)
 
         self.disk_field_keys = [key for key, _, enabled in disk_sampler.field_definitions
-                                if enabled and key not in ["timestamp", "major", "minor", "device_name"]]
+                                if enabled and key not in ["timestamp", "major", "minor", "device_id"]]
 
         # get major blocks and associated sector size
         self.maj_blks_sects = sector_sizes
@@ -768,7 +777,7 @@ class SystemData:
 
         for idx, sample in enumerate(samples_list):
             for key, value in sample.items():
-                if key not in ["timestamp", "device_name", "major", "minor"]:
+                if key not in ["timestamp", "device_name", "major", "minor", "device_id"]:
                     disk_ts_raw[sample["device_name"]][key].append(float(value))
 
         # raw time stamps
