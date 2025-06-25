@@ -5,9 +5,9 @@
 
 namespace rt_monitor::io
 {
-template <> std::ostream &write_binary(std::ostream &stream, std::string arr)
+template <> void write_binary(std::ostream &stream, std::string arr)
 {
-    return stream << arr;
+    stream << arr;
 }
 
 std::string exec(const std::string &command)

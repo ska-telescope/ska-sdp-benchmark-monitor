@@ -38,11 +38,10 @@ inline uint32_t cpuid_str_to_uint(const std::string &str)
  * @tparam T The type of the value to be written.
  * @param stream The output stream to write to.
  * @param value The value to be written to the stream.
- * @return std::ostream& A reference to the output stream.
  */
-template <typename T> std::ostream &write_binary(std::ostream &stream, const T value)
+template <typename T> void write_binary(std::ostream &stream, const T value)
 {
-    return stream.write(reinterpret_cast<const char *>(&value), sizeof(value));
+    stream.write(reinterpret_cast<const char *>(&value), sizeof(value));
 }
 
 /**
@@ -58,7 +57,6 @@ std::string exec(const std::string &command);
  *
  * @param stream The output stream to write to.
  * @param value The string value to be written to the stream.
- * @return std::ostream& A reference to the output stream.
  */
-template <> std::ostream &write_binary(std::ostream &stream, const std::string value);
+template <> void write_binary(std::ostream &stream, const std::string value);
 } // namespace rt_monitor::io

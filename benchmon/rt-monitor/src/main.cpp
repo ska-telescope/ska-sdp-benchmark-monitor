@@ -1,6 +1,5 @@
 #include <csignal>
 #include <future>
-#include <iostream>
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
@@ -14,7 +13,6 @@
 #include "mem_monitor.h"
 #include "net_monitor.h"
 #include "pause_manager.h"
-#include "spdlog/common.h"
 #include "spdlog/logger.h"
 
 namespace rt_monitor
@@ -56,7 +54,9 @@ spdlog::level::level_enum parse_log_level(const std::string &level_str)
 
     auto it = levels.find(level_str);
     if (it != levels.end())
+    {
         return it->second;
+    }
     return spdlog::level::warn; // fallback
 }
 
@@ -64,15 +64,11 @@ monitor_config parse_arguments(int argc, char **argv)
 {
     if (argc < 3)
     {
-        std::cerr
-            << "Usage: " << argv[0]
-            << " --sampling-frequency <Hz> [--cpu <cpu_output_file_path>] [--cpu-freq <cpu_freq_output_file_path>] "
-               "[--disk <disk_output_file_path>] [--mem <mem_output_file_path>] [--net <net_output_file_path>]"
-            << std::endl;
-        std::cerr << "Example: " << argv[0]
-                  << " --sampling-frequency 100 --cpu cpu_output.bin --cpu-freq cpu_freq_output.bin "
-                     "--disk disk_output.bin --mem mem_output.bin --net net_output.bin"
-                  << std::endl;
+        spdlog::error("Usage: {} sampling-frequency <Hz> [--cpu <cpu_output_file_path>] [--cpu-freq <cpu_freq_output_file_path>] "
+               "[--disk <disk_output_file_path>] [--mem <mem_output_file_path>] [--net <net_output_file_path>] "
+               "[--log-level <trace/debug/info/warn/error/critical/off]", argv[0]);
+        spdlog::error("Example: {} sampling-frequency 100 --cpu cpu_output.bin --cpu-freq cpu_freq_output.bin "
+                     "--disk disk_output.bin --mem mem_output.bin --net net_output.bin", argv[0]);
         exit(1);
     }
 
@@ -178,7 +174,6 @@ int main(int argc, char **argv)
         }
         catch (std::invalid_argument error)
         {
-            std::cerr << error.what() << std::endl;
             return -1;
         }
         const double time_interval = 1000.0 / config.sampling_frequency;

@@ -14,7 +14,7 @@ import requests
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
-
+JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
 
 class RunMonitor:
     """
@@ -115,6 +115,16 @@ class RunMonitor:
         self.terminate("", "")
         self.post_process()
 
+    def write_benchmon_pid(self, pids) -> None:
+        """
+        Get benchmon-run pid
+        """
+        filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
+        with open(filename, "w") as fn:
+            for id in pids:
+                fn.write(f"{id},")
+
+        self.logger.debug(f"PID file created: {filename}")
 
     def run_sys_monitoring(self):
         """
@@ -142,7 +152,9 @@ class RunMonitor:
                     "--cpu-freq",
                     "{self.save_dir}/{self.bin_sys_filename('cpufreq')}",
                     "--net",
-                    f"{self.save_dir}/{self.bin_sys_filename('net')}"
+                    f"{self.save_dir}/{self.bin_sys_filename('net')}",
+                    "--log-level",
+                    "err",
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -165,6 +177,9 @@ class RunMonitor:
                     text=True
                 )
             ]
+
+        pids = [process.pid for process in self.sys_process]
+        self.write_benchmon_pid(pids)
 
 
     def run_perf_pow(self):
@@ -349,8 +364,11 @@ class RunMonitor:
                                check=False)
 
             if not self.is_perf_datafile_kept:
-                self.logger.debug(f"Removing perf binany file: {perf_data_file}...")
-                os.remove(perf_data_file)
+                self.logger.debug(f"Removing perf binary file: {perf_data_file}...")
+                try:
+                    os.remove(perf_data_file)
+                except Exception as e:
+                    self.logger.warning(f"Could not remove perf binary file: {perf_data_file}. Reason: {e}")
                 self.logger.debug("...done")
 
             self.logger.debug("...done")

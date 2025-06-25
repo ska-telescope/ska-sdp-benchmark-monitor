@@ -14,7 +14,6 @@ def test_benchmon_run():
            "--verbose",
            "--sys", "--sys-freq", "100",
            "--pow", "--pow-sampl-intv", "100",
-           "--pow-g5k",
            "--call", "--call-mode", "br,32",
            "--call-prof-freq", "100",
            "--call-keep-datafile",

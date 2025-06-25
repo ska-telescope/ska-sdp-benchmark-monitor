@@ -3,6 +3,7 @@
 #include <chrono>
 #include <fstream>
 #include <spdlog/spdlog.h>
+#include <sstream>
 #include <thread>
 
 #include "monitor_io.h"

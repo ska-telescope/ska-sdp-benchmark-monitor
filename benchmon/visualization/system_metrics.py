@@ -15,13 +15,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from benchmon.visualization import system_binary_reader
 
+logger = logging.getLogger(__name__)
+
 
 def read_binary_samples(file_path: str, sampler_type: system_binary_reader.generic_sample):
     samples_list = []
     sampler = sampler_type()
     with open(file_path, "rb") as file:
         while data := file.read(sampler.get_pack_size()):
-            samples_list.append(sampler.binary_to_dict(data))
+            try:
+                samples_list.append(sampler.binary_to_dict(data))
+            except ValueError as err:
+                logger.error(err)
     return samples_list
 
 
@@ -199,12 +204,12 @@ class SystemData:
             t0i = time.time()
             cpu_ts = {}
             for key in cpu_ts_raw.keys():
-                cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw[max_int].keys()}
+                cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw[0].keys()}
             self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
 
             t0i = time.time()
             for stamp in range(nstamps):
-                for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw[max_int].keys()):
+                for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw[0].keys()):
                     cpu_ts[key][metric_key][stamp] = (
                         cpu_ts_raw[key][metric_key][stamp + 1] - cpu_ts_raw[key][metric_key][stamp]
                     )
@@ -219,7 +224,8 @@ class SystemData:
                             cpu_total += cpu_ts[key][metric_key][stamp]
 
                     for metric_key in cpu_ts[max_int].keys():
-                        cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
+                        if metric_key != "timestamp":
+                            cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
             self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
 
             self.cpu_prof = cpu_ts
@@ -240,7 +246,7 @@ class SystemData:
         """
         Plot average cpu usage
         """
-        core = np.iinfo(np.uint32).max if number == "" else number
+        core = np.iinfo(np.uint32).max if number == "" else int(number)
         alpha = 0.8
         prefix = f"{number}: " if number else ""
 
@@ -299,14 +305,14 @@ class SystemData:
         for idx, core in enumerate(cores):
             core_name = f"cpu{core}"
 
-            cpu_usr = self.cpu_prof[core_name]["user"] \
-                + self.cpu_prof[core_name]["nice"]
+            cpu_usr = self.cpu_prof[core]["user"] \
+                + self.cpu_prof[core]["nice"]
 
-            cpu_sys = self.cpu_prof[core_name]["system"] \
-                + self.cpu_prof[core_name]["irq"] \
-                + self.cpu_prof[core_name]["softirq"]
+            cpu_sys = self.cpu_prof[core]["system"] \
+                + self.cpu_prof[core]["irq"] \
+                + self.cpu_prof[core]["softirq"]
 
-            cpu_wai = self.cpu_prof[core_name]["iowait"]
+            cpu_wai = self.cpu_prof[core]["iowait"]
 
             plt.plot(self.cpu_stamps, cpu_usr + cpu_sys + cpu_wai, color=cm[idx], label=f"core-{core}")
 
@@ -330,7 +336,10 @@ class SystemData:
         samples_list = []
         with open(bin_mem_report, "rb") as file:
             while data := file.read(hf.get_pack_size()):
-                samples_list.append(hf.binary_to_dict(data))
+                try:
+                    samples_list.append(hf.binary_to_dict(data))
+                except ValueError as err:
+                    logger.error(err)
 
         return samples_list
 
@@ -426,7 +435,10 @@ class SystemData:
             min_cpufreq = np.uint64(int.from_bytes(file.read(8), byteorder='little', signed=False))
             max_cpufreq = np.uint64(int.from_bytes(file.read(8), byteorder='little', signed=False))
             while data := file.read(hf.get_pack_size()):
-                samples_list.append(hf.binary_to_dict(data))
+                try:
+                    samples_list.append(hf.binary_to_dict(data))
+                except ValueError as err:
+                    logger.error(err)
 
         return min_cpufreq, max_cpufreq, samples_list
 
@@ -732,16 +744,28 @@ class SystemData:
         disk_sampler = system_binary_reader.hf_disk_sample()
         sector_sizes = {}
         samples_list = []
+        device_names = {}
         with open(bin_disk_report, "rb") as file:
-            np.frombuffer(file.read(8), dtype=np.uint64)[0]  # n_major_blocks
-            np.frombuffer(file.read(8), dtype=np.uint64)[0]  # n_all_blocks
-            sector_sizes_str = read_c_string(file).split(",")
-            sector_sizes = {key: int(value) for key, value in zip(sector_sizes_str[0::2], sector_sizes_str[1::2])}
+            n_sector_sizes = np.frombuffer(file.read(4), dtype=np.uint32)[0]
+            sector_sizes = {}
+
+            for i in range(n_sector_sizes):
+                name_size = np.frombuffer(file.read(4), dtype=np.uint32)[0]
+                name = file.read(name_size)
+                device_names[i] = name
+                blocksize = np.frombuffer(file.read(4), dtype=np.uint32)[0]
+                sector_sizes[name] = blocksize
+
             while data := file.read(disk_sampler.get_pack_size()):
-                samples_list.append(disk_sampler.binary_to_dict(data))
+                try:
+                    sample = disk_sampler.binary_to_dict(data)
+                except ValueError as err:
+                    logger.error(err)
+                sample["device_name"] = device_names[sample["device_id"]]
+                samples_list.append(sample)
 
         self.disk_field_keys = [key for key, _, enabled in disk_sampler.field_definitions
-                                if enabled and key not in ["timestamp", "major", "minor", "device_name"]]
+                                if enabled and key not in ["timestamp", "major", "minor", "device_id"]]
 
         # get major blocks and associated sector size
         self.maj_blks_sects = sector_sizes
@@ -768,7 +792,7 @@ class SystemData:
 
         for idx, sample in enumerate(samples_list):
             for key, value in sample.items():
-                if key not in ["timestamp", "device_name", "major", "minor"]:
+                if key not in ["timestamp", "device_name", "major", "minor", "device_id"]:
                     disk_ts_raw[sample["device_name"]][key].append(float(value))
 
         # raw time stamps
