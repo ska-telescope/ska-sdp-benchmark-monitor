@@ -7,6 +7,12 @@ stages:
   - pages
   - scan
 
+
+default:
+  tags:
+    - ${SKA_DEFAULT_RUNNER}
+
+
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
@@ -42,7 +48,7 @@ test_flake8:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_flake8.py
 
@@ -50,7 +56,7 @@ test_run_monitor:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_run_monitor.py::test_repo_log_pid
 
@@ -58,7 +64,7 @@ test_benchmon_visu:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_benchmon-visu_func.py
     # - pytest --no-cov tests/test_benchmon-visu.py
@@ -67,7 +73,7 @@ test_visualizer:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_visualizer.py
 
@@ -75,7 +81,7 @@ test_metrics:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_metrics.py
 
@@ -83,7 +89,7 @@ test_doc:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - python -m pip install --upgrade --no-cache-dir pip setuptools
     - python -m pip install --upgrade --no-cache-dir sphinx
