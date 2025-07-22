@@ -22,6 +22,13 @@ kernel.kptr_restrict = 0
 ```
 ---
 
+# Check System availability
+`benchmon-check` can be used to check the system availability and check if the environment is compatible for `benchmon`. We recommended that the users should run this command before running `benchmon` for the first time. 
+
+```bash
+benchmon-check
+```
+
 # Basic procedure
 To monitor an application with benchmon, follow these four main steps:
 1. **Start benchmon** using `benchmon-start` (or `benchmon-multinode-start` for multi-node setups). benchmon runs in the background and does not block subsequent executions. The type and frequency of monitoring can be configured by passing various arguments. A subdirectory is created to store all trace files.
