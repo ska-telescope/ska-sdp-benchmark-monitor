@@ -143,16 +143,16 @@ class hf_cpu_sample(generic_sample):
         field_definitions = [
             ["timestamp", np.uint64, True],
             ["cpu", np.uint32, True],
-            ["user", np.uint32, True],
-            ["nice", np.uint32, True],
-            ["system", np.uint32, True],
-            ["idle", np.uint32, True],
-            ["iowait", np.uint32, True],
-            ["irq", np.uint32, True],
-            ["softirq", np.uint32, True],
-            ["steal", np.uint32, True],
-            ["guest", np.uint32, True],
-            ["guestnice", np.uint32, True],
+            ["user", np.uint64, True],
+            ["nice", np.uint64, True],
+            ["system", np.uint64, True],
+            ["idle", np.uint64, True],
+            ["iowait", np.uint64, True],
+            ["irq", np.uint64, True],
+            ["softirq", np.uint64, True],
+            ["steal", np.uint64, True],
+            ["guest", np.uint64, True],
+            ["guestnice", np.uint64, True],
         ]
         super().__init__(field_definitions)
 

@@ -25,7 +25,7 @@ struct monitor_config
     bool enable_mem = false;
     bool enable_net = false;
     double sampling_frequency = 0.0;
-    spdlog::level::level_enum log_level;
+    spdlog::level::level_enum log_level = spdlog::level::err;
     std::unordered_map<std::string, std::string> output_files;
 };
 
@@ -174,6 +174,7 @@ int main(int argc, char **argv)
         }
         catch (std::invalid_argument error)
         {
+            spdlog::error(error.what());
             return -1;
         }
         const double time_interval = 1000.0 / config.sampling_frequency;

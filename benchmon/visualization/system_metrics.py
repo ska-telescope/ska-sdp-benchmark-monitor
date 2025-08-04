@@ -24,9 +24,11 @@ def read_binary_samples(file_path: str, sampler_type: system_binary_reader.gener
     with open(file_path, "rb") as file:
         while data := file.read(sampler.get_pack_size()):
             try:
-                samples_list.append(sampler.binary_to_dict(data))
-            except ValueError as err:
-                logger.error(err)
+                sample = sampler.binary_to_dict(data)
+                samples_list.append(sample)
+            except ValueError:
+                logger.error(f"invalid binary sample read, size was {len(data)} and {sampler.get_pack_size()}"
+                             "was expected.")
     return samples_list
 
 
@@ -250,6 +252,10 @@ class SystemData:
         alpha = 0.8
         prefix = f"{number}: " if number else ""
 
+        if core not in self.cpu_prof.keys():
+            self.logger.warning(f"core {core} not found in cpu monitoring results")
+            return
+
         cpu_usr = self.cpu_prof[core]["user"] + self.cpu_prof[core]["nice"]
         cpu_sys = self.cpu_prof[core]["system"] + self.cpu_prof[core]["irq"] + self.cpu_prof[core]["softirq"]
         cpu_wai = self.cpu_prof[core]["iowait"]
@@ -303,8 +309,6 @@ class SystemData:
 
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu + 1))
         for idx, core in enumerate(cores):
-            core_name = f"cpu{core}"
-
             cpu_usr = self.cpu_prof[core]["user"] \
                 + self.cpu_prof[core]["nice"]
 

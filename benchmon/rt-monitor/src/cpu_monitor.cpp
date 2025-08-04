@@ -27,8 +27,8 @@ void read_cpu_sample(std::ostream &stream)
         if (!line.starts_with("cpu"))
             break;
 
-        const auto result = scn::scan<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
-                                      uint32_t, uint32_t, uint32_t>(line, "{} {} {} {} {} {} {} {} {} {} {}");
+        const auto result = scn::scan<std::string, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
+                                      uint64_t, uint64_t, uint64_t>(line, "{} {} {} {} {} {} {} {} {} {} {}");
         if (!result)
             continue;
         const auto [cpuid_value, user_value, nice_value, system_value, idle_value, iowait_value, irq_value,

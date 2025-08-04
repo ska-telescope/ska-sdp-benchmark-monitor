@@ -5,6 +5,7 @@ import subprocess
 from setuptools import setup, find_packages
 from setuptools.command.build_py import build_py as _build_py
 
+
 class build_rtmonitor(_build_py):
     def run(self):
         try:
@@ -28,7 +29,7 @@ class build_rtmonitor(_build_py):
 
         super().run()
 
-# Generate pytest.ini if not present (optional)
+
 if not os.path.exists("pytest.ini"):
     with open("pytest.ini", "w") as f:
         f.write("""\
@@ -68,8 +69,7 @@ setup(
         "Documentation": "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor",
     },
     data_files=[
-        ("bin", glob.glob("exec/*")),
-#        ("bin", ["rt-monitor"]),
+        ("bin", glob.glob("exec/*"))
     ],
     package_data={
         "benchmon.run": ["*.sh"],
@@ -78,6 +78,9 @@ setup(
     cmdclass={
         "build_py": build_rtmonitor
     },
+    setup_requires=[
+        "cmake>=3.18",
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent"
