@@ -46,8 +46,6 @@ class SystemData:
     """
     System resource monitoring database
     """
-
-
     def __init__(self,
                  logger: logging.Logger,
                  traces_repo: str,
@@ -206,12 +204,12 @@ class SystemData:
             t0i = time.time()
             cpu_ts = {}
             for key in cpu_ts_raw.keys():
-                cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw[0].keys()}
+                cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw[max_int].keys()}
             self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
 
             t0i = time.time()
             for stamp in range(nstamps):
-                for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw[0].keys()):
+                for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw[max_int].keys()):
                     cpu_ts[key][metric_key][stamp] = (
                         cpu_ts_raw[key][metric_key][stamp + 1] - cpu_ts_raw[key][metric_key][stamp]
                     )

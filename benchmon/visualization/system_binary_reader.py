@@ -188,7 +188,6 @@ class hf_cpufreq_sample(generic_sample):
 class hf_disk_sample(generic_sample):
     """
     A class representing a sample of disk-related metrics.
-
     This class inherits from `generic_sample` and is used to define the structure of a disk monitoring sample.
 
     Attributes:

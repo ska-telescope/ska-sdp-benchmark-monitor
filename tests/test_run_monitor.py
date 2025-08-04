@@ -22,6 +22,7 @@ def create_args(save_dir: str = "/tmp/benchmon_savedir_test",
                 call: bool = False,
                 call_mode: str = "dwarf,32",
                 call_profiling_frequency: int = 10,
+                start_after: int = 0,
                 call_keep_datafile: bool = False) -> argparse.ArgumentParser:
     """
     Create arguments for run_monitor test

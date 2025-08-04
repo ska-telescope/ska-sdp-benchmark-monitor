@@ -13,6 +13,7 @@
 #include "mem_monitor.h"
 #include "net_monitor.h"
 #include "pause_manager.h"
+#include "spdlog/common.h"
 #include "spdlog/logger.h"
 
 namespace rt_monitor

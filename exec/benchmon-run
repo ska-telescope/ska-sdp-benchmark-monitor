@@ -108,6 +108,13 @@ def parse_args():
         help="Wait a certain time (in seconds) before starting monitoring. Default: 0"
     )
 
+    parser.add_argument(
+        "--start-after",
+        type=int,
+        default=0,
+        help="Wait a certain time (in seconds) before starting monitoring. Default: 0"
+    )
+
     return parser.parse_args()
 
 
