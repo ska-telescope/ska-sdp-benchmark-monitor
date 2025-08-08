@@ -151,7 +151,7 @@ class RunMonitor:
                     "--disk",
                     f"{self.save_dir}/{self.bin_sys_filename('disk')}",
                     "--cpu-freq",
-                    "{self.save_dir}/{self.bin_sys_filename('cpufreq')}",
+                    f"{self.save_dir}/{self.bin_sys_filename('cpufreq')}",
                     "--net",
                     f"{self.save_dir}/{self.bin_sys_filename('net')}",
                     "--log-level",
@@ -181,6 +181,10 @@ class RunMonitor:
 
         pids = [process.pid for process in self.sys_process]
         self.write_benchmon_pid(pids)
+
+        for sys_process in self.sys_process:
+            process_stdout = sys_process.stdout.read()
+            self.logger.debug(f"Terminated {sys_process.args[0]} with stdout: {process_stdout}")
 
 
     def run_perf_pow(self):

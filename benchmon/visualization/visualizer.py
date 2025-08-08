@@ -80,9 +80,9 @@ class BenchmonVisualizer:
         if self.args.annotate_with_log == "ical":
             self.ical_stages = read_ical_log_file(self.traces_repo)
 
-        self.load_system_metrics()
-        self.load_power_metrics()
-        self.load_call_metrics()
+        self.system_metrics_loaded = self.load_system_metrics()
+        self.power_metrics_loaded = self.load_power_metrics()
+        self.call_metrics_loaded = self.load_call_metrics()
 
         self.get_xaxis_params(xmargin=0)
         self.apply_xaxis_params()
@@ -90,86 +90,163 @@ class BenchmonVisualizer:
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
 
-    def load_system_metrics(self) -> None:
+    def load_system_metrics(self) -> bool:
         """
         Load system metrics
+
+        Returns:
+            bool: True if loading was successful, False otherwise
         """
-        is_cores_full = bool(self.args.cpu_cores_full)
-        is_net = self.args.net or self.args.net_all or self.args.net_data
-        is_disk = self.args.disk or self.args.disk_iops or self.args.disk_iops
+        try:
+            is_cores_full = bool(self.args.cpu_cores_full)
+            is_net = self.args.net or self.args.net_all or self.args.net_data
+            is_disk = self.args.disk or self.args.disk_iops or self.args.disk_iops
 
-        _n_cores_full = len(self.args.cpu_cores_full.split(",")) if is_cores_full else 0
+            _n_cores_full = len(self.args.cpu_cores_full.split(",")) if is_cores_full else 0
 
-        self.is_any_sys = self.args.cpu or self.args.cpu_all or self.args.cpu_freq or \
-            is_cores_full or self.args.mem or is_net or is_disk or self.args.ib
+            self.is_any_sys = self.args.cpu or self.args.cpu_all or self.args.cpu_freq or \
+                is_cores_full or self.args.mem or is_net or is_disk or self.args.ib
 
-        conds = {
-            "mem": self.args.mem,
-            "cpu": self.args.cpu or self.args.cpu_all or is_cores_full,
-            "cpufreq": self.args.cpu_freq,
-            "net": is_net,
-            "disk": is_disk,
-            "ib": self.args.ib
-        }
+            conds = {
+                "mem": self.args.mem,
+                "cpu": self.args.cpu or self.args.cpu_all or is_cores_full,
+                "cpufreq": self.args.cpu_freq,
+                "net": is_net,
+                "disk": is_disk,
+                "ib": self.args.ib
+            }
 
-        csv_reports = {}
-        csv_reports["csv_ib_report"] = f"{self.traces_repo}/ib_report.csv" if conds["ib"] else None
+            csv_reports = {}
+            csv_reports["csv_ib_report"] = f"{self.traces_repo}/ib_report.csv" if conds["ib"] else None
 
-        bin_reports = {}
-        for key in conds.keys():
-            if key == "ib":
-                continue
-            bin_reports[f"bin_{key}_report"] = f"{self.traces_repo}/{key}_report.bin" if conds[key] else None
-        if self.is_any_sys:
-            self.system_metrics = SystemData(logger=self.logger,
-                                             traces_repo=self.traces_repo,
-                                             **csv_reports,
-                                             **bin_reports)
+            bin_reports = {}
+            for key in conds.keys():
+                if key == "ib":
+                    continue
+                bin_reports[f"bin_{key}_report"] = f"{self.traces_repo}/{key}_report.bin" if conds[key] else None
+            if self.is_any_sys:
+                self.system_metrics = SystemData(logger=self.logger,
+                                                 traces_repo=self.traces_repo,
+                                                 **csv_reports,
+                                                 **bin_reports)
 
-        self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
-            + self.args.mem + is_net + is_disk + self.args.ib
+            self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
+                + self.args.mem + is_net + is_disk + self.args.ib
 
-    def load_power_metrics(self) -> None:
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to load system metrics: {e}")
+            self.system_metrics = None
+            return False
+
+    def load_power_metrics(self) -> bool:
         """
         Load power metrics recorded with perf (rapl) and grid5000 tools
+
+        Returns:
+            bool: True if loading was successful, False otherwise
         """
-        if self.args.pow:
-            self.power_perf_metrics = PerfPowerData(logger=self.logger,
-                                                    csv_filename=f"{self.traces_repo}/pow_report.csv")
+        success = True
+        try:
+            if self.args.pow:
+                try:
+                    self.power_perf_metrics = PerfPowerData(
+                        logger=self.logger,
+                        csv_filename=f"{self.traces_repo}/pow_report.csv"
+                    )
+                except Exception as e:
+                    self.logger.error(f"Failed to load perf power metrics: {e}")
+                    self.power_perf_metrics = None
+                    success = False
 
-        if self.args.pow_g5k:
-            self.power_g5k_metrics = G5KPowerData(traces_dir=self.traces_repo)
+            if self.args.pow_g5k:
+                try:
+                    self.power_g5k_metrics = G5KPowerData(traces_dir=self.traces_repo)
+                except Exception as e:
+                    self.logger.error(f"Failed to load G5K power metrics: {e}")
+                    self.power_g5k_metrics = None
+                    success = False
 
-        self.n_subplots += (self.args.pow or self.args.pow_g5k)
+            self.n_subplots += int(bool(self.args.pow) or bool(self.args.pow_g5k))
+        except Exception as e:
+            self.logger.error(f"Failed to load power metrics: {e}")
+            success = False
 
-    def load_call_metrics(self) -> None:
+        return success
+
+    def load_call_metrics(self) -> bool:
         """
         Load perf callstack traces
+
+        Returns:
+            bool: True if loading was successful, False otherwise
         """
+        status = True
         if self.args.call or self.args.inline_call or self.args.inline_call_cmd:
-            with open(f"{self.traces_repo}/mono_to_real_file.txt", "r") as file:
-                self.call_monotonic_to_real = float(file.readline())
-            call_raw = PerfCallRawData(logger=self.logger,
-                                       filename=f"{self.traces_repo}/call_report.txt")
-            samples, self.call_recorded_cmds = call_raw.cmds_list()
+            try:
+                mono_file = f"{self.traces_repo}/mono_to_real_file.txt"
+                call_report_file = f"{self.traces_repo}/call_report.txt"
+                if not os.path.isfile(mono_file):
+                    self.logger.error(f"Monotonic to real file not found: {mono_file}")
+                    status = False
+                    return status
+                if not os.path.isfile(call_report_file):
+                    self.logger.error(f"Call report file not found: {call_report_file}")
+                    status = False
+                    return status
 
-            if self.args.call_cmd:
-                self.call_chosen_cmd = self.args.call_cmd
-            else:
-                self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
+                with open(mono_file, "r") as file:
+                    line = file.readline()
+                    if not line:
+                        self.logger.error(f"Monotonic to real file is empty: {mono_file}")
+                        status = False
+                        return status
+                    try:
+                        self.call_monotonic_to_real = float(line)
+                    except ValueError:
+                        self.logger.error(f"Invalid float in monotonic to real file: {mono_file}")
+                        status = False
+                        return status
 
-            self.call_traces = PerfCallData(logger=self.logger,
-                                            cmd=self.call_chosen_cmd,
-                                            samples=samples,
-                                            m2r=self.call_monotonic_to_real,
-                                            traces_repo=self.traces_repo)
-            if self.args.call_depth:
-                self.call_depths = [depth for depth in range(self.args.call_depth)]
-            elif self.args.call_depths:
-                self.call_depths = [int(depth) for depth in self.args.call_depths.split(",")]
-            self.n_subplots += self.args.call * (2 if len(self.call_depths) > 2 else 1)
+                call_raw = PerfCallRawData(logger=self.logger,
+                                           filename=call_report_file)
+                samples, self.call_recorded_cmds = call_raw.cmds_list()
+                if not samples or not self.call_recorded_cmds:
+                    self.logger.error("No samples or commands found in call report.")
+                    status = False
+                    return status
 
-            self.inline_calls_prof = self.get_inline_calls_prof(samples)
+                if self.args.call_cmd:
+                    self.call_chosen_cmd = self.args.call_cmd
+                    if self.call_chosen_cmd not in self.call_recorded_cmds:
+                        self.logger.error(f"Chosen command '{self.call_chosen_cmd}' not found in recorded commands.")
+                        status = False
+                        return status
+                else:
+                    self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
+
+                self.call_traces = PerfCallData(logger=self.logger,
+                                                cmd=self.call_chosen_cmd,
+                                                samples=samples,
+                                                m2r=self.call_monotonic_to_real,
+                                                traces_repo=self.traces_repo)
+                if self.args.call_depth:
+                    self.call_depths = [depth for depth in range(self.args.call_depth)]
+                elif self.args.call_depths:
+                    try:
+                        self.call_depths = [int(depth) for depth in self.args.call_depths.split(",")]
+                    except Exception as e:
+                        self.logger.error(f"Invalid call_depths argument: {e}")
+                        status = False
+                        return status
+                self.n_subplots += self.args.call * (2 if len(self.call_depths) > 2 else 1)
+
+                self.inline_calls_prof = self.get_inline_calls_prof(samples)
+            except Exception as e:
+                self.logger.error(f"Call metrics loading failed: {e}")
+                status = False
+        return status
+
 
     def get_inline_calls_prof(self, samples: list) -> dict:
         """
@@ -310,7 +387,7 @@ class BenchmonVisualizer:
         annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
 
         # CPU plot
-        if self.args.cpu:
+        if self.args.cpu and self.system_metrics_loaded:
             self.logger.debug("Plotting  cpu")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
@@ -319,7 +396,7 @@ class BenchmonVisualizer:
                 plot_ical_stages(self.ical_stages)
 
         # Full individual core plot
-        if bool(self.args.cpu_cores_full):
+        if bool(self.args.cpu_cores_full) and self.system_metrics_loaded:
             for core_number in self.args.cpu_cores_full.split(","):
                 self.logger.debug(f"Plotting  full cpu core {core_number}")
                 ax = plt.subplot(self.n_subplots, 1, sbp)
@@ -330,7 +407,7 @@ class BenchmonVisualizer:
                 plot_ical_stages(self.ical_stages)
 
         # CPU per core plot
-        if self.args.cpu_all:
+        if self.args.cpu_all and self.system_metrics_loaded:
             self.logger.debug("Plotting  cpu per core")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
@@ -341,7 +418,7 @@ class BenchmonVisualizer:
                 plot_ical_stages(self.ical_stages)
 
         # CPU cores frequency plot
-        if self.args.cpu_freq:
+        if self.args.cpu_freq and self.system_metrics_loaded:
             self.logger.debug("Plotting  cpu cores frequency")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
@@ -352,7 +429,7 @@ class BenchmonVisualizer:
                 plot_ical_stages(self.ical_stages, ymax=freqmax)
 
         # Memory/swap plot
-        if self.args.mem:
+        if self.args.mem and self.system_metrics_loaded:
             self.logger.debug("Plotting  memory/swap")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
@@ -361,7 +438,7 @@ class BenchmonVisualizer:
                 plot_ical_stages(self.ical_stages, ymax=memmax)
 
         # Network plot
-        if self.args.net or self.args.net_all or self.args.net_data:
+        if self.system_metrics_loaded and self.args.net or self.args.net_all or self.args.net_data:
             self.logger.debug("Plotting  network")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
@@ -374,7 +451,7 @@ class BenchmonVisualizer:
                 plot_ical_stages(self.ical_stages, ymax=netmax)
 
         # Infiniband plot
-        if self.args.ib:
+        if self.args.ib and self.system_metrics_loaded:
             self.logger.debug("Plotting  infiniband")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
@@ -383,7 +460,7 @@ class BenchmonVisualizer:
                 plot_ical_stages(self.ical_stages, ymax=ibmax)
 
         # Disk plot
-        if self.args.disk:
+        if self.args.disk and self.system_metrics_loaded:
             self.logger.debug("Plotting  disk")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
@@ -396,7 +473,7 @@ class BenchmonVisualizer:
                 plot_ical_stages(self.ical_stages, ymax=diskmax)
 
         # (perf+g5k) Power plot
-        if self.args.pow or self.args.pow_g5k:
+        if self.power_metrics_loaded and self.args.pow or self.args.pow_g5k:
             self.logger.debug("Plotting perf power")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
@@ -417,7 +494,7 @@ class BenchmonVisualizer:
             plt.grid()
 
         # (perf) Calltrace plot
-        if self.args.call:
+        if self.call_metrics_loaded and self.args.call:
             self.logger.debug("Plotting perf call graph")
             plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=ax)
             self.call_traces.plot(self.call_depths,

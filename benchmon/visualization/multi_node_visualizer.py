@@ -122,13 +122,20 @@ class BenchmonMNSyncVisualizer:
         ts_sync = []
         cpu_sync = []
         for data in nodes_data:
+            if not data.system_metrics.cpu_profile_valid:
+                self.logger.warning(f"CPU profile data not available  on {data.hostname}, will not be plotted.")
+                continue
             ts = data.system_metrics.cpu_stamps
             spaces = ["user", "nice", "system", "iowait", "irq", "softirq", "steal", "guest", "guestnice"]
-            cpu = sum([data.system_metrics.cpu_prof["cpu"][space] for space in spaces])
+            cpu = sum([data.system_metrics.cpu_prof[np.iinfo(np.uint32).max][space] for space in spaces])
             plt.plot(ts, cpu, label=data.hostname)
 
             ts_sync += [ts]
             cpu_sync += [cpu]
+
+        if len(ts_sync) == 0:
+            self.logger.warning("No CPU profile data available, no plot will be produced.")
+            return
 
         self.sync_metrics(ts_list=ts_sync, dev_list=cpu_sync, opt="avg", label="average", color="k")
 
@@ -147,12 +154,20 @@ class BenchmonMNSyncVisualizer:
         ts_sync = []
         cpufreq_sync = []
         for data in nodes_data:
+            if not data.system_metrics.cpufreq_profile_valid:
+                self.logger.warning(f"CPU frequency profile data not available on {data.hostname}, will not be"
+                                    + " plotted.")
+                continue
             ts = data.system_metrics.cpufreq_stamps
             cpufreq = data.system_metrics.cpufreq_vals["mean"]
             plt.plot(ts, cpufreq, label=data.hostname)
 
             ts_sync += [ts]
             cpufreq_sync += [cpufreq]
+
+        if len(ts_sync) == 0:
+            self.logger.warning("No CPU frequency profile data available, no plot will be produced.")
+            return
 
         self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
         self.set_frame(label="Mean CPU frequency (GHz)")
@@ -169,6 +184,9 @@ class BenchmonMNSyncVisualizer:
         ts_sync = []
         mem_sync = []
         for data in nodes_data:
+            if not data.system_metrics.mem_profile_valid:
+                self.logger.warning(f"Memory profile data not available on {data.hostname}, will not be plotted.")
+                continue
             memunit = 1024**2
             ts = data.system_metrics.mem_stamps
             mem = (data.system_metrics.mem_prof["MemTotal"] - data.system_metrics.mem_prof["MemFree"]) / memunit
@@ -179,6 +197,11 @@ class BenchmonMNSyncVisualizer:
 
             ts_sync += [ts]
             mem_sync += [mem]
+
+        if len(ts_sync) == 0:
+            self.logger.warning("No memory profile data available, no plot will be produced.")
+            return
+
         plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
         self.sync_metrics(ts_list=ts_sync, dev_list=mem_sync, label="sum", color="k", ls="-.")
 
@@ -201,6 +224,9 @@ class BenchmonMNSyncVisualizer:
         net_rx_sync = []
         rx_data = 0
         for data in nodes_data:
+            if not data.system_metrics.net_profile_valid:
+                self.logger.warning(f"Network profile data not available on {data.hostname}, will not be plotted.")
+                continue
             ts = data.system_metrics.net_stamps
             net_rx = data.system_metrics.net_rx_total
             plt.plot(ts, net_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.net_rx_data)} MB)")
@@ -208,6 +234,10 @@ class BenchmonMNSyncVisualizer:
             ts_sync += [ts]
             net_rx_sync += [net_rx]
             rx_data += data.system_metrics.net_rx_data
+
+        if len(ts_sync) == 0:
+            self.logger.warning("No network frequency profile data available, no plot will be produced.")
+            return
 
         self.sync_metrics(ts_list=ts_sync,
                           dev_list=net_rx_sync,
@@ -248,6 +278,9 @@ class BenchmonMNSyncVisualizer:
         rd_sync = []
         rd_data = 0
         for data in nodes_data:
+            if not data.system_metrics.disk_profile_valid:
+                self.logger.warning(f"Disk read profile data not available on {data.hostname}, will not be plotted.")
+                continue
             ts = data.system_metrics.disk_stamps
             disk_rd = data.system_metrics.disk_rd_total
             plt.plot(ts, disk_rd, marker="v", label=f"rd:{data.hostname} ({int(data.system_metrics.disk_rd_data)} MB)")
@@ -257,10 +290,17 @@ class BenchmonMNSyncVisualizer:
             rd_data += data.system_metrics.disk_rd_data
         self.sync_metrics(ts_list=ts_sync, dev_list=rd_sync, label=f"rd:sum ({int(rd_data)} MB)", marker="v", ls="--")
 
+        if len(ts_sync) == 0:
+            self.logger.warning("No disk read profile data available, no plot will be produced.")
+            return
+
         ts_sync = []
         wr_sync = []
         wr_data = 0
         for data in nodes_data:
+            if not data.system_metrics.disk_profile_valid:
+                self.logger.warning(f"Disk write profile data not available on {data.hostname}, will not be plotted.")
+                continue
             ts = data.system_metrics.disk_stamps
             disk_wr = data.system_metrics.disk_wr_total
             plt.plot(ts, disk_wr, marker="^", label=f"wr:{data.hostname} ({int(data.system_metrics.disk_wr_data)} MB)")
@@ -268,6 +308,10 @@ class BenchmonMNSyncVisualizer:
             ts_sync += [ts]
             wr_sync += [disk_wr]
             wr_data += data.system_metrics.disk_wr_data
+
+        if len(ts_sync) == 0:
+            self.logger.warning("No disk write profile data available, no plot will be produced.")
+            return
 
         self.sync_metrics(ts_list=ts_sync,
                           dev_list=wr_sync,
@@ -290,6 +334,10 @@ class BenchmonMNSyncVisualizer:
         ib_rx_sync = []
         rx_data = 0
         for data in nodes_data:
+            if not data.system_metrics.ib_profile_valid:
+                self.logger.warning(f"Infiniband read profile data not available on {data.hostname}, will not be "
+                                    + "plotted.")
+                continue
             ts = data.system_metrics.ib_stamps
             ib_rx = data.system_metrics.ib_rx_total
             plt.plot(ts, ib_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.ib_rx_data)} MB)")
@@ -305,10 +353,18 @@ class BenchmonMNSyncVisualizer:
                           ls="--",
                           with_yrange=True)
 
+        if len(ts_sync) == 0:
+            self.logger.warning("No Infiniband write profile data available, no plot will be produced.")
+            return
+
         ts_sync = []
         ib_tx_sync = []
         tx_data = 0
         for data in nodes_data:
+            if not data.system_metrics.ib_profile_valid:
+                self.logger.warning(f"Infiniband write profile data not available on {data.hostname}, will not be "
+                                    + "plotted.")
+                continue
             ts = data.system_metrics.ib_stamps
             ib_tx = data.system_metrics.ib_tx_total
             plt.plot(ts, ib_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.ib_tx_data)} MB)")
@@ -316,6 +372,10 @@ class BenchmonMNSyncVisualizer:
             ts_sync += [ts]
             ib_tx_sync += [ib_tx]
             tx_data += data.system_metrics.ib_tx_data
+
+        if len(ts_sync) == 0:
+            self.logger.warning("No Infiniband read profile data available, no plot will be produced.")
+            return
 
         self.sync_metrics(ts_list=ts_sync,
                           dev_list=ib_tx_sync,

@@ -60,7 +60,7 @@ class generic_sample:
             Dict[str, Type]: The deserialized object as a dictionary.
         """
         if len(data) != self.pack_size:
-            raise ValueError("Data length does not match field definitions.")
+            raise ValueError(f"Data length does not match field definitions: {len(data)} / {self.pack_size}")
         unpacked = struct.unpack(self.format_string_static, data)
         return {
             field_name: value.decode('utf-8').replace('\x00', "") if field_type == str else value

@@ -135,9 +135,9 @@ void read_disk_sample(const std::unordered_map<std::string, size_t> &name_to_ind
         io::write_binary(file, flush_requests);
         io::write_binary(file, time_flush);
 
-        spdlog::debug("disk monitoring sample: {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, "
+        spdlog::debug("disk monitoring sample: {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, "
                       "{}, {}, {}, {}",
-                      timestamp, major, minor, static_cast<uint32_t>(device.size()), device, rd_completed, rd_merged,
+                      timestamp, major, minor, device, rd_completed, rd_merged,
                       sectors_read, time_read, wr_completed, wr_merged, sectors_written, time_write, io_in_progress,
                       time_io, time_weighted_io, disc_completed, disc_merged, sectors_discarded, time_discard,
                       flush_requests, time_flush);

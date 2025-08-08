@@ -66,7 +66,7 @@ class SystemData:
             self.cpus = []
             self.cpu_prof = {}
             self.cpu_stamps = np.array([])
-            self.get_cpu_profile(bin_cpu_report=bin_cpu_report)
+            self.cpu_profile_valid = self.get_cpu_profile(bin_cpu_report=bin_cpu_report)
 
         if bin_cpufreq_report:
             self.ncpu_freq = 0
@@ -75,12 +75,12 @@ class SystemData:
             self.cpufreq_stamps = np.array([])
             self.cpufreq_min = None
             self.cpufreq_max = None
-            self.get_cpufreq_prof(bin_cpufreq_report=bin_cpufreq_report)
+            self.cpufreq_profile_valid = self.get_cpufreq_prof(bin_cpufreq_report=bin_cpufreq_report)
 
         if bin_mem_report:
             self.mem_prof = {}
             self.mem_stamps = np.array([])
-            self.get_mem_profile(bin_mem_report=bin_mem_report)
+            self.mem_profile_valid = self.get_mem_profile(bin_mem_report=bin_mem_report)
 
         if bin_net_report:
             self.net_prof = {}
@@ -92,7 +92,7 @@ class SystemData:
             self.net_tx_total = np.array([])
             self.net_rx_data = 0
             self.net_tx_data = 0
-            self.get_net_prof(bin_net_report=bin_net_report)
+            self.net_profile_valid = self.get_net_prof(bin_net_report=bin_net_report)
 
         if bin_disk_report:
             self.disk_prof = {}
@@ -105,7 +105,7 @@ class SystemData:
             self.disk_wr_total = np.array([])
             self.disk_rd_data = 0
             self.disk_wr_data = 0
-            self.get_disk_prof(bin_disk_report=bin_disk_report)
+            self.disk_profile_valid = self.get_disk_prof(bin_disk_report=bin_disk_report)
 
         if csv_ib_report:
             self.ib_prof = {}
@@ -117,7 +117,7 @@ class SystemData:
             self.ib_tx_total = np.array([])
             self.ib_rx_data = 0
             self.ib_tx_data = 0
-            self.get_ib_prof(csv_ib_report=csv_ib_report)
+            self.ib_profile_valid = self.get_ib_prof(csv_ib_report=csv_ib_report)
 
         self.xticks = None
         self.xlim = None
@@ -167,82 +167,99 @@ class SystemData:
 
         return cpu_ts_raw, timestamps_raw
 
-    def get_cpu_profile(self, bin_cpu_report=str) -> int:
+    def get_cpu_profile(self, bin_cpu_report=str) -> bool:
         """
         Get cpu profile
         """
         cpu_pkl = f"{self.traces_repo}/pkl_dir/cpu_prof.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/cpu_stamps.pkl"
 
-        if os.access(cpu_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
-            self.logger.debug("Load CPU profile..."); t0 = time.time()  # noqa: E702
+        try:
+            if os.access(cpu_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+                self.logger.debug("Load CPU profile..."); t0 = time.time()  # noqa: E702
 
-            with open(cpu_pkl, "rb") as _pf:
-                self.cpu_prof = pickle.load(_pf)
-            with open(ts_pkl, "rb") as _pf:
-                self.cpu_stamps = pickle.load(_pf)
-            self.ncpu = len(self.cpu_prof) - 1
+                with open(cpu_pkl, "rb") as _pf:
+                    self.cpu_prof = pickle.load(_pf)
+                with open(ts_pkl, "rb") as _pf:
+                    self.cpu_stamps = pickle.load(_pf)
+                self.ncpu = len(self.cpu_prof) - 1
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                return True
 
-        else:
+            else:
+                max_int = np.iinfo(np.uint32).max
+                self.logger.debug("Read CPU report..."); t0 = time.time()  # noqa: E702
+                cpu_ts_raw, timestamps_raw = self.read_cpu_bin_report(bin_cpu_report=bin_cpu_report)
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-            max_int = np.iinfo(np.uint32).max
-            self.logger.debug("Read CPU report..."); t0 = time.time()  # noqa: E702
-            cpu_ts_raw, timestamps_raw = self.read_cpu_bin_report(bin_cpu_report=bin_cpu_report)
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                if not cpu_ts_raw or not timestamps_raw:
+                    self.logger.error("Failed to read CPU binary report or got empty data.")
+                    return False
 
-            self.logger.debug("Create CPU profile..."); t0 = time.time()  # noqa: E702
-            nstamps = len(timestamps_raw) - 1
+                self.logger.debug("Create CPU profile..."); t0 = time.time()  # noqa: E702
+                nstamps = len(timestamps_raw) - 1
 
-            t0i = time.time()
-            timestamps = np.zeros(nstamps)
-            for stamp in range(nstamps):
-                timestamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
-            self.logger.debug(f"\t ts = {round(time.time() - t0i, 3)} s")
+                if nstamps <= 0:
+                    self.logger.error("Not enough CPU timestamp data to create profile.")
+                    return False
 
-            t0i = time.time()
-            cpu_ts = {}
-            for key in cpu_ts_raw.keys():
-                cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw[max_int].keys()}
-            self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
-
-            t0i = time.time()
-            for stamp in range(nstamps):
-                for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw[max_int].keys()):
-                    cpu_ts[key][metric_key][stamp] = (
-                        cpu_ts_raw[key][metric_key][stamp + 1] - cpu_ts_raw[key][metric_key][stamp]
-                    )
-            self.logger.debug(f"\t compute spaces = {round(time.time() - t0i, 3)} s")
-
-            t0i = time.time()
-            for key in cpu_ts.keys():
+                t0i = time.time()
+                timestamps = np.zeros(nstamps)
                 for stamp in range(nstamps):
-                    cpu_total = 0
-                    for metric_key in cpu_ts[max_int].keys():
-                        if metric_key != "timestamp":
-                            cpu_total += cpu_ts[key][metric_key][stamp]
+                    timestamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
+                self.logger.debug(f"\t ts = {round(time.time() - t0i, 3)} s")
 
-                    for metric_key in cpu_ts[max_int].keys():
-                        if metric_key != "timestamp":
-                            cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
-            self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
+                t0i = time.time()
+                cpu_ts = {}
+                for key in cpu_ts_raw.keys():
+                    cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw[max_int].keys()}
+                self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
 
-            self.cpu_prof = cpu_ts
-            self.cpu_stamps = timestamps
+                t0i = time.time()
+                for stamp in range(nstamps):
+                    for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw[max_int].keys()):
+                        cpu_ts[key][metric_key][stamp] = (
+                            cpu_ts_raw[key][metric_key][stamp + 1] - cpu_ts_raw[key][metric_key][stamp]
+                        )
+                self.logger.debug(f"\t compute spaces = {round(time.time() - t0i, 3)} s")
 
-            t0i = time.time()
-            with open(cpu_pkl, "wb") as _pf:
-                pickle.dump(self.cpu_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.cpu_stamps, _pf)
-            self.logger.debug(f"\t save profile = {round(time.time() - t0i, 3)} s")
+                t0i = time.time()
+                for key in cpu_ts.keys():
+                    for stamp in range(nstamps):
+                        cpu_total = 0
+                        for metric_key in cpu_ts[max_int].keys():
+                            if metric_key != "timestamp":
+                                cpu_total += cpu_ts[key][metric_key][stamp]
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                        if cpu_total == 0:
+                            self.logger.error(f"CPU total is zero at stamp {stamp} for key {key}.")
+                            False
 
-        return 0
+                        for metric_key in cpu_ts[max_int].keys():
+                            if metric_key != "timestamp":
+                                cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
+                self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
 
-    def plot_cpu(self, number="", annotate_with_cmds=None) -> int:
+                self.cpu_prof = cpu_ts
+                self.cpu_stamps = timestamps
+
+                t0i = time.time()
+                with open(cpu_pkl, "wb") as _pf:
+                    pickle.dump(self.cpu_prof, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.cpu_stamps, _pf)
+                self.logger.debug(f"\t save profile = {round(time.time() - t0i, 3)} s")
+
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+        except Exception as e:
+            self.logger.error(f"Exception in get_cpu_profile: {e}")
+            return False
+
+        return True
+
+    def plot_cpu(self, number="", annotate_with_cmds=None) -> bool:
         """
         Plot average cpu usage
         """
@@ -250,9 +267,9 @@ class SystemData:
         alpha = 0.8
         prefix = f"{number}: " if number else ""
 
-        if core not in self.cpu_prof.keys():
-            self.logger.warning(f"core {core} not found in cpu monitoring results")
-            return
+        if not self.cpu_profile_valid:
+            self.logger.warning("CPU profile data not available, will not be plotted.")
+            return False
 
         cpu_usr = self.cpu_prof[core]["user"] + self.cpu_prof[core]["nice"]
         cpu_sys = self.cpu_prof[core]["system"] + self.cpu_prof[core]["irq"] + self.cpu_prof[core]["softirq"]
@@ -291,12 +308,16 @@ class SystemData:
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
 
-        return 0
+        return True
 
-    def plot_cpu_per_core(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> int:
+    def plot_cpu_per_core(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> bool:
         """
         Plot cpu per core
         """
+        if not self.cpu_profile_valid:
+            self.logger.warning("CPU profile data not available, will not be plotted.")
+            return False
+
         cores = [core for core in range(self.ncpu)]
         if len(cores_in) > 0:
             cores = [int(core) for core in cores_in.split(",")]
@@ -345,55 +366,97 @@ class SystemData:
 
         return samples_list
 
-    def get_mem_profile(self, bin_mem_report: str) -> int:
+    def get_mem_profile(self, bin_mem_report: str) -> bool:
         """
         Get memory profile
         """
         mem_pkl = f"{self.traces_repo}/pkl_dir/mem_prof.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/mem_stamps.pkl"
 
-        if os.access(mem_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
-            self.logger.debug("Load Memory profile..."); t0 = time.time()  # noqa: E702
+        try:
+            if os.access(mem_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+                self.logger.debug("Load Memory profile..."); t0 = time.time()  # noqa: E702
+                try:
+                    with open(mem_pkl, "rb") as _pf:
+                        self.mem_prof = pickle.load(_pf)
+                    with open(ts_pkl, "rb") as _pf:
+                        self.mem_stamps = pickle.load(_pf)
+                except Exception as e:
+                    self.logger.error(f"Failed to load memory pickle files: {e}")
+                    return False
 
-            with open(mem_pkl, "rb") as _pf:
-                self.mem_prof = pickle.load(_pf)
-            with open(ts_pkl, "rb") as _pf:
-                self.mem_stamps = pickle.load(_pf)
+                if not self.mem_prof or not self.mem_stamps:
+                    self.logger.error("Loaded memory data is empty or invalid.")
+                    return False
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        else:
+            else:
+                ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"  # noqa: F841, E501, N806, B950
 
-            ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"  # noqa: F841, E501, N806, B950
+                self.logger.debug("Read Memory report..."); t0 = time.time()  # noqa: E702
+                try:
+                    samples_list = self.read_mem_bin_report(bin_mem_report=bin_mem_report)
+                except Exception as e:
+                    self.logger.error(f"Failed to read memory binary report: {e}")
+                    return False
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-            self.logger.debug("Read Memory report..."); t0 = time.time()  # noqa: E702
-            samples_list = self.read_mem_bin_report(bin_mem_report=bin_mem_report)
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                if not samples_list or len(samples_list) == 0:
+                    self.logger.error("Memory binary report is empty or unreadable.")
+                    return False
 
-            self.logger.debug("Create Memory profile..."); t0 = time.time()  # noqa: E702
+                self.logger.debug("Create Memory profile..."); t0 = time.time()  # noqa: E702
 
-            hf = system_binary_reader.hf_mem_sample()
-            memory_dict_ = {key: [] for key, _, enabled in hf.field_definitions if enabled}
-            for data in samples_list:
-                for key in memory_dict_:
-                    memory_dict_[key].append(data[key])
+                try:
+                    hf = system_binary_reader.hf_mem_sample()
+                    memory_dict_ = {key: [] for key, _, enabled in hf.field_definitions if enabled}
+                    for data in samples_list:
+                        for key in memory_dict_:
+                            if key in data:
+                                memory_dict_[key].append(data[key])
+                            else:
+                                self.logger.warning(f"Key '{key}' missing in memory sample, appending 0.")
+                                memory_dict_[key].append(0)
+                    if "timestamp" not in memory_dict_ or len(memory_dict_["timestamp"]) == 0:
+                        self.logger.error("No timestamp data found in memory report.")
+                        return False
+                except Exception as e:
+                    self.logger.error(f"Failed to process memory samples: {e}")
+                    return False
 
-            self.mem_prof = {key: np.array(values, dtype=np.float64) for key, values in memory_dict_.items()}
-            self.mem_stamps = [np.float64(timestamp) / 1e9 for timestamp in memory_dict_["timestamp"]]
+                try:
+                    self.mem_prof = {key: np.array(values, dtype=np.float64) for key, values in memory_dict_.items()}
+                    self.mem_stamps = [np.float64(timestamp) / 1e9 for timestamp in memory_dict_["timestamp"]]
+                except Exception as e:
+                    self.logger.error(f"Failed to convert memory data to numpy arrays: {e}")
+                    return False
 
-            with open(mem_pkl, "wb") as _pf:
-                pickle.dump(self.mem_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.mem_stamps, _pf)
+                try:
+                    with open(mem_pkl, "wb") as _pf:
+                        pickle.dump(self.mem_prof, _pf)
+                    with open(ts_pkl, "wb") as _pf:
+                        pickle.dump(self.mem_stamps, _pf)
+                except Exception as e:
+                    self.logger.error(f"Failed to save memory profile pickle files: {e}")
+                    return False
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        return 0
+        except Exception as e:
+            self.logger.error(f"Exception in get_mem_profile: {e}")
+            return False
+
+        return True
 
     def plot_memory_usage(self, annotate_with_cmds=None) -> float:
         """
         Plot memory/swap usage
         """
+        if not self.mem_profile_valid:
+            self.logger.warning("Memory profile data not available, will not be plotted.")
+            return False
+
         alpha = 0.3
         memunit = 1024**2  # (GB)
 
@@ -433,7 +496,9 @@ class SystemData:
     def read_cpufreq_bin_report(self, bin_cpufreq_report: str):
         hf = system_binary_reader.hf_cpufreq_sample()
         samples_list = []
-        with open(bin_cpufreq_report, "rb") as file:
+        try:
+            print(bin_cpufreq_report)
+            file = open(bin_cpufreq_report, "rb")
             min_cpufreq = np.uint64(int.from_bytes(file.read(8), byteorder='little', signed=False))
             max_cpufreq = np.uint64(int.from_bytes(file.read(8), byteorder='little', signed=False))
             while data := file.read(hf.get_pack_size()):
@@ -441,10 +506,12 @@ class SystemData:
                     samples_list.append(hf.binary_to_dict(data))
                 except ValueError as err:
                     logger.error(err)
-
+        except FileNotFoundError:
+            self.logger.error("CPU frequency binary report not found.")
+            return 0, 0, samples_list
         return min_cpufreq, max_cpufreq, samples_list
 
-    def get_cpufreq_prof(self, bin_cpufreq_report: str):
+    def get_cpufreq_prof(self, bin_cpufreq_report: str) -> bool:
         """
         Read cpu frequency report
         Get profile
@@ -453,77 +520,126 @@ class SystemData:
         ts_pkl = f"{self.traces_repo}/pkl_dir/cpufreq_stamps.pkl"
         freqvals_pkl = f"{self.traces_repo}/pkl_dir/cpufreq_vals.pkl"
 
-        if os.access(cpufreq_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
-            self.logger.debug("Load CPU profile..."); t0 = time.time()  # noqa: E702
+        try:
+            if os.access(cpufreq_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK) and os.access(freqvals_pkl, os.R_OK):
+                self.logger.debug("Load CPU frequency profile..."); t0 = time.time()  # noqa: E702
 
-            with open(cpufreq_pkl, "rb") as _pf:
-                self.cpufreq_prof = pickle.load(_pf)
-            with open(ts_pkl, "rb") as _pf:
-                self.cpufreq_stamps = pickle.load(_pf)
-            with open(freqvals_pkl, "rb") as _pf:
-                self.cpufreq_vals = pickle.load(_pf)
+                try:
+                    with open(cpufreq_pkl, "rb") as _pf:
+                        self.cpufreq_prof = pickle.load(_pf)
+                    with open(ts_pkl, "rb") as _pf:
+                        self.cpufreq_stamps = pickle.load(_pf)
+                    with open(freqvals_pkl, "rb") as _pf:
+                        self.cpufreq_vals = pickle.load(_pf)
+                except Exception as e:
+                    self.logger.error(f"Failed to load cpufreq pickle files: {e}")
+                    return False
 
-            self.cpufreq_min = self.cpufreq_vals["min"]
-            self.cpufreq_max = self.cpufreq_vals["max"]
-            self.ncpu_freq = len(self.cpufreq_prof)
+                if not self.cpufreq_prof or not self.cpufreq_stamps or not self.cpufreq_vals:
+                    self.logger.error("Loaded cpufreq data is empty or invalid.")
+                    return False
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.cpufreq_min = self.cpufreq_vals.get("min", None)
+                self.cpufreq_max = self.cpufreq_vals.get("max", None)
+                self.ncpu_freq = len(self.cpufreq_prof)
 
-        else:
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                return True
 
-            self.logger.debug("Read CPUFreq report..."); t0 = time.time()  # noqa: E702
-            cpufreq_min, cpufreq_max, samples_list = self.read_cpufreq_bin_report(bin_cpufreq_report=bin_cpufreq_report)
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            else:
+                self.logger.debug("Read CPUFreq report..."); t0 = time.time()  # noqa: E702
+                cpufreq_min, cpufreq_max, samples_list = \
+                    self.read_cpufreq_bin_report(bin_cpufreq_report=bin_cpufreq_report)
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-            self.logger.debug("Create CPUFreq profile..."); t0 = time.time()  # noqa: E702
-            self.cpufreq_min = cpufreq_min or None
-            self.cpufreq_max = cpufreq_max or None
+                if not samples_list:
+                    self.logger.error("Unable to read CPUfreq report.")
+                    return False
 
-            self.ncpu_freq = 0
-            ts_0 = samples_list[0]["timestamp"]
-            ts = ts_0
-            line_idx = 0
-            while ts == ts_0:
-                line_idx += 1
-                ts = samples_list[line_idx]["timestamp"]
-                self.ncpu_freq += 1
+                self.logger.debug("Create CPUFreq profile..."); t0 = time.time()  # noqa: E702
+                self.cpufreq_min = cpufreq_min or None
+                self.cpufreq_max = cpufreq_max or None
 
-            cpufreq_ts = []
-            for cpu_nb in range(self.ncpu_freq):
-                cpufreq_ts.append([])
+                self.ncpu_freq = 0
+                try:
+                    ts_0 = samples_list[0]["timestamp"]
+                    ts = ts_0
+                    line_idx = 0
+                    while ts == ts_0:
+                        line_idx += 1
+                        ts = samples_list[line_idx]["timestamp"]
+                        self.ncpu_freq += 1
+                except Exception as e:
+                    self.logger.error(f"Error determining number of CPU frequencies: {e}")
+                    return False
 
-            # Read lines
-            for data in samples_list:
-                cpufreq_ts[data["cpu"]].append(data["frequency"])
+                if self.ncpu_freq == 0:
+                    self.logger.error("No CPU frequency data found.")
+                    return False
 
-            HZ_UNIT = 1e6  # noqa: N806
-            for cpu_nb in range(self.ncpu_freq):
-                cpufreq_ts[cpu_nb] = np.array(cpufreq_ts[cpu_nb]) / HZ_UNIT
+                cpufreq_ts = []
+                for cpu_nb in range(self.ncpu_freq):
+                    cpufreq_ts.append([])
 
-            self.cpufreq_prof = cpufreq_ts
-            self.cpufreq_stamps = [float(data["timestamp"] / 1e9) for data in samples_list[0::self.ncpu_freq]]
+                # Read lines
+                try:
+                    for data in samples_list:
+                        cpufreq_ts[data["cpu"]].append(data["frequency"])
+                except Exception as e:
+                    self.logger.error(f"Error processing CPU frequency samples: {e}")
+                    return False
 
-            self.cpufreq_vals["mean"] = np.zeros_like(self.cpufreq_stamps)
-            for cpu in range(self.ncpu_freq):
-                self.cpufreq_vals["mean"] += self.cpufreq_prof[cpu] / self.ncpu_freq
-            self.cpufreq_vals["min"] = self.cpufreq_min
-            self.cpufreq_vals["max"] = self.cpufreq_max
+                HZ_UNIT = 1e6  # noqa: N806
+                try:
+                    for cpu_nb in range(self.ncpu_freq):
+                        cpufreq_ts[cpu_nb] = np.array(cpufreq_ts[cpu_nb]) / HZ_UNIT
+                except Exception as e:
+                    self.logger.error(f"Error converting CPU frequency units: {e}")
+                    return False
 
-            with open(cpufreq_pkl, "wb") as _pf:
-                pickle.dump(self.cpufreq_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.cpufreq_stamps, _pf)
-            with open(freqvals_pkl, "wb") as _pf:
-                pickle.dump(self.cpufreq_vals, _pf)
+                self.cpufreq_prof = cpufreq_ts
+                try:
+                    self.cpufreq_stamps = [float(data["timestamp"] / 1e9) for data in samples_list[0::self.ncpu_freq]]
+                except Exception as e:
+                    self.logger.error(f"Error extracting CPU frequency timestamps: {e}")
+                    return False
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                try:
+                    self.cpufreq_vals["mean"] = np.zeros_like(self.cpufreq_stamps)
+                    for cpu in range(self.ncpu_freq):
+                        self.cpufreq_vals["mean"] += self.cpufreq_prof[cpu] / self.ncpu_freq
+                    self.cpufreq_vals["min"] = self.cpufreq_min
+                    self.cpufreq_vals["max"] = self.cpufreq_max
+                except Exception as e:
+                    self.logger.error(f"Error calculating CPU frequency mean/min/max: {e}")
+                    return False
 
-        return 0
+                try:
+                    with open(cpufreq_pkl, "wb") as _pf:
+                        pickle.dump(self.cpufreq_prof, _pf)
+                    with open(ts_pkl, "wb") as _pf:
+                        pickle.dump(self.cpufreq_stamps, _pf)
+                    with open(freqvals_pkl, "wb") as _pf:
+                        pickle.dump(self.cpufreq_vals, _pf)
+                except Exception as e:
+                    self.logger.error(f"Error saving CPU frequency profiles: {e}")
+                    return False
+
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                return True
+
+        except Exception as e:
+            self.logger.error(f"Exception in get_cpufreq_prof: {e}")
+            return False
 
     def plot_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> float:
         """
         Plot cpu frequency per core
         """
+        if not self.cpufreq_profile_valid:
+            self.logger.warning("CPU frequency profile data not available, will not be plotted.")
+            return False
+
         HZ_UNIT = 1e6  # noqa: N806
 
         cores = [core for core in range(self.ncpu_freq)]
@@ -538,6 +654,10 @@ class SystemData:
 
         for idx, core in enumerate(cores):
             plt.plot(self.cpufreq_stamps, self.cpufreq_prof[core], color=cm[idx], label=f"core-{core}")
+
+        if not self.cpufreq_vals:
+            self.logger.error("No CPU frequency data found.")
+            return
 
         plt.plot(self.cpufreq_stamps, self.cpufreq_vals["mean"], "k.-", label="mean")
 
@@ -592,7 +712,7 @@ class SystemData:
         timestamps_raw = [float(item["timestamp"]) / 1e9 for item in samples_list[::nnet_interf]]
         return net_ts_raw, timestamps_raw
 
-    def get_net_prof(self, bin_net_report: str):
+    def get_net_prof(self, bin_net_report: str) -> bool:
         """
         Get network profile
         """
@@ -600,54 +720,62 @@ class SystemData:
         dat_pkl = f"{self.traces_repo}/pkl_dir/net_data.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/net_stamps.pkl"
 
-        if os.access(net_pkl, os.R_OK) and os.access(dat_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
-            self.logger.debug("Load Network profile..."); t0 = time.time()  # noqa: E702
+        try:
+            if os.access(net_pkl, os.R_OK) and os.access(dat_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+                self.logger.debug("Load Network profile..."); t0 = time.time()  # noqa: E702
 
-            with open(net_pkl, "rb") as _pf:
-                self.net_prof = pickle.load(_pf)
-            with open(dat_pkl, "rb") as _pf:
-                self.net_data = pickle.load(_pf)
-            with open(ts_pkl, "rb") as _pf:
-                self.net_stamps = pickle.load(_pf)
-            self.net_interfs = list(self.net_prof.keys())
+                with open(net_pkl, "rb") as _pf:
+                    self.net_prof = pickle.load(_pf)
+                with open(dat_pkl, "rb") as _pf:
+                    self.net_data = pickle.load(_pf)
+                with open(ts_pkl, "rb") as _pf:
+                    self.net_stamps = pickle.load(_pf)
+                self.net_interfs = list(self.net_prof.keys())
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        else:
+            else:
+                self.logger.debug("Read Network report..."); t0 = time.time()  # noqa: E702
+                net_ts_raw, timestamps_raw = self.read_net_bin_report(bin_net_report=bin_net_report)
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-            self.logger.debug("Read Network report..."); t0 = time.time()  # noqa: E702
-            net_ts_raw, timestamps_raw = self.read_net_bin_report(bin_net_report=bin_net_report)
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug("Create Network profile..."); t0 = time.time()  # noqa: E702
 
-            self.logger.debug("Create Network profile..."); t0 = time.time()  # noqa: E702
+                nstamps = len(timestamps_raw) - 1
+                self.net_stamps = np.zeros(nstamps)
+                for stamp in range(nstamps):
+                    self.net_stamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
 
-            nstamps = len(timestamps_raw) - 1
-            self.net_stamps = np.zeros(nstamps)
-            for stamp in range(nstamps):
-                self.net_stamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
+                # Init network profile
+                for interf in self.net_interfs:
+                    self.net_prof[interf] = {key: np.zeros(nstamps) for key in self.net_metric_keys}
+                    self.net_data[interf] = {key: 0 for key in self.net_metric_keys}  # noqa: C420
 
-            # Init network profile
-            for interf in self.net_interfs:
-                self.net_prof[interf] = {key: np.zeros(nstamps) for key in self.net_metric_keys}
-                self.net_data[interf] = {key: 0 for key in self.net_metric_keys}  # noqa: C420
+                # Fill in
+                for key in net_ts_raw:
+                    for metric_key in self.net_metric_keys:
+                        self.net_data[key][metric_key] = (
+                            net_ts_raw[key][metric_key][-1]
+                            - net_ts_raw[key][metric_key][0]
+                        )
+                        for stamp in range(nstamps):
+                            self.net_prof[key][metric_key][stamp] = (
+                                net_ts_raw[key][metric_key][stamp + 1] - net_ts_raw[key][metric_key][stamp]
+                            ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
 
-            # Fill in
-            for key in net_ts_raw:
-                for metric_key in self.net_metric_keys:
-                    self.net_data[key][metric_key] = net_ts_raw[key][metric_key][-1] - net_ts_raw[key][metric_key][0]
-                    for stamp in range(nstamps):
-                        self.net_prof[key][metric_key][stamp] = (
-                            net_ts_raw[key][metric_key][stamp + 1] - net_ts_raw[key][metric_key][stamp]
-                        ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+                with open(net_pkl, "wb") as _pf:
+                    pickle.dump(self.net_prof, _pf)
+                with open(dat_pkl, "wb") as _pf:
+                    pickle.dump(self.net_data, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.net_stamps, _pf)
 
-            with open(net_pkl, "wb") as _pf:
-                pickle.dump(self.net_prof, _pf)
-            with open(dat_pkl, "wb") as _pf:
-                pickle.dump(self.net_data, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.net_stamps, _pf)
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        except Exception as e:
+            self.logger.error(f"Exception in get_net_prof: {e}")
+            return False
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        return True
 
     def plot_network(self,
                      all_interfaces=False,
@@ -659,6 +787,10 @@ class SystemData:
         """
         Plot network activity
         """
+        if not self.net_profile_valid:
+            self.logger.warning("Network profile data not available, will not be plotted.")
+            return False
+
         BYTES_UNIT = 1024**2  # noqa: N806  (MB)
         _alpha = 0.5
         _mrksz = 3.5
@@ -750,6 +882,7 @@ class SystemData:
         with open(bin_disk_report, "rb") as file:
             n_sector_sizes = np.frombuffer(file.read(4), dtype=np.uint32)[0]
             sector_sizes = {}
+            print(n_sector_sizes)
 
             for i in range(n_sector_sizes):
                 name_size = np.frombuffer(file.read(4), dtype=np.uint32)[0]
@@ -757,6 +890,7 @@ class SystemData:
                 device_names[i] = name
                 blocksize = np.frombuffer(file.read(4), dtype=np.uint32)[0]
                 sector_sizes[name] = blocksize
+                print(blocksize)
 
             while data := file.read(disk_sampler.get_pack_size()):
                 try:
@@ -802,7 +936,8 @@ class SystemData:
 
         return disk_ts_raw, timestamps_raw
 
-    def get_disk_prof(self, bin_disk_report: str):
+
+    def get_disk_prof(self, bin_disk_report: str) -> bool:
         """
         Get disk profile
         """
@@ -811,84 +946,87 @@ class SystemData:
         maj_pkl = f"{self.traces_repo}/pkl_dir/disk_maj.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/disk_stamps.pkl"
 
-        if all(os.access(pkl_file, os.R_OK) for pkl_file in (disk_pkl, dat_pkl, maj_pkl, ts_pkl)):
-            self.logger.debug("Load Disk profile..."); t0 = time.time()  # noqa: E702
+        try:
+            if all(os.access(pkl_file, os.R_OK) for pkl_file in (disk_pkl, dat_pkl, maj_pkl, ts_pkl)):
+                self.logger.debug("Load Disk profile..."); t0 = time.time()  # noqa: E702
 
-            with open(disk_pkl, "rb") as _pf:
-                self.disk_prof = pickle.load(_pf)
-            with open(dat_pkl, "rb") as _pf:
-                self.disk_data = pickle.load(_pf)
-            with open(maj_pkl, "rb") as _pf:
-                self.maj_blks_sects = pickle.load(_pf)
-            with open(ts_pkl, "rb") as _pf:
-                self.disk_stamps = pickle.load(_pf)
-            self.disk_blks = list(self.disk_prof.keys())
+                with open(disk_pkl, "rb") as _pf:
+                    self.disk_prof = pickle.load(_pf)
+                with open(dat_pkl, "rb") as _pf:
+                    self.disk_data = pickle.load(_pf)
+                with open(maj_pkl, "rb") as _pf:
+                    self.maj_blks_sects = pickle.load(_pf)
+                with open(ts_pkl, "rb") as _pf:
+                    self.disk_stamps = pickle.load(_pf)
+                self.disk_blks = list(self.disk_prof.keys())
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        else:
+            else:
+                self.logger.debug("Read Disk report..."); t0 = time.time()  # noqa: E702
+                disk_ts_raw, timestamps_raw = self.read_disk_bin_report(bin_disk_report=bin_disk_report)
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-            self.logger.debug("Read Disk report..."); t0 = time.time()  # noqa: E702
-            disk_ts_raw, timestamps_raw = self.read_disk_bin_report(bin_disk_report=bin_disk_report)
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug("Create Disk profile..."); t0 = time.time()  # noqa: E702
+                nstamps = len(timestamps_raw) - 1
+                self.disk_stamps = np.zeros(nstamps)
+                for stamp in range(nstamps):
+                    self.disk_stamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
 
-            self.logger.debug("Create Disk profile..."); t0 = time.time()  # noqa: E702
-            # final time stamps
-            nstamps = len(timestamps_raw) - 1
-            self.disk_stamps = np.zeros(nstamps)
-            for stamp in range(nstamps):
-                self.disk_stamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
+                self.disk_prof = {}
+                self.disk_data = {}
+                for blk in self.disk_blks:
+                    self.disk_prof[blk] = {key: np.zeros(nstamps) for key in self.disk_field_keys}
+                    self.disk_data[blk] = {key: -999.999 for key in self.disk_field_keys}
 
-            # Init disk profile
-            self.disk_prof = {}
-            self.disk_data = {}
-            for blk in self.disk_blks:
-                self.disk_prof[blk] = {key: np.zeros(nstamps) for key in self.disk_field_keys}
-                self.disk_data[blk] = {key: -999.999 for key in self.disk_field_keys}
+                for blk in self.disk_blks:
+                    self.disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
+                    self.disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
 
-            # Fill in
-            for blk in self.disk_blks:
-                self.disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
-                self.disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
-
-            # Sectors and data n bytes
-            BYTES_UNIT = 1024**2  # noqa: N806
-            fields = ["sect-rd", "sect-wr", "sect-disc"]
-            for blk in self.disk_blks:
-                bytes_by_sector = self.maj_blks_sects[[item for item in self.maj_blks_sects if item in blk][0]]
-                for field in fields:
-                    for stamp in range(nstamps):
-                        self.disk_prof[blk][field][stamp] = (
-                            (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp])
-                            / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) * bytes_by_sector / BYTES_UNIT
+                BYTES_UNIT = 1024**2
+                fields = ["sect-rd", "sect-wr", "sect-disc"]
+                for blk in self.disk_blks:
+                    # Find the matching sector size key for blk
+                    matching_keys = [item for item in self.maj_blks_sects if item in blk]
+                    if not matching_keys:
+                        self.logger.error(f"No matching sector size found for block {blk}")
+                        continue
+                    bytes_by_sector = self.maj_blks_sects[matching_keys[0]]
+                    for field in fields:
+                        for stamp in range(nstamps):
+                            self.disk_prof[blk][field][stamp] = (
+                                (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp])
+                                / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) * bytes_by_sector / BYTES_UNIT
+                            )
+                        self.disk_data[blk][field] = int(
+                            (disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]) * bytes_by_sector / BYTES_UNIT
                         )
 
-                    self.disk_data[blk][field] = int(
-                        (disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]) * bytes_by_sector / BYTES_UNIT
-                    )
+                op_fields = ["#rd-cd", "#rd-md", "#wr-cd", "#wr-md", "#io-ip", "#disc-cd", "#disc-md", "#flush-req"]
+                for blk in self.disk_blks:
+                    for field in op_fields:
+                        for stamp in range(nstamps):
+                            self.disk_prof[blk][field][stamp] = (
+                                disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]
+                            ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+                        self.disk_data[blk][field] = int(disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0])
 
-            # Number of operations
-            fields = ["#rd-cd", "#rd-md", "#wr-cd", "#wr-md", "#io-ip", "#disc-cd", "#disc-md", "#flush-req"]
-            for blk in self.disk_blks:
-                for field in fields:
-                    for stamp in range(nstamps):
-                        self.disk_prof[blk][field][stamp] = (
-                            disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp]
-                        ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+                with open(disk_pkl, "wb") as _pf:
+                    pickle.dump(self.disk_prof, _pf)
+                with open(dat_pkl, "wb") as _pf:
+                    pickle.dump(self.disk_data, _pf)
+                with open(maj_pkl, "wb") as _pf:
+                    pickle.dump(self.maj_blks_sects, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.disk_stamps, _pf)
 
-                    self.disk_data[blk][field] = int(disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0])
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        except Exception as e:
+            self.logger.error(f"Exception in get_disk_prof: {e}")
+            return False
 
-            # Save profiles
-            with open(disk_pkl, "wb") as _pf:
-                pickle.dump(self.disk_prof, _pf)
-            with open(dat_pkl, "wb") as _pf:
-                pickle.dump(self.disk_data, _pf)
-            with open(maj_pkl, "wb") as _pf:
-                pickle.dump(self.maj_blks_sects, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.disk_stamps, _pf)
+        return True
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
     def plot_disk(self,
                   is_rd_only=False,
@@ -899,6 +1037,10 @@ class SystemData:
         """
         Plot disk activity
         """
+        if not self.disk_profile_valid:
+            self.logger.warning("Disk profile data not available, will not be plotted.")
+            return False
+
         alpha = 0.5
         diskmax = 0.0
 
@@ -1008,7 +1150,7 @@ class SystemData:
 
         return ib_ts_raw, timestamps_raw
 
-    def get_ib_prof(self, csv_ib_report: str):
+    def get_ib_prof(self, csv_ib_report: str) -> bool:
         """
         Get infiniband profile
         """
@@ -1016,64 +1158,73 @@ class SystemData:
         dat_pkl = f"{self.traces_repo}/pkl_dir/ib_data.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/ib_stamps.pkl"
 
-        if os.access(ib_pkl, os.R_OK) and os.access(dat_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
-            self.logger.debug("Load IB profile..."); t0 = time.time()  # noqa: E702
+        try:
+            if os.access(ib_pkl, os.R_OK) and os.access(dat_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+                self.logger.debug("Load IB profile..."); t0 = time.time()  # noqa: E702
 
-            with open(ib_pkl, "rb") as _pf:
-                self.ib_prof = pickle.load(_pf)
-            with open(dat_pkl, "rb") as _pf:
-                self.ib_data = pickle.load(_pf)
-            with open(ts_pkl, "rb") as _pf:
-                self.ib_stamps = pickle.load(_pf)
-            self.ib_interfs = list(self.ib_prof.keys())
+                with open(ib_pkl, "rb") as _pf:
+                    self.ib_prof = pickle.load(_pf)
+                with open(dat_pkl, "rb") as _pf:
+                    self.ib_data = pickle.load(_pf)
+                with open(ts_pkl, "rb") as _pf:
+                    self.ib_stamps = pickle.load(_pf)
+                self.ib_interfs = list(self.ib_prof.keys())
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        else:
+            else:
+                self.logger.debug("Read IB csv report..."); t0 = time.time()  # noqa: E702
+                ib_ts_raw, timestamps_raw = self.read_ib_csv_report(csv_ib_report=csv_ib_report)
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-            self.logger.debug("Read IB csv report..."); t0 = time.time()  # noqa: E702
-            ib_ts_raw, timestamps_raw = self.read_ib_csv_report(csv_ib_report=csv_ib_report)
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                self.logger.debug("Create IB profile..."); t0 = time.time()  # noqa: E702
+                nstamps = len(timestamps_raw) - 1
 
-            self.logger.debug("Create IB profile..."); t0 = time.time()  # noqa: E702
-            nstamps = len(timestamps_raw) - 1
+                self.ib_stamps = np.zeros(nstamps)
+                for stamp in range(nstamps):
+                    self.ib_stamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
 
-            self.ib_stamps = np.zeros(nstamps)
-            for stamp in range(nstamps):
-                self.ib_stamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
+                # Init infiniband profile
+                for interf in self.ib_interfs:
+                    self.ib_prof[interf] = {key: np.zeros(nstamps) for key in self.ib_metric_keys}
+                    self.ib_data[interf] = {key: 0 for key in self.ib_metric_keys}  # noqa: C420
 
-            # Init infiniband profile
-            for interf in self.ib_interfs:
-                self.ib_prof[interf] = {key: np.zeros(nstamps) for key in self.ib_metric_keys}
-                self.ib_data[interf] = {key: 0 for key in self.ib_metric_keys}  # noqa: C420
+                # Fill in
+                BYTES_UNIT = (1 / 4) * 1024**2  # noqa: N806 (MB)
+                for interf in self.ib_interfs:
+                    for metric_key in self.ib_metric_keys:
+                        for stamp in range(nstamps):
+                            self.ib_prof[interf][metric_key][stamp] = (
+                                (ib_ts_raw[interf][metric_key][stamp + 1] - ib_ts_raw[interf][metric_key][stamp])
+                                / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) / BYTES_UNIT
+                            )
 
-            # Fill in
-            BYTES_UNIT = (1 / 4) * 1024**2  # noqa: N806 (MB)
-            for interf in self.ib_interfs:
-                for metric_key in self.ib_metric_keys:
-                    for stamp in range(nstamps):
-                        self.ib_prof[interf][metric_key][stamp] = (
-                            (ib_ts_raw[interf][metric_key][stamp + 1] - ib_ts_raw[interf][metric_key][stamp])
-                            / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) / BYTES_UNIT
+                        self.ib_data[interf][metric_key] = int(
+                            (ib_ts_raw[interf][metric_key][-1] - ib_ts_raw[interf][metric_key][0]) / BYTES_UNIT
                         )
 
-                    self.ib_data[interf][metric_key] = int(
-                        (ib_ts_raw[interf][metric_key][-1] - ib_ts_raw[interf][metric_key][0]) / BYTES_UNIT
-                    )
+                with open(ib_pkl, "wb") as _pf:
+                    pickle.dump(self.ib_prof, _pf)
+                with open(dat_pkl, "wb") as _pf:
+                    pickle.dump(self.ib_data, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.ib_stamps, _pf)
 
-            with open(ib_pkl, "wb") as _pf:
-                pickle.dump(self.ib_prof, _pf)
-            with open(dat_pkl, "wb") as _pf:
-                pickle.dump(self.ib_data, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.ib_stamps, _pf)
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        except Exception as e:
+            self.logger.error(f"Exception in get_ib_prof: {e}")
+            return False
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        return True
 
     def plot_ib(self, annotate_with_cmds=None):
         """
         Plot infiniband activity
         """
+        if not self.ib_profile_valid:
+            self.logger.warning("Infiniband profile data not available, will not be plotted.")
+            return False
+
         self.ib_rx_total = np.zeros_like(self.ib_stamps)
         self.ib_tx_total = np.zeros_like(self.ib_stamps)
         for interf in self.ib_interfs:
