@@ -30,8 +30,12 @@ class PythonEnv:
 
             installed_packages = importlib.metadata.distributions()
             for package in installed_packages:
-                if package.name is not None:
-                    pkg_list.append({"name": package.metadata["Name"], "version": package.version})
+                try:
+                    if package.name is not None:
+                        pkg_list.append({"name": package.metadata["Name"], "version": package.version})
+                except AttributeError:
+                    # This is a hardcoded solution for AttributeError: '<package>' object has no attribute 'name'
+                    continue
         else:
             # we can't use importlib - falling back to pip
             pip_data = execute_cmd("pip list").splitlines()

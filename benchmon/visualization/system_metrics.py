@@ -484,7 +484,7 @@ class SystemData:
                 break
         plt.yticks(yticks)
 
-        plt.ylabel("Memory (GB)")
+        plt.ylabel("Memory (GiB)")
         plt.legend(loc=1)
         plt.grid()
 
@@ -559,6 +559,8 @@ class SystemData:
                 self.logger.debug("Create CPUFreq profile..."); t0 = time.time()  # noqa: E702
                 self.cpufreq_min = cpufreq_min or None
                 self.cpufreq_max = cpufreq_max or None
+
+                self.logger.warning("Dont plot cpu frequencies (dont use --cpu-freq) on virtual machines")
 
                 self.ncpu_freq = 0
                 try:
@@ -791,7 +793,7 @@ class SystemData:
             self.logger.warning("Network profile data not available, will not be plotted.")
             return False
 
-        BYTES_UNIT = 1024**2  # noqa: N806  (MB)
+        BYTES_UNIT = 1000**2  # noqa: N806  (MB)
         _alpha = 0.5
         _mrksz = 3.5
 
@@ -983,7 +985,7 @@ class SystemData:
                     self.disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
                     self.disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
 
-                BYTES_UNIT = 1024**2
+                BYTES_UNIT = 1000**2
                 fields = ["sect-rd", "sect-wr", "sect-disc"]
                 for blk in self.disk_blks:
                     # Find the matching sector size key for blk
@@ -1190,7 +1192,7 @@ class SystemData:
                     self.ib_data[interf] = {key: 0 for key in self.ib_metric_keys}  # noqa: C420
 
                 # Fill in
-                BYTES_UNIT = (1 / 4) * 1024**2  # noqa: N806 (MB)
+                BYTES_UNIT = (1 / 4) * 1000**2  # noqa: N806 (MB)
                 for interf in self.ib_interfs:
                     for metric_key in self.ib_metric_keys:
                         for stamp in range(nstamps):

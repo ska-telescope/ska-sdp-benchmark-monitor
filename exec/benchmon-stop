@@ -31,14 +31,15 @@ fi
 traces_repo=$save_dir/benchmon_traces_$(hostname)
 benchmon_visu=$(dirname $0)/benchmon-visu
 if [[ $level == 0 ]]; then
-    $benchmon_visu --mem --cpu --cpu-all --net --disk --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $traces_repo &
-    wait
+    $benchmon_visu --cpu --mem --net --disk --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo
 
 elif [[ $level == 1 ]]; then
-    $benchmon_visu --inline-call --mem --cpu --cpu-all --net --disk --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $traces_repo & # --pow
-    wait
+    $benchmon_visu --cpu --mem --net --disk --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
 
 elif [[ $level == 2 ]]; then
-    $benchmon_visu --mem --cpu --cpu-all --net --disk --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure $traces_repo & # --pow --call --call-depth 4
-    wait
+    $benchmon_visu --cpu --mem --net --disk --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo
+     # --pow
 fi

@@ -1,9 +1,10 @@
+"""Module to generate benchmark reports"""
 import re
 import json
 
 
 def fill_template(template_file_path: str, output_file_path: str, values: dict):
-    """Uses a template file to generate a document. Uses the dictionary passed as an argument to replace tokens in the
+    """Use a template file to generate a document. Uses the dictionary passed as an argument to replace tokens in the
     template by their corresponding values.
 
     Args:
@@ -25,7 +26,7 @@ def fill_template(template_file_path: str, output_file_path: str, values: dict):
 
 
 def generate_hidden(title: str, content: str):
-    """Generates a string containing the Markdown description of a hidden section.
+    """Generate a string containing the Markdown description of a hidden section.
 
     Args:
         title (str): Section title.
@@ -39,7 +40,7 @@ def generate_hidden(title: str, content: str):
 
 
 def spack_description(data):
-    """Generates a Markdown description for a Spack package based on its JSON description.
+    """Generate a Markdown description for a Spack package based on its JSON description.
 
     Args:
         data: JSON description of a Spack package.
@@ -64,7 +65,7 @@ def spack_description(data):
 
 
 def spack_env_description(spack_data):
-    """Generates a Markdown description of a Spack environment from a JSON description.
+    """Generate a Markdown description of a Spack environment from a JSON description.
 
     Args:
         spack_data: JSON description of a Spack environment.
@@ -82,7 +83,7 @@ def spack_env_description(spack_data):
 
 
 def python_env_description(data):
-    """Generates a Markdown description of a Python environment from its JSON description.
+    """Generate a Markdown description of a Python environment from its JSON description.
 
     Args:
         data: JSON description of a Python environement.
@@ -112,7 +113,7 @@ def escaped_markdown(text: str) -> str:
     Returns:
         str: String with escaped Markdown special characters.
     """
-    _MARKDOWN_CHARACTERS_TO_ESCAPE = set(r"$\`*_{}[]<>()#+-.!|")
+    _MARKDOWN_CHARACTERS_TO_ESCAPE = set(r"$\`*_{}[]<>()#+-.!|")  # noqa: N806
     return "".join(
         f"\\{character}" if character in _MARKDOWN_CHARACTERS_TO_ESCAPE else character
         for character in text
@@ -120,7 +121,7 @@ def escaped_markdown(text: str) -> str:
 
 
 def env_description(data):
-    """Generates a Markdown description of a shell environment from its JSON description.
+    """Generate a Markdown description of a shell environment from its JSON description.
 
     Args:
         data: JSON description of a shell environment.
@@ -139,7 +140,7 @@ def env_description(data):
 
 
 def hardware_description(hw_data):
-    """Generates a dictionary of Markdown hardware configuration descriptions from its JSON counterpart.
+    """Generate a dictionary of Markdown hardware configuration descriptions from its JSON counterpart.
 
     Args:
         hw_data: JSON description of a hardware configuration.
@@ -166,7 +167,7 @@ def hardware_description(hw_data):
 
 def read_ps_data(file):
     """
-    Reads and parses a ps log file into a structured format.
+    Read and parse a ps log file into a structured format.
 
     Args:
         file (TextIO): File object representing the ps log file.
@@ -217,7 +218,7 @@ def read_ps_data(file):
 
 def process_data(ps_data):
     """
-    Processes parsed ps log data to aggregate information by process ID.
+    Process parsed ps log data to aggregate information by process ID.
 
     Args:
         ps_data (dict): A dictionary containing:
@@ -262,7 +263,7 @@ def process_data(ps_data):
 
 def ps_entry_to_line(pid, process_info):
     """
-    Converts a process entry into a Markdown table row.
+    Convert a process entry into a Markdown table row.
 
     Args:
         pid (str): Process ID.
@@ -298,7 +299,7 @@ def ps_entry_to_line(pid, process_info):
 
 def ps_description(ps_data):
     """
-    Generates a Markdown table description of process data from parsed ps log data.
+    Generate a Markdown table description of process data from parsed ps log data.
 
     Args:
         ps_data (dict): A dictionary containing:
@@ -341,11 +342,13 @@ def ps_description(ps_data):
 class ReportGenerator:
     """Class used to generate a benchmark report from benchmon results.
     """
+
     def __init__(self, template_file_path: str):
+        """Initialize ReportGenerator"""
         self.template_file_path = template_file_path
 
     def write(self, hw_report_path: str, sw_report_path: str, ps_path: str, figure_path: str, output_file_path: str):
-        """Writes a benchmark report from benchmon results.
+        """Write a benchmark report from benchmon results.
 
         Args:
             hw_report_file (str): Path to the hardware description file.

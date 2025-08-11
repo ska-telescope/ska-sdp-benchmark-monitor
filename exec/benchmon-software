@@ -15,7 +15,6 @@ log.info("Add parent directory to sys.path.")
 sys.path.insert(0, parent_dir)
 
 try:
-    # import benchmon
     import benchmon.software as swc
 except ImportError as e:  # noqa: F841
     log.error("Could not import benchmon!")

@@ -66,7 +66,7 @@ setup(
     },
     project_urls={
         "Repository": "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor",
-        "Documentation": "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor",
+        "Documentation": "https://ska-telescope-ska-sdp-benchmark-monitor.readthedocs.io",
     },
     data_files=[
         ("bin", glob.glob("exec/*"))

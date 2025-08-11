@@ -1,17 +1,25 @@
-image: registry.gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor:ci
-
 stages:
   - setup
   - lint
+  - build
   - test
+  - publish
+  - pages
   - scan
-  # - pages
+
+
+default:
+  tags:
+    - ${SKA_DEFAULT_RUNNER}
+
 
 variables:
+  GIT_SUBMODULE_STRATEGY: recursive
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   VENV_DIR: "$CI_PROJECT_DIR/.venv"
 
 .test_env:
+  image: registry.gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor:ci
   before_script:
     - python --version
     - pip --version
@@ -23,7 +31,7 @@ install:
   stage: setup
   extends: [.test_env]
   script:
-    - pip install -U pip setuptools wheel
+    - pip install -U pip setuptools wheel cmake
     - pip install .[test]
   artifacts:
     paths:
@@ -40,7 +48,7 @@ test_flake8:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_flake8.py
 
@@ -48,7 +56,7 @@ test_run_monitor:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_run_monitor.py::test_repo_log_pid
 
@@ -56,7 +64,7 @@ test_benchmon_visu:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_benchmon-visu_func.py
     # - pytest --no-cov tests/test_benchmon-visu.py
@@ -65,7 +73,7 @@ test_visualizer:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_visualizer.py
 
@@ -73,44 +81,43 @@ test_metrics:
   stage: test
   extends: [.test_env]
   tags:
-    - k8srunner
+    - ${SKA_DEFAULT_RUNNER}
   script:
     - pytest --no-cov tests/test_metrics.py
 
-# Reproduce steps from RTD
-#docs-test:
-#  stage: test
-#  tags:
-#    - k8srunner
-#  before_script:
-#    - conda create -n docs python=$PYVER -y
-#    - conda activate docs
-#    - python -m pip install --upgrade --no-cache-dir pip 'setuptools<58.3.0'
-#    - python -m pip install --exists-action=w --no-cache-dir mock==1.0.1 pillow==5.4.1 'alabaster>=0.7,<0.8,!=0.7.5' commonmark==0.8.1 recommonmark==0.5.0
-#    - python -m pip install --exists-action=w --no-cache-dir -r docs/requirements.txt
-#    - python -m pip install --exists-action=w --no-cache-dir -r requirements.txt
-#  script:
-#    - cd docs
-#    - python -m sphinx -T -b html -d build/doctrees -D language=en src/ build/html
-#  artifacts:
-#    paths:
-#      - build/
-#    expire_in: 1 day
+test_doc:
+  stage: test
+  extends: [.test_env]
+  tags:
+    - ${SKA_DEFAULT_RUNNER}
+  script:
+    - python -m pip install --upgrade --no-cache-dir pip setuptools
+    - python -m pip install --upgrade --no-cache-dir sphinx
+    - python -m pip install --exists-action=w --no-cache-dir -r docs/requirements.txt
+    - cd docs
+    - python -m sphinx -T -b html -d build/doctrees -D language=en src/ build/html
+    - make html
+  artifacts:
+    paths:
+      - build/
+    expire_in: 1h
 
-# pages-pages:
-#   stage: pages
-#   tags:
-#     - k8srunner
-#   script:
-#     - mkdir -p public/reports
-#     - mv build/linting.xml public/reports/linting.xml
-#     #- mv build/tests.xml public/reports/unit-tests.xml
-#   artifacts:
-#     paths:
-#       - public
-
-# Create Gitlab CI badges from CI metrics
-# https://developer.skatelescope.org/en/latest/tools/continuousintegration.html#automated-collection-of-ci-health-metrics-as-part-of-the-ci-pipeline
 include:
-  - project: 'ska-telescope/templates-repository'
-    file: 'gitlab-ci/includes/finaliser.gitlab-ci.yml'
+  # Docs pages
+  - project: "ska-telescope/templates-repository"
+    file: "gitlab-ci/includes/docs.gitlab-ci.yml"
+
+  # Python
+  - project: "ska-telescope/templates-repository"
+    file:
+      - "gitlab-ci/includes/python-publish.gitlab-ci.yml"
+      - "gitlab-ci/includes/python-build.gitlab-ci.yml"
+
+  # Build and publish changelog
+  - project: "ska-telescope/templates-repository"
+    file: "gitlab-ci/includes/release.gitlab-ci.yml"
+
+  # .post step finalisers e.g.: badges
+  - project: "ska-telescope/templates-repository"
+    file: "gitlab-ci/includes/finaliser.gitlab-ci.yml"
+
