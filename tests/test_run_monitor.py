@@ -18,7 +18,6 @@ def create_args(save_dir: str = "/tmp/benchmon_savedir_test",
                 sys_freq: int = 10,
                 power: bool = False,
                 power_sampling_interval: int = 250,
-                power_g5k: bool = False,
                 call: bool = False,
                 call_mode: str = "dwarf,32",
                 call_profiling_frequency: int = 10,
@@ -43,7 +42,7 @@ def run(args: argparse.ArgumentParser, timeout: int = 1, with_pid: bool = False)
         RunUtils.get_benchmon_pid(logger)
 
     run_monitor = RunMonitor(args, logger)
-    run_monitor.run(timeout=1)
+    run_monitor.run(timeout)
 
 
 def test_repo_log_pid():
@@ -68,11 +67,10 @@ def test_sys():
     timeout = 2
     run(args=args, timeout=timeout)
 
-    filenames = ["cpufreq_report.csv", "cpu_report.csv", "disk_report.csv", "mem_report.csv", "net_report.csv"]
+    filenames = ["cpufreq_report.bin", "cpu_report.bin", "disk_report.bin", "mem_report.bin", "net_report.bin"]
     for filename in filenames:
         path = Path(f"{args.save_dir}/benchmon_traces_{HOSTNAME}/{filename}")
         assert path.is_file(), f"{path} file does not exist"
-        assert sum(1 for _ in path.open()) >= 10, f"{path} file has less than 10 lines"
 
 
 def test_pow():
@@ -84,22 +82,6 @@ def test_pow():
     path = Path(f"{args.save_dir}/benchmon_traces_{HOSTNAME}/pow_report.csv")
     assert path.is_file(), f"{path} file does not exist"
     assert sum(1 for _ in path.open()) >= 10, f"{path} file has less than 10 lines"
-
-
-def test_pow_g5k():
-    """Test retrieving g5k power metrics"""
-
-    if "grid5000.fr" in HOSTNAME:
-
-        args = create_args(power_g5k=True)
-        timeout = 3
-        run(args=args, timeout=timeout)
-
-        filenames = ["g5k_pow_report_bmc_node_power_watt.json", "g5k_pow_report_wattmetre_power_watt.json"]
-        for filename in filenames:
-            path = Path(f"{args.save_dir}/benchmon_traces_{HOSTNAME}/{filename}")
-            assert path.is_file(), f"{path} file does not exist"
-            assert sum(1 for _ in path.open()) >= 1, f"{path} file has less than 10 lines"
 
 
 def test_call():

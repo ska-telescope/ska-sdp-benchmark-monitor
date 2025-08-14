@@ -46,7 +46,6 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--sys", action="store_true", help="Visualize all system data")
 
     # Power profile
-    parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power")
     parser.add_argument("--pow", action="store_true", help="Visualize power")
 
     # Callstack

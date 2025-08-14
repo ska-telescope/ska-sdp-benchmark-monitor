@@ -73,7 +73,6 @@ benchmon offers a set of options for customizing monitoring. Specific types of m
 ##### Energy Consumption
 - `--pow`, `--power`: Enable power monitoring.
 - `--pow-sampl-intv`, `--power-sampling-interval`: Power sampling interval in ms (default: 250).
-- `--pow-g5k`, `--power-g5k`: Enable Grid5000 power monitoring.
 
 ##### Callgraph Tracing
 
@@ -118,7 +117,6 @@ Available options:
 
 ##### Energy Consumption
 - `--pow`: Visualize perf power profiles.
-- `--pow-g5k`: Visualize G5K power profiles.
 
 ##### Callgraph Tracing
 - `--call`: Visualize call stack.

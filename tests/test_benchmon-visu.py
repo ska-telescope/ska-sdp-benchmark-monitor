@@ -21,7 +21,6 @@ def test_unit_benchmon_visu():
            "--disk-rd-only", "--disk-wr-only",
            "--ib",
            "--sys",
-           "--pow-g5k",
            "--pow",
            "--inline-call",
            "--inline-call-cmd", "cmd0,cmd1,cmd2",

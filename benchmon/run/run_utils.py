@@ -69,13 +69,6 @@ class RunUtils:
         )
 
         parser.add_argument(
-            "--power-g5k",
-            "--pow-g5k",
-            action="store_true",
-            help="Download grid5000 power monitoring"
-        )
-
-        parser.add_argument(
             "--call",
             action="store_true",
             help="Enable callstack tracing"

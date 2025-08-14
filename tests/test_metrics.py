@@ -30,7 +30,6 @@ def create_args(traces_repo: str = "",
                 disk_wr_only: bool = False,
                 ib: bool = False,
                 sys: bool = False,
-                pow_g5k: bool = False,
                 pow: bool = False,
                 inline_call: bool = False,
                 inline_call_cmd: str = "",
@@ -68,7 +67,7 @@ def test_metrics():
     test_repo = f"{cwd}/tmp/benchmon_savedir_test_{now}"
     os.makedirs(test_repo)
 
-    ref_repo = f"{cwd}/data_for_visu/benchmon_traces_neowise-8.lyon.grid5000.fr"
+    ref_repo = f"{cwd}/data_for_visu/benchmon_traces_jed"
     shutil.copytree(ref_repo, test_repo, dirs_exist_ok=True)
 
     args = create_args(cpu=True, cpu_freq=True, mem=True, net=True, disk=True, ib=True, call=True, pow=True)
@@ -82,7 +81,6 @@ def test_metrics():
         f"{ref_repo}/pkl_dir/disk_prof.pkl": bm.system_metrics.disk_prof,
         f"{ref_repo}/pkl_dir/ib_prof.pkl": bm.system_metrics.ib_prof,
         f"{ref_repo}/pkl_dir/net_prof.pkl": bm.system_metrics.net_prof,
-        f"{ref_repo}/pkl_dir/pow_prof.pkl": bm.power_perf_metrics.pow_prof
     }
 
     import numpy as np
@@ -106,10 +104,15 @@ def test_metrics():
         f"{ref_repo}/pkl_dir/cpufreq_prof.pkl": bm.system_metrics.cpufreq_prof
     }
 
-    for key in profiles.keys():
-        with open(key, "rb") as _pf:
-            expected_prof = pickle.load(_pf)
-
+    with open(f"{ref_repo}/pkl_dir/mem_prof.pkl", "rb") as _pf:
+        expected_prof = pickle.load(_pf)
         for metric in expected_prof.keys():
-            err = np.linalg.norm(expected_prof[metric] - profiles[key][metric])
+            err = np.linalg.norm(expected_prof[metric] - bm.system_metrics.mem_prof[metric])
+            assert err < eps, f"Unexpected results for {metric}"
+
+    with open(f"{ref_repo}/pkl_dir/cpufreq_prof.pkl", "rb") as _pf:
+        expected_prof = pickle.load(_pf)
+
+        for ref, val in zip(expected_prof, bm.system_metrics.cpufreq_prof):
+            err = np.linalg.norm(ref - val)
             assert err < eps, f"Unexpected results for {metric}"

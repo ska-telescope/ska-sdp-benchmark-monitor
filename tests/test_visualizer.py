@@ -29,7 +29,6 @@ def create_args(traces_repo: str = "",
                 disk_wr_only: bool = False,
                 ib: bool = False,
                 sys: bool = False,
-                pow_g5k: bool = False,
                 pow: bool = False,
                 inline_call: bool = False,
                 inline_call_cmd: str = "",
@@ -52,7 +51,7 @@ def create_args(traces_repo: str = "",
                 fig_yrange: int = 11,
                 verbose: bool = False,
                 test: bool = False):
-    """Create argument namespace for visuaalization"""
+    """Create argument namespace for visualization"""
 
     return argparse.Namespace(**locals())
 
@@ -67,10 +66,9 @@ def run(args: argparse.ArgumentParser):
     test_repo = f"{cwd}/tmp/benchmon_savedir_test_{now}"
     os.makedirs(test_repo)
 
-    ref_repo = f"{cwd}/data_for_visu/benchmon_traces_neowise-8-ref.lyon.grid5000.fr"
+    ref_repo = f"{cwd}//data_for_visu/benchmon_traces_jed"
     shutil.copytree(ref_repo, test_repo, dirs_exist_ok=True)
 
-    BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo).run_plots()
     BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo).run_plots()
 
 
@@ -121,12 +119,6 @@ def test_visu_pow():
     run(args=create_args(cpu=True, pow=True))
 
 
-def test_visu_pow_g5k():
-    """Test PowerG5K reading and visualization"""
-    run(args=create_args(cpu=True, pow_g5k=True))
-    run(args=create_args(cpu=True, pow_g5k=True, pow=True))
-
-
 def test_visu_call():
     """Test Callstack reading and visualization"""
     run(args=create_args(cpu=True, inline_call=True))
@@ -144,5 +136,4 @@ def test_visu_all():
                          disk=True, disk_data=True, disk_iops=True,
                          ib=True,
                          pow=True,
-                         pow_g5k=True,
                          inline_call=True, call=True, call_depth=4))

@@ -2,14 +2,11 @@
 
 import glob
 import json
-import math
 import os
+import psutil
 import signal
 import subprocess
 import time
-
-import psutil
-import requests
 
 
 HOSTNAME = os.uname()[1]
@@ -48,10 +45,6 @@ class RunMonitor:
         self.is_power = args.power
         self.power_sampling_interval = args.power_sampling_interval
 
-        # G5K Power monitoring
-        self.pow_filename_base = "pow_g5k_.csv"
-        self.is_power_g5k = args.power_g5k
-
         # Profiling and callstack parameters
         self.call_filename = "call_report.txt"
         self.is_call = args.call
@@ -59,9 +52,6 @@ class RunMonitor:
         self.call_profiling_frequency = args.call_profiling_frequency
         self.temp_perf_file = "_temp_perf.data"
         self.is_perf_datafile_kept = args.call_keep_datafile
-
-        # Enable sudo-g5k (for Grid5000 clusters)
-        self.sudo_g5k = "sudo-g5k" if "grid5000" in HOSTNAME else ""
 
         # Mark the node 0 as main node responsible for collecting all the different reports
         oar_check = subprocess.run(args=["oarprint", "host"],
@@ -132,7 +122,6 @@ class RunMonitor:
         Run system monitoring
         """
         freq = self.sys_freq
-
         self.logger.debug("Starting system monitoring")
 
         sh_repo = os.path.dirname(os.path.realpath(__file__))
@@ -182,10 +171,6 @@ class RunMonitor:
         pids = [process.pid for process in self.sys_process]
         self.write_benchmon_pid(pids)
 
-        for sys_process in self.sys_process:
-            process_stdout = sys_process.stdout.read()
-            self.logger.debug(f"Terminated {sys_process.args[0]} with stdout: {process_stdout}")
-
 
     def run_perf_pow(self):
         """
@@ -215,9 +200,6 @@ class RunMonitor:
         perf_pow_cmd = ["perf", "stat", "-A", "-a"] + event_flags + \
                        ["-I", f"{sampl_intv}"] + ["-x", ",", "--append", "-o", f"{filename}"]
 
-        if self.sudo_g5k:
-            perf_pow_cmd.insert(0, self.sudo_g5k)
-
         self.logger.debug(f"Starting perf (power):\n\t{' '.join(perf_pow_cmd)}")
 
         # Run perf (power)
@@ -238,9 +220,6 @@ class RunMonitor:
                          "-o", f"{self.save_dir}/{self.temp_perf_file}"
                          ]
 
-        if self.sudo_g5k:
-            perf_call_cmd.insert(0, self.sudo_g5k)
-
         self.logger.debug(f"Starting perf (call graph):\n\t{' '.join(perf_call_cmd)}")
 
         # Get the conversion from monotonic to real time
@@ -257,38 +236,6 @@ class RunMonitor:
                                                  text=True)
 
 
-    def download_g5k_pow(self):
-        """
-        Download grid5000 power consumption report
-        """
-        _site = HOSTNAME.split(".")[1]
-        _cluster = HOSTNAME.split(".")[0]
-
-        requests.packages.urllib3.disable_warnings(
-            requests.packages.urllib3.exceptions.InsecureRequestWarning
-        )
-
-        self.t1 = time.time()
-
-        metrics = ["wattmetre_power_watt", "bmc_node_power_watt"]
-
-        for metric in metrics:
-
-            suffix = f"stable/sites/{_site}/metrics?metrics={metric}&" + \
-                     f"nodes={_cluster}&start_time={math.floor(self.t0)}&" + \
-                     f"end_time={math.ceil(self.t1)}"
-            url = f"https://api.grid5000.fr/{suffix}"
-
-            self.logger.debug(f"Downloading ...: {url}")
-
-            req = requests.get(url, verify=False)
-            filepath = f"{self.save_dir}/g5k_pow_report_{metric}.json"
-            with open(filepath, "w") as jsfile:
-                json.dump(req.json(), jsfile)
-
-            self.logger.debug(f"File saved in: {filepath}")
-
-
     def terminate(self, signum=None, frame=None):
         """
         Terminate background process after catching term signal
@@ -302,9 +249,6 @@ class RunMonitor:
                 f"{child.pid}" for child in psutil.Process(self.perfcall_process.pid).children()
             ]
             kill_perf_pow_cmd = ["kill", "-15", f"{self.perfcall_process.pid}"] + perfcall_children
-
-            if self.sudo_g5k:
-                kill_perf_pow_cmd.insert(0, self.sudo_g5k)
 
             subprocess.run(args=kill_perf_pow_cmd,
                            stdout=subprocess.PIPE,
@@ -324,9 +268,6 @@ class RunMonitor:
             ]
             kill_perf_pow_cmd = ["kill", "-15", f"{self.perfpow_process.pid}"] + perfpow_children
 
-            if self.sudo_g5k:
-                kill_perf_pow_cmd.insert(0, self.sudo_g5k)
-
             subprocess.run(args=kill_perf_pow_cmd,
                            stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT,
@@ -339,7 +280,7 @@ class RunMonitor:
 
         # Kill sys processes
         for process in self.sys_process:
-            process.terminate()
+            os.kill(process.pid, signal.SIGINT)
             process_stdout = process.stdout.read()
 
             self.logger.debug(f"Terminated system monitoring with stdout: {process_stdout}")
@@ -349,9 +290,6 @@ class RunMonitor:
         """
         Post-process data
         """
-        if self.is_power_g5k:
-            self.download_g5k_pow()
-
         # Create callgraph file
         if self.is_call:
             self.logger.debug("Post-processing perf.data file ...")

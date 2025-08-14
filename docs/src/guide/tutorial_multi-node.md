@@ -19,7 +19,6 @@ save_dir="./traces_doc_multi_$(date +%s)"
 benchmon_params="--save-dir $save_dir"
 benchmon_params+=" --sys --sys-freq 10"         # System monitoring with 10Hz frequency
 benchmon_params+=" --power"                     # Power monitoring with perf
-benchmon_params+=" --pow-g5k"                   # Power monitoring with Grid5000
 benchmon_params+=" --call --call-prof-freq 10"  # Callstack tracing with 10Hz frequency
 benchmon_params+=" --verbose"                   # Enable verbosity
 benchmon-multinode-start $benchmon_params
@@ -64,7 +63,6 @@ benchmonvisu_params+=" --net --net-all --net-data"                  # Display ne
 benchmonvisu_params+=" --mem"                                       # Display memory and swap usage
 benchmonvisu_params+=" --disk --disk-data --disk-iops"              # Display disk activity and IOPS
 benchmonvisu_params+=" --pow"                                       # (Perf) Display power profiles and energy consumption
-benchmonvisu_params+=" --pow-g5k"                                   # (G5k) Display power profiles and energy consumption
 benchmonvisu_params+=" --inline-call"                               # Annotate plots with running commands
 benchmonvisu_params+=" --inline-call-cmd ft.D.x,lu.C.x,ior"         # Annotate plots with these specific commands
 benchmonvisu_params+=" --recursive"                                 # Generate synchronized plots for multi-node runs

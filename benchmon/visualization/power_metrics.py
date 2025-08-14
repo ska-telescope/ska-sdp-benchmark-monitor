@@ -2,14 +2,11 @@
 
 import csv
 import logging
-import json
 import os
-import pickle
-import time
-from datetime import datetime
-
 import matplotlib.pyplot as plt
 import numpy as np
+import pickle
+import time
 
 
 def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
@@ -188,98 +185,3 @@ class PerfPowerData:
             ymax = max(ymax, max(power_array))
 
         return ymax
-
-
-class G5KPowerData:
-    """
-    Grid5000 power database
-    """
-
-    def __init__(self, traces_dir: str):
-        """
-        Construct Grid5000 power database
-        """
-        self.traces_dir = traces_dir
-        self.g5k_pow_prof = {}
-        self.get_g5k_pow_prof()
-
-
-    def read_json_file(self, report_filename):
-        """
-        Read json report
-        """
-        with open(f"{self.traces_dir}/{report_filename}", "r") as jsfile:
-            return json.load(jsfile)
-
-
-    def get_g5k_pow_prof(self):
-        """
-        Get G5K power profile
-
-        Example:
-            In : g5k_pow_list[0]
-            Out:
-                {'timestamp': '2025-02-02T14:39:37.003778+01:00',
-                'device_id': 'taurus-11',
-                'metric_id': 'wattmetre_power_watt',
-                'value': 69.4,
-                'labels': {'_device_orig': ['wattmetre1-port33']}}
-        """
-        metrics = ["wattmetre_power_watt", "bmc_node_power_watt"]
-
-        for metric in metrics:
-            g5k_pow_list = self.read_json_file(f"g5k_pow_report_{metric}.json")
-            nstamps = len(g5k_pow_list)
-
-            self.g5k_pow_prof[metric] = {"timestamps": np.zeros(nstamps),
-                                         "value": np.zeros(nstamps)}
-
-            fmt = "%Y-%m-%dT%H:%M:%S.%f%z"
-            for idx, item in enumerate(g5k_pow_list):
-                ts = item["timestamp"]
-                if ts[19] != ".":
-                    ts = ts[:19] + ".0" + ts[19:]
-
-                self.g5k_pow_prof[metric]["timestamps"][idx] = datetime.strptime(ts, fmt).timestamp()
-                self.g5k_pow_prof[metric]["value"][idx] = item["value"]
-
-
-    def plot_g5k_pow_profiles(self, pre_label: str = "") -> float:
-        """
-        Plot total power events
-
-        Args:
-            xticks (list): x-axis ticks of current plot
-            xlim (list): x-axis limit of current plot
-        """
-        _ymax = 0
-        metrics = ["wattmetre_power_watt", "bmc_node_power_watt"]
-
-        metrics_style = {}
-        metrics_style["wattmetre_power_watt"] = {
-            "ls": "-",
-            "color": "C2",
-            "marker": ".",
-            "label": "g5k:wm"
-        }
-        metrics_style["bmc_node_power_watt"] = {
-            "ls": "-",
-            "marker": ".",
-            "color": "C9",
-            "label": "g5k:bmc"
-        }
-
-        for metric in metrics:
-            ts = self.g5k_pow_prof[metric]["timestamps"]
-            vals = self.g5k_pow_prof[metric]["value"]
-            energy = compute_total_energy(time_stamps=ts, power_stamps=vals)
-            plt.plot(ts, vals,
-                     color=metrics_style[metric]["color"],
-                     ls=metrics_style[metric]["ls"],
-                     marker=metrics_style[metric]["marker"],
-                     label=f"{pre_label}{metrics_style[metric]['label']} ({round(energy, 1)} Wh)")
-
-            if len(vals) > 1:
-                _ymax = max(_ymax, max(vals))
-
-        return _ymax

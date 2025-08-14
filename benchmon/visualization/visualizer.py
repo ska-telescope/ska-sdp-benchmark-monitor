@@ -14,7 +14,6 @@ import numpy as np
 
 from .call_profile import PerfCallData
 from .call_profile import PerfCallRawData
-from .power_metrics import G5KPowerData
 from .power_metrics import PerfPowerData
 from .system_metrics import SystemData
 from .utils import read_ical_log_file, plot_ical_stages
@@ -30,7 +29,6 @@ class BenchmonVisualizer:
         traces_repo             (str)               : Traces repository
         hostname                (str)               : Hostname
         system_metrics          (SystemData)        : Object of system metrics
-        power_g5k_metrics       (G5KPowerData)      : Object of g5k power metrics
         power_perf_metrics      (PerfPowerData)     : Object of perf power metrics
         call_traces             (PerfCallData)      : Object of callstack recorded by perf
         n_subplots              (int)               : Number of subplots
@@ -61,7 +59,6 @@ class BenchmonVisualizer:
 
         self.hostname = os.path.basename(os.path.realpath(traces_repo))[16:]
         self.system_metrics = None
-        self.power_g5k_metrics = None
         self.power_perf_metrics = None
         self.call_traces = None
 
@@ -87,8 +84,6 @@ class BenchmonVisualizer:
         self.get_xaxis_params(xmargin=0)
         self.apply_xaxis_params()
 
-        if "grid5000.fr" in self.hostname:
-            self.hostname = self.hostname.split(".")[0]
 
     def load_system_metrics(self) -> bool:
         """
@@ -159,15 +154,7 @@ class BenchmonVisualizer:
                     self.power_perf_metrics = None
                     success = False
 
-            if self.args.pow_g5k:
-                try:
-                    self.power_g5k_metrics = G5KPowerData(traces_dir=self.traces_repo)
-                except Exception as e:
-                    self.logger.error(f"Failed to load G5K power metrics: {e}")
-                    self.power_g5k_metrics = None
-                    success = False
-
-            self.n_subplots += int(bool(self.args.pow) or bool(self.args.pow_g5k))
+            self.n_subplots += int(bool(self.args.pow))
         except Exception as e:
             self.logger.error(f"Failed to load power metrics: {e}")
             success = False
@@ -473,16 +460,14 @@ class BenchmonVisualizer:
             if self.ical_stages:
                 plot_ical_stages(self.ical_stages, ymax=diskmax)
 
-        # (perf+g5k) Power plot
-        if self.power_metrics_loaded and self.args.pow or self.args.pow_g5k:
+        # (perf) Power plot
+        if self.power_metrics_loaded and self.args.pow:
             self.logger.debug("Plotting perf power")
             ax = plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
             powmax = [0]
             if self.args.pow:
                 powmax += [self.power_perf_metrics.plot_events()]
-            if self.args.pow_g5k:
-                powmax += [self.power_g5k_metrics.plot_g5k_pow_profiles()]
             if annotate_with_cmds:
                 annotate_with_cmds(ymax=max(powmax))
             if self.ical_stages:

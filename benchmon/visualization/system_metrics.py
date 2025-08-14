@@ -497,7 +497,6 @@ class SystemData:
         hf = system_binary_reader.hf_cpufreq_sample()
         samples_list = []
         try:
-            print(bin_cpufreq_report)
             file = open(bin_cpufreq_report, "rb")
             min_cpufreq = np.uint64(int.from_bytes(file.read(8), byteorder='little', signed=False))
             max_cpufreq = np.uint64(int.from_bytes(file.read(8), byteorder='little', signed=False))
@@ -884,7 +883,6 @@ class SystemData:
         with open(bin_disk_report, "rb") as file:
             n_sector_sizes = np.frombuffer(file.read(4), dtype=np.uint32)[0]
             sector_sizes = {}
-            print(n_sector_sizes)
 
             for i in range(n_sector_sizes):
                 name_size = np.frombuffer(file.read(4), dtype=np.uint32)[0]
@@ -892,7 +890,6 @@ class SystemData:
                 device_names[i] = name
                 blocksize = np.frombuffer(file.read(4), dtype=np.uint32)[0]
                 sector_sizes[name] = blocksize
-                print(blocksize)
 
             while data := file.read(disk_sampler.get_pack_size()):
                 try:
