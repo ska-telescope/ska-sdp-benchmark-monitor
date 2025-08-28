@@ -106,6 +106,11 @@ class SystemData:
         cpu_report_lines = self.read_csv_line_as_list(csv_report=csv_cpu_report)
         self.logger.debug(f"\t open+read = {round(time.time() - t0, 3)} s")
 
+        # Check if csv file is empty
+        if not cpu_report_lines:
+            self.logger.warning("CPU CSV report is empty, returning empty data")
+            return {}, []
+
         # Get cpus, number of cpu cores + global
         ts_0 = cpu_report_lines[1][0]
         ts = ts_0
@@ -167,6 +172,14 @@ class SystemData:
             self.logger.debug("Read CPU csv report..."); t0 = time.time()  # noqa: E702
             cpu_ts_raw, timestamps_raw = self.read_cpu_csv_report(csv_cpu_report=csv_cpu_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if CPU report data is empty
+            if not cpu_ts_raw:
+                self.logger.warning("CPU CSV report data is empty, creating empty profile")
+                self.cpu_prof = {}
+                self.cpu_stamps = np.array([])
+                self.ncpu = 0
+                return 0
 
             self.logger.debug("Create CPU profile..."); t0 = time.time()  # noqa: E702
             nstamps = len(timestamps_raw) - 1
@@ -308,6 +321,11 @@ class SystemData:
         """
         mem_report_lines = self.read_csv_line_as_list(csv_report=csv_mem_report)
 
+        # Check if csv file is empty
+        if not mem_report_lines:
+            self.logger.warning("Memory CSV report is empty, returning empty data")
+            return [], {}
+
         keys_with_idx = {key: idx for idx, key in enumerate(mem_report_lines[0][:-1])}
 
         return mem_report_lines, keys_with_idx
@@ -339,6 +357,13 @@ class SystemData:
             self.logger.debug("Read Memory csv report..."); t0 = time.time()  # noqa: E702
             mem_report_lines, keys_with_idx = self.read_mem_csv_report(csv_mem_report=csv_mem_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if memory report is empty
+            if not mem_report_lines:
+                self.logger.warning("Memory CSV report is empty, creating empty profile")
+                self.mem_prof = {key: np.array([]) for key in _chosen_keys}
+                self.mem_stamps = np.array([])
+                return 0
 
             self.logger.debug("Create Memory profile..."); t0 = time.time()  # noqa: E702
 
@@ -434,10 +459,35 @@ class SystemData:
             cpufreq_report_lines = self.read_csv_line_as_list(csv_report=csv_cpufreq_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
+            # Check if csv file is empty
+            if not cpufreq_report_lines:
+                self.logger.warning("CPUFreq CSV report is empty, using default values")
+                cpufreq_report_lines = [["timestamp", "cpu_core", "frequency[1500000-3529052]"]]
+
             self.logger.debug("Create CPUFreq profile..."); t0 = time.time()  # noqa: E702
-            cpu_freq_parsing = cpufreq_report_lines[0][2].split('[')[1].split(']')[0].split("-")
-            self.cpufreq_min = cpu_freq_parsing[0] or None
-            self.cpufreq_max = cpu_freq_parsing[1] or None
+
+            # Parse CPU frequency range with error handling
+            try:
+                if (len(cpufreq_report_lines) > 0 and len(cpufreq_report_lines[0]) > 2
+                        and '[' in cpufreq_report_lines[0][2] and ']' in cpufreq_report_lines[0][2]):
+                    freq_range_str = cpufreq_report_lines[0][2].split('[')[1].split(']')[0]
+                    if '-' in freq_range_str:
+                        cpu_freq_parsing = freq_range_str.split("-")
+                        self.cpufreq_min = cpu_freq_parsing[0] if cpu_freq_parsing[0] else None
+                        self.cpufreq_max = (cpu_freq_parsing[1] if len(cpu_freq_parsing) > 1
+                                            and cpu_freq_parsing[1] else None)
+                    else:
+                        self.logger.warning("CPU frequency range format not recognized, using defaults")
+                        self.cpufreq_min = None
+                        self.cpufreq_max = None
+                else:
+                    self.logger.warning("CPU frequency header format not recognized, using defaults")
+                    self.cpufreq_min = None
+                    self.cpufreq_max = None
+            except (IndexError, ValueError, AttributeError) as e:
+                self.logger.warning(f"Error parsing CPU frequency range: {e}, using defaults")
+                self.cpufreq_min = None
+                self.cpufreq_max = None
 
             if len(cpufreq_report_lines) <= 1:  # @hard-coded For VM when --cpufreq is enabled
                 cpufreq_report_lines += [["0.0", "cpu0", "0"]]
@@ -536,6 +586,11 @@ class SystemData:
         """
         net_report_lines = self.read_csv_line_as_list(csv_report=csv_net_report)
 
+        # Check if csv file is empty
+        if not net_report_lines:
+            self.logger.warning("Network CSV report is empty, returning empty data")
+            return {}, []
+
         # Get network interfaces
         ts_0 = net_report_lines[1][0]
         ts = ts_0
@@ -595,6 +650,15 @@ class SystemData:
             self.logger.debug("Read Network csv report..."); t0 = time.time()  # noqa: E702
             net_ts_raw, timestamps_raw = self.read_net_csv_report(csv_net_report=csv_net_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if network report data is empty
+            if not net_ts_raw:
+                self.logger.warning("Network CSV report data is empty, creating empty profile")
+                self.net_prof = {}
+                self.net_data = {}
+                self.net_stamps = np.array([])
+                self.net_interfs = []
+                return
 
             self.logger.debug("Create Network profile..."); t0 = time.time()  # noqa: E702
 
@@ -722,6 +786,11 @@ class SystemData:
         """
         disk_report_lines = self.read_csv_line_as_list(csv_report=csv_disk_report)
 
+        # Check if csv file is empty
+        if not disk_report_lines:
+            self.logger.warning("Disk CSV report is empty, returning empty data")
+            return {}, []
+
         # useful indexes for the csv report
         _maj_blk_indx = 0  # noqa: F841
         _all_blk_indx = 1  # noqa: F841
@@ -804,6 +873,15 @@ class SystemData:
             self.logger.debug("Read Disk csv report..."); t0 = time.time()  # noqa: E702
             disk_ts_raw, timestamps_raw = self.read_disk_csv_report(csv_disk_report=csv_disk_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if disk report data is empty
+            if not disk_ts_raw:
+                self.logger.warning("Disk CSV report data is empty, creating empty profile")
+                self.disk_prof = {}
+                self.disk_data = {}
+                self.disk_stamps = np.array([])
+                self.disk_blks = []
+                return
 
             self.logger.debug("Create Disk profile..."); t0 = time.time()  # noqa: E702
             # final time stamps
@@ -957,6 +1035,11 @@ class SystemData:
         """
         ib_report_lines = self.read_csv_line_as_list(csv_report=csv_ib_report)
 
+        # Check if csv file is empty
+        if not ib_report_lines:
+            self.logger.warning("IB CSV report is empty, returning empty data")
+            return {}, []
+
         self.ib_metric_keys = ["port_rcv_data", "port_xmit_data"]
 
         ts_0 = ib_report_lines[1][0]
@@ -1011,6 +1094,15 @@ class SystemData:
             self.logger.debug("Read IB csv report..."); t0 = time.time()  # noqa: E702
             ib_ts_raw, timestamps_raw = self.read_ib_csv_report(csv_ib_report=csv_ib_report)
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if IB report data is empty
+            if not ib_ts_raw:
+                self.logger.warning("IB CSV report data is empty, creating empty profile")
+                self.ib_prof = {}
+                self.ib_data = {}
+                self.ib_stamps = np.array([])
+                self.ib_interfs = []
+                return
 
             self.logger.debug("Create IB profile..."); t0 = time.time()  # noqa: E702
             nstamps = len(timestamps_raw) - 1
@@ -1122,12 +1214,27 @@ class SystemData:
             csv_report  (str)   CSV report filename
 
         Returns:
-            (list)  read csv report as list
+            (list)  read csv report as list, empty list if file is empty or invalid
         """
         if os.path.isfile(csv_report):
+            # Check if file is empty
+            if os.path.getsize(csv_report) == 0:
+                self.logger.warning(
+                    f"Report {csv_report} is empty! -> Returning empty list"
+                )
+                return []
+
             with open(csv_report, newline="") as csvfile:
-                return list(csv.reader(csvfile))
+                csv_lines = list(csv.reader(csvfile))
+                if not csv_lines:
+                    self.logger.warning(
+                        f"Report {csv_report} contains no valid CSV data! -> Returning empty list"
+                    )
+                    return []
+                return csv_lines
 
         else:
-            self.logger.error(f"Report {csv_report} does not exist! -> Remove the associated flag to this report")
+            self.logger.error(
+                f"Report {csv_report} does not exist! -> Remove the associated flag to this report"
+            )
             sys.exit(1)
