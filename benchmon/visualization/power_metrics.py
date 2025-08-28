@@ -16,8 +16,17 @@ def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     """
     Compute the total energy (Wh), based on the trapezoid rule.
     """
+    # Handle empty data
+    if not time_stamps or not power_stamps or len(time_stamps) < 2 or len(power_stamps) < 2:
+        return 0.0
+
+    # Ensure both lists have the same length
+    min_length = min(len(time_stamps), len(power_stamps))
+    if min_length < 2:
+        return 0.0
+
     energy = 0
-    for idx in range(len(time_stamps) - 1):
+    for idx in range(min_length - 1):
         energy += 0.5 * (power_stamps[idx + 1] + power_stamps[idx]) * (time_stamps[idx + 1] - time_stamps[idx]) / 3600
 
     return energy
@@ -59,11 +68,26 @@ class PerfPowerData:
         """
         Read csv list
         """
+        # Check if file exists
+        if not os.path.isfile(self.csv_filename):
+            self.logger.error(f"CSV file {self.csv_filename} does not exist!")
+            return -1
+
+        # Check if file is empty
+        if os.path.getsize(self.csv_filename) == 0:
+            self.logger.warning(f"CSV file {self.csv_filename} is empty!")
+            return -1
+
         with open(self.csv_filename, newline="", encoding='utf-8') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
-            next(reader)
+            next(reader)  # Skip header
+
             for row in reader:
                 self.csv_list.append(row)
+
+            if not self.csv_list:
+                self.logger.warning(f"CSV file {self.csv_filename} contains no valid data!")
+                return -1
 
         return 0
 
@@ -75,27 +99,51 @@ class PerfPowerData:
         pow_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_prof.pkl"
         ts_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_stamps.pkl"
 
+        pickle_loaded = False
+
         if os.access(pow_pkl, os.R_OK):
-            self.logger.debug("Load Power profile..."); t0 = time.time()  # noqa: E702
+            try:
+                self.logger.debug("Load Power profile..."); t0 = time.time()  # noqa: E702
 
-            with open(pow_pkl, "rb") as _pf:
-                self.pow_prof = pickle.load(_pf)
-            with open(ts_pkl, "rb") as _pf:
-                self.time_stamps = pickle.load(_pf)
+                with open(pow_pkl, "rb") as _pf:
+                    self.pow_prof = pickle.load(_pf)
+                with open(ts_pkl, "rb") as _pf:
+                    self.time_stamps = pickle.load(_pf)
 
-            self.cpus = list(self.pow_prof.keys()); self.cpus.remove("time")  # noqa: E702
-            self.events = self.pow_prof[self.cpus[0]].keys()
+                self.cpus = list(self.pow_prof.keys())
+                if "time" in self.cpus:
+                    self.cpus.remove("time")
 
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                if self.cpus:
+                    self.events = self.pow_prof[self.cpus[0]].keys()
+                else:
+                    self.events = []
 
-        else:
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                pickle_loaded = True
+
+            except (IOError, pickle.PickleError, KeyError) as e:
+                self.logger.warning(f"Error loading pickle files: {e}, will recreate from CSV")
+
+        if not pickle_loaded:
             self.logger.debug("Read PerfPower csv report..."); t0 = time.time()  # noqa: E702
-            self.read_csv_list()
+            result = self.read_csv_list()
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if CSV reading failed
+            if result != 0:
+                self.logger.warning("Failed to read CSV data, creating empty profile")
+                self._create_empty_profile()
+                return 0
+
+            # Check if csv_list has sufficient data
+            LINES_START_INDEX = 2  # noqa: N806
+            if len(self.csv_list) < LINES_START_INDEX:
+                self.logger.warning("CSV file has insufficient data, creating empty profile")
+                self._create_empty_profile()
+                return 0
 
             self.logger.debug("Create PerfPower profile..."); t0 = time.time()  # noqa: E702
-
-            LINES_START_INDEX = 2  # noqa: N806
 
             EVENT_INDEX = 4  # noqa: N806
             self.events = list({item[EVENT_INDEX] for item in self.csv_list[LINES_START_INDEX:]})
@@ -127,7 +175,13 @@ class PerfPowerData:
 
             # Time stamps
             with open(self.csv_filename) as file:
-                epoch0 = float(file.readline()[2:-1])
+                first_line = file.readline()
+                if len(first_line) < 3:
+                    self.logger.warning("CSV file has invalid timestamp format, using default")
+                    epoch0 = 0.0
+                else:
+                    epoch0 = float(first_line[2:-1])
+
             self.time_stamps = np.zeros(self.nstamps + 1)
             self.time_stamps[0] = epoch0
             for i in range(0, self.nstamps):
@@ -142,11 +196,25 @@ class PerfPowerData:
 
         return 0
 
+    def _create_empty_profile(self):
+        """
+        Create empty profile when CSV data is not available
+        """
+        self.cpus = []
+        self.events = []
+        self.pow_prof = {"time": []}
+        self.time_stamps = np.array([])
+        self.nstamps = 0
 
     def plot_events_per_cpu(self) -> int:
         """
         Plot power events per cpu
         """
+        # Check if data is available
+        if not self.events or not self.cpus:
+            self.logger.warning("No power data available for plotting")
+            return 0
+
         for event in self.events:
             for cpu in self.cpus:
                 plt.plot(self.time_stamps, self.pow_prof[cpu][event], label=f"{cpu}/{self.events_table[event]}")
@@ -166,6 +234,11 @@ class PerfPowerData:
             xticks (list): x-axis ticks of current plot
             xlim (list): x-axis limit of current plot
         """
+        # Check if data is available
+        if not self.events or not self.cpus:
+            self.logger.warning("No power data available for plotting")
+            return 0.0
+
         pow_total = {event: 0 for event in self.events}  # noqa: C420
         for cpu in self.cpus:
             for event in self.events:
@@ -179,13 +252,14 @@ class PerfPowerData:
         ymax = 0
 
         for event in self.events:
-            power_array = np.append(pow_total[event], pow_total[event][-1])
-            energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
-            plt.step(self.time_stamps, power_array, where="post",
-                     label=f"{pre_label}{self.events_table[event]} ({round(energy, 1)} Wh)",
-                     color=events_style[event]["color"],
-                     ls=events_style[event]["ls"])
-            ymax = max(ymax, max(power_array))
+            if len(pow_total[event]) > 0:
+                power_array = np.append(pow_total[event], pow_total[event][-1])
+                energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
+                plt.step(self.time_stamps, power_array, where="post",
+                         label=f"{pre_label}{self.events_table[event]} ({round(energy, 1)} Wh)",
+                         color=events_style[event]["color"],
+                         ls=events_style[event]["ls"])
+                ymax = max(ymax, max(power_array))
 
         return ymax
 
@@ -208,8 +282,21 @@ class G5KPowerData:
         """
         Read json report
         """
-        with open(f"{self.traces_dir}/{report_filename}", "r") as jsfile:
-            return json.load(jsfile)
+        file_path = f"{self.traces_dir}/{report_filename}"
+
+        # Check if file exists
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"JSON file {file_path} does not exist")
+
+        # Check if file is empty
+        if os.path.getsize(file_path) == 0:
+            raise ValueError(f"JSON file {file_path} is empty")
+
+        with open(file_path, "r") as jsfile:
+            data = json.load(jsfile)
+            if not data:
+                raise ValueError(f"JSON file {file_path} contains no data")
+            return data
 
 
     def get_g5k_pow_prof(self):
@@ -272,6 +359,11 @@ class G5KPowerData:
         for metric in metrics:
             ts = self.g5k_pow_prof[metric]["timestamps"]
             vals = self.g5k_pow_prof[metric]["value"]
+
+            # Skip empty data
+            if len(ts) == 0 or len(vals) == 0:
+                continue
+
             energy = compute_total_energy(time_stamps=ts, power_stamps=vals)
             plt.plot(ts, vals,
                      color=metrics_style[metric]["color"],

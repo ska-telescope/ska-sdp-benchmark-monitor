@@ -5,7 +5,6 @@ Visualization manager
 import argparse
 import logging
 import os
-import sys
 import time
 from datetime import datetime
 
@@ -141,29 +140,68 @@ class BenchmonVisualizer:
         Load perf callstack traces
         """
         if self.args.call or self.args.inline_call or self.args.inline_call_cmd:
-            with open(f"{self.traces_repo}/mono_to_real_file.txt", "r") as file:
-                self.call_monotonic_to_real = float(file.readline())
-            call_raw = PerfCallRawData(logger=self.logger,
-                                       filename=f"{self.traces_repo}/call_report.txt")
-            samples, self.call_recorded_cmds = call_raw.cmds_list()
+            try:
+                # Check if monotonic to real time file exists
+                mono_file = f"{self.traces_repo}/mono_to_real_file.txt"
+                if not os.path.isfile(mono_file):
+                    self.logger.warning(f"Monotonic time file not found: {mono_file}")
+                    return
 
-            if self.args.call_cmd:
-                self.call_chosen_cmd = self.args.call_cmd
-            else:
-                self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
+                with open(mono_file, "r") as file:
+                    line = file.readline()
+                    if not line.strip():
+                        self.logger.warning(f"Empty monotonic time file: {mono_file}")
+                        return
+                    self.call_monotonic_to_real = float(line)
 
-            self.call_traces = PerfCallData(logger=self.logger,
-                                            cmd=self.call_chosen_cmd,
-                                            samples=samples,
-                                            m2r=self.call_monotonic_to_real,
-                                            traces_repo=self.traces_repo)
-            if self.args.call_depth:
-                self.call_depths = [depth for depth in range(self.args.call_depth)]
-            elif self.args.call_depths:
-                self.call_depths = [int(depth) for depth in self.args.call_depths.split(",")]
-            self.n_subplots += self.args.call * (2 if len(self.call_depths) > 2 else 1)
+            except (IOError, OSError, ValueError) as e:
+                self.logger.error(f"Error reading monotonic time file: {e}")
+                return
 
-            self.inline_calls_prof = self.get_inline_calls_prof(samples)
+            try:
+                call_raw = PerfCallRawData(logger=self.logger,
+                                           filename=f"{self.traces_repo}/call_report.txt")
+                samples, self.call_recorded_cmds = call_raw.cmds_list()
+
+                # Check if we got valid data
+                if not samples:
+                    self.logger.warning("No call samples available")
+                    return
+
+                if not self.call_recorded_cmds:
+                    self.logger.warning("No recorded commands available")
+                    return
+
+                if self.args.call_cmd:
+                    if self.args.call_cmd in self.call_recorded_cmds:
+                        self.call_chosen_cmd = self.args.call_cmd
+                    else:
+                        self.logger.warning(f"Specified command '{self.args.call_cmd}' not found in recorded commands")
+                        if self.call_recorded_cmds:
+                            self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
+                            self.logger.info(f"Using first available command: {self.call_chosen_cmd}")
+                        else:
+                            return
+                else:
+                    self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
+
+                self.call_traces = PerfCallData(logger=self.logger,
+                                                cmd=self.call_chosen_cmd,
+                                                samples=samples,
+                                                m2r=self.call_monotonic_to_real,
+                                                traces_repo=self.traces_repo)
+
+                if self.args.call_depth:
+                    self.call_depths = [depth for depth in range(self.args.call_depth)]
+                elif self.args.call_depths:
+                    self.call_depths = [int(depth) for depth in self.args.call_depths.split(",")]
+                self.n_subplots += self.args.call * (2 if len(self.call_depths) > 2 else 1)
+
+                self.inline_calls_prof = self.get_inline_calls_prof(samples)
+
+            except Exception as e:
+                self.logger.error(f"Error loading call metrics: {e}")
+                return
 
     def get_inline_calls_prof(self, samples: list) -> dict:
         """
@@ -177,6 +215,19 @@ class BenchmonVisualizer:
         """
         self.logger.debug("Create PerfPower inline profile...")
         t0 = time.time()
+
+        # Check for empty samples
+        if not samples:
+            self.logger.warning("No samples provided for inline calls profile")
+            return {}
+
+        if not self.call_recorded_cmds:
+            self.logger.warning("No recorded commands available for inline calls profile")
+            return {}
+
+        if not self.call_chosen_cmd or self.call_chosen_cmd not in self.call_recorded_cmds:
+            self.logger.warning("Invalid chosen command for inline calls profile")
+            return {}
 
         # Hard-coded system command to remove
         kernel_calls = [
@@ -193,9 +244,16 @@ class BenchmonVisualizer:
         else:
             _inline_cmds_threshold = 0.01
             user_calls_keys = []
+
+            # Avoid division by zero
+            chosen_cmd_count = self.call_recorded_cmds.get(self.call_chosen_cmd, 0)
+            if chosen_cmd_count == 0:
+                self.logger.warning(f"Chosen command '{self.call_chosen_cmd}' has zero samples")
+                return {}
+
             for key in self.call_recorded_cmds:
                 if (
-                    self.call_recorded_cmds[key] / self.call_recorded_cmds[self.call_chosen_cmd]
+                    self.call_recorded_cmds[key] / chosen_cmd_count
                     > _inline_cmds_threshold
                 ):
                     user_calls_keys += [key]
@@ -208,23 +266,41 @@ class BenchmonVisualizer:
                         user_calls_keys.remove(command)
                         break
 
+        # Check if we have any valid user calls
+        if not user_calls_keys:
+            self.logger.warning("No valid user calls found for inline profile")
+            return {}
+
         inline_calls_prof = {key: [] for key in user_calls_keys}
 
         msg = "\tInline commands: "
         for cmd in user_calls_keys:
-            msg += f"{{{cmd}: {self.call_recorded_cmds[cmd]} samples}} "
+            cmd_count = self.call_recorded_cmds.get(cmd, 0)
+            msg += f"{{{cmd}: {cmd_count} samples}} "
         self.logger.debug(msg)
 
         for sample in samples:
-            if sample["cmd"] in user_calls_keys:  # and  sample["cpu"] == "[000]":
-                inline_calls_prof[sample["cmd"]] += [sample["timestamp"] + self.call_monotonic_to_real]
+            if sample.get("cmd") in user_calls_keys:  # and  sample["cpu"] == "[000]":
+                try:
+                    timestamp = sample["timestamp"] + self.call_monotonic_to_real
+                    inline_calls_prof[sample["cmd"]] += [timestamp]
+                except (KeyError, TypeError) as e:
+                    self.logger.debug(f"Error processing sample timestamp: {e}")
+                    continue
 
         # Remove duplicated wrt decimal
         _round_val = 2
         msg = "\tInline commands (Lightened): "
         for cmd in user_calls_keys:
-            inline_calls_prof[cmd] = np.unique(np.array(inline_calls_prof[cmd]).round(_round_val))
-            msg += f"{{{cmd}: {len(inline_calls_prof[cmd])} samples}} "
+            if inline_calls_prof[cmd]:
+                try:
+                    inline_calls_prof[cmd] = np.unique(np.array(inline_calls_prof[cmd]).round(_round_val))
+                    msg += f"{{{cmd}: {len(inline_calls_prof[cmd])} samples}} "
+                except Exception as e:
+                    self.logger.warning(f"Error processing timestamps for command {cmd}: {e}")
+                    inline_calls_prof[cmd] = []
+            else:
+                msg += f"{{{cmd}: 0 samples}} "
         self.logger.debug(msg)
 
         self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
@@ -238,51 +314,95 @@ class BenchmonVisualizer:
         Args:
             xmargin (float): xmaring percent
         """
-        # @hc
-        try:
-            t0, tf = self.system_metrics.cpu_stamps[0], self.system_metrics.cpu_stamps[-1]
-        except AttributeError:
-            try:
-                t0, tf = self.system_metrics.mem_stamps[0], self.system_metrics.mem_stamps[-1]
-            except AttributeError:
-                try:
-                    t0, tf = self.system_metrics.net_stamps[0], self.system_metrics.net_stamps[-1]
-                except AttributeError:
-                    try:
-                        t0, tf = self.system_metrics.disk_stamps[0], self.system_metrics.disk_stamps[-1]
-                    except AttributeError:
-                        try:
-                            t0, tf = self.system_metrics.ib_stamps[0], self.system_metrics.ib_stamps[-1]
-                        except AttributeError:
-                            try:
-                                t0, tf = self.system_metrics.cpufreq_stamps[0], self.system_metrics.cpufreq_stamps[-1]
-                            except AttributeError:
-                                sys.exit(1)
+        t0, tf = None, None
 
+        # Try to get timestamps from different metrics with proper error handling
+        def safe_get_timestamps(stamps, metric_name):
+            """Safely get first and last timestamps from a stamps array"""
+            if hasattr(self.system_metrics, stamps) and getattr(self.system_metrics, stamps) is not None:
+                stamps_array = getattr(self.system_metrics, stamps)
+                if len(stamps_array) >= 2:
+                    return stamps_array[0], stamps_array[-1]
+                elif len(stamps_array) == 1:
+                    self.logger.warning(f"Only one timestamp available in {metric_name}")
+                    return stamps_array[0], stamps_array[0]
+                else:
+                    self.logger.warning(f"Empty timestamps array for {metric_name}")
+            return None, None
+
+        # Try each metric type in order
+        if self.system_metrics:
+            # Try CPU timestamps
+            t0, tf = safe_get_timestamps('cpu_stamps', 'CPU')
+
+            if t0 is None:
+                # Try memory timestamps
+                t0, tf = safe_get_timestamps('mem_stamps', 'memory')
+
+            if t0 is None:
+                # Try network timestamps
+                t0, tf = safe_get_timestamps('net_stamps', 'network')
+
+            if t0 is None:
+                # Try disk timestamps
+                t0, tf = safe_get_timestamps('disk_stamps', 'disk')
+
+            if t0 is None:
+                # Try InfiniBand timestamps
+                t0, tf = safe_get_timestamps('ib_stamps', 'InfiniBand')
+
+            if t0 is None:
+                # Try CPU frequency timestamps
+                t0, tf = safe_get_timestamps('cpufreq_stamps', 'CPU frequency')
+
+        # If we still don't have valid timestamps, use fallback or exit
+        if t0 is None or tf is None:
+            self.logger.error("No valid timestamps found in any system metrics")
+            # Use current time as fallback
+            current_time = time.time()
+            t0, tf = current_time, current_time + 60  # 1 minute default range
+            self.logger.warning("Using fallback time range")
+
+        # Apply user-specified time range if provided
         fmt = "%Y-%m-%dT%H:%M:%S"
-        if self.args.start_time:
-            t0 = datetime.strptime(self.args.start_time, fmt).timestamp()
-        if self.args.end_time:
-            tf = datetime.strptime(self.args.end_time, fmt).timestamp()
+        try:
+            if self.args.start_time:
+                t0 = datetime.strptime(self.args.start_time, fmt).timestamp()
+            if self.args.end_time:
+                tf = datetime.strptime(self.args.end_time, fmt).timestamp()
+        except ValueError as e:
+            self.logger.warning(f"Error parsing time format: {e}")
 
-        xticks_val = np.linspace(t0, tf, self.args.fig_xrange)
+        # Ensure tf > t0
+        if tf <= t0:
+            self.logger.warning("End time is not greater than start time, adjusting")
+            tf = t0 + 60  # Add 1 minute
 
-        t0_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(t0))
-        tf_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(tf))
+        try:
+            xticks_val = np.linspace(t0, tf, self.args.fig_xrange)
 
-        inbetween_labels = []
-        _days = [t0_fmt.split("\n")[1].split("-")[1]]
-        for st in xticks_val[1:-1]:
-            inbetween_labels += [time.strftime('%H:%M:%S', time.localtime(st))]
-            _days += [time.strftime('%d', time.localtime(st))]
-            if _days[-1] != _days[-2]:
-                inbetween_labels[-1] += "\n" + time.strftime('%b-%d', time.localtime(st))
-        xticks_label = [t0_fmt] + inbetween_labels + [tf_fmt]
+            t0_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(t0))
+            tf_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(tf))
 
-        self.xticks = (xticks_val, xticks_label)
+            inbetween_labels = []
+            _days = [t0_fmt.split("\n")[1].split("-")[1]]
+            for st in xticks_val[1:-1]:
+                inbetween_labels += [time.strftime('%H:%M:%S', time.localtime(st))]
+                _days += [time.strftime('%d', time.localtime(st))]
+                if _days[-1] != _days[-2]:
+                    inbetween_labels[-1] += "\n" + time.strftime('%b-%d', time.localtime(st))
+            xticks_label = [t0_fmt] + inbetween_labels + [tf_fmt]
 
-        dx = (tf - t0) * xmargin
-        self.xlim = [t0 - dx, tf + dx]
+            self.xticks = (xticks_val, xticks_label)
+
+            dx = (tf - t0) * xmargin
+            self.xlim = [t0 - dx, tf + dx]
+
+        except Exception as e:
+            self.logger.error(f"Error setting up x-axis parameters: {e}")
+            # Set minimal fallback parameters
+            self.xticks = (np.array([t0, tf]), [str(t0), str(tf)])
+            self.xlim = [t0, tf]
 
     def apply_xaxis_params(self) -> None:
         """
@@ -297,145 +417,195 @@ class BenchmonVisualizer:
         """
         Run plotting
         """
-        fig, _ = plt.subplots(self.n_subplots, sharex=True)
-        fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
-        fig.add_gridspec(self.n_subplots, hspace=0)
+        # Check if we have any subplots to create
+        if self.n_subplots <= 0:
+            self.logger.warning("No subplots to create, skipping plotting")
+            return
 
-        sbp = 1
-        annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
+        try:
+            fig, _ = plt.subplots(self.n_subplots, sharex=True)
+            fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
+            fig.add_gridspec(self.n_subplots, hspace=0)
 
-        # CPU plot
-        if self.args.cpu:
-            self.logger.debug("Plotting  cpu")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
-            sbp += 1
-            self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages)
+            sbp = 1
+            annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
 
-        # Full individual core plot
-        if bool(self.args.cpu_cores_full):
-            for core_number in self.args.cpu_cores_full.split(","):
-                self.logger.debug(f"Plotting  full cpu core {core_number}")
+            # CPU plot
+            if self.args.cpu:
+                if self.system_metrics:
+                    self.logger.debug("Plotting  cpu")
+                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    sbp += 1
+                    self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages)
+                else:
+                    self.logger.warning("No system metrics available for CPU plot")
+
+            # Full individual core plot
+            if bool(self.args.cpu_cores_full):
+                if self.system_metrics:
+                    for core_number in self.args.cpu_cores_full.split(","):
+                        self.logger.debug(f"Plotting  full cpu core {core_number}")
+                        ax = plt.subplot(self.n_subplots, 1, sbp)
+                        sbp += 1
+                        self.system_metrics.plot_cpu(number=core_number,
+                                                     annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages)
+                else:
+                    self.logger.warning("No system metrics available for CPU cores plot")
+
+            # CPU per core plot
+            if self.args.cpu_all:
+                if self.system_metrics:
+                    self.logger.debug("Plotting  cpu per core")
+                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    sbp += 1
+                    self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
+                                                          cores_out=self.args.cpu_cores_out,
+                                                          annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages)
+                else:
+                    self.logger.warning("No system metrics available for CPU per core plot")
+
+            # CPU cores frequency plot
+            if self.args.cpu_freq:
+                if self.system_metrics:
+                    self.logger.debug("Plotting  cpu cores frequency")
+                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    sbp += 1
+                    freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
+                                                               cores_out=self.args.cpu_cores_out,
+                                                               annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages, ymax=freqmax)
+                else:
+                    self.logger.warning("No system metrics available for CPU frequency plot")
+
+            # Memory/swap plot
+            if self.args.mem:
+                if self.system_metrics:
+                    self.logger.debug("Plotting  memory/swap")
+                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    sbp += 1
+                    memmax = self.system_metrics.plot_memory_usage(annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages, ymax=memmax)
+                else:
+                    self.logger.warning("No system metrics available for memory plot")
+
+            # Network plot
+            if self.args.net or self.args.net_all or self.args.net_data:
+                if self.system_metrics:
+                    self.logger.debug("Plotting  network")
+                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    sbp += 1
+                    netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
+                                                              is_rx_only=self.args.net_rx_only,
+                                                              is_tx_only=self.args.net_tx_only,
+                                                              is_netdata_label=self.args.net_data,
+                                                              annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages, ymax=netmax)
+                else:
+                    self.logger.warning("No system metrics available for network plot")
+
+            # Infiniband plot
+            if self.args.ib:
+                if self.system_metrics:
+                    self.logger.debug("Plotting  infiniband")
+                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    sbp += 1
+                    ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages, ymax=ibmax)
+                else:
+                    self.logger.warning("No system metrics available for InfiniBand plot")
+
+            # Disk plot
+            if self.args.disk:
+                if self.system_metrics:
+                    self.logger.debug("Plotting  disk")
+                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    sbp += 1
+                    diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
+                                                            is_rd_only=self.args.disk_rd_only,
+                                                            is_wr_only=self.args.disk_wr_only,
+                                                            is_diskdata_label=self.args.disk_data,
+                                                            annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages, ymax=diskmax)
+                else:
+                    self.logger.warning("No system metrics available for disk plot")
+
+            # (perf+g5k) Power plot
+            if self.args.pow or self.args.pow_g5k:
+                self.logger.debug("Plotting perf power")
                 ax = plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                self.system_metrics.plot_cpu(number=core_number,
-                                             annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages)
+                powmax = [0]
 
-        # CPU per core plot
-        if self.args.cpu_all:
-            self.logger.debug("Plotting  cpu per core")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
-            sbp += 1
-            self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
-                                                  cores_out=self.args.cpu_cores_out,
-                                                  annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages)
+                if self.args.pow and self.power_perf_metrics:
+                    try:
+                        powmax += [self.power_perf_metrics.plot_events()]
+                    except Exception as e:
+                        self.logger.warning(f"Error plotting perf power events: {e}")
 
-        # CPU cores frequency plot
-        if self.args.cpu_freq:
-            self.logger.debug("Plotting  cpu cores frequency")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
-            sbp += 1
-            freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
-                                                       cores_out=self.args.cpu_cores_out,
-                                                       annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages, ymax=freqmax)
+                if self.args.pow_g5k and self.power_g5k_metrics:
+                    try:
+                        powmax += [self.power_g5k_metrics.plot_g5k_pow_profiles()]
+                    except Exception as e:
+                        self.logger.warning(f"Error plotting G5K power profiles: {e}")
 
-        # Memory/swap plot
-        if self.args.mem:
-            self.logger.debug("Plotting  memory/swap")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
-            sbp += 1
-            memmax = self.system_metrics.plot_memory_usage(annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages, ymax=memmax)
+                if annotate_with_cmds:
+                    annotate_with_cmds(ymax=max(powmax))
+                if self.ical_stages:
+                    plot_ical_stages(self.ical_stages, ymax=max(powmax))
 
-        # Network plot
-        if self.args.net or self.args.net_all or self.args.net_data:
-            self.logger.debug("Plotting  network")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
-            sbp += 1
-            netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
-                                                      is_rx_only=self.args.net_rx_only,
-                                                      is_tx_only=self.args.net_tx_only,
-                                                      is_netdata_label=self.args.net_data,
-                                                      annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages, ymax=netmax)
+                plt.xticks(*self.xticks)
+                plt.xlim(self.xlim)
+                plt.ylabel("Power (W)")
+                plt.legend(loc=1)
+                plt.grid()
 
-        # Infiniband plot
-        if self.args.ib:
-            self.logger.debug("Plotting  infiniband")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
-            sbp += 1
-            ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages, ymax=ibmax)
+            # (perf) Calltrace plot
+            if self.args.call:
+                if self.call_traces:
+                    self.logger.debug("Plotting perf call graph")
+                    plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=ax)
+                    self.call_traces.plot(self.call_depths,
+                                          xticks=self.xticks,
+                                          xlim=self.xlim,
+                                          legend_ncol=self.args.fig_call_legend_ncol)
+                else:
+                    self.logger.warning("No call traces available for call graph plot")
 
-        # Disk plot
-        if self.args.disk:
-            self.logger.debug("Plotting  disk")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
-            sbp += 1
-            diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
-                                                    is_rd_only=self.args.disk_rd_only,
-                                                    is_wr_only=self.args.disk_wr_only,
-                                                    is_diskdata_label=self.args.disk_data,
-                                                    annotate_with_cmds=annotate_with_cmds)
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages, ymax=diskmax)
+            fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
+            plt.subplots_adjust(hspace=.5)
+            plt.tight_layout()
 
-        # (perf+g5k) Power plot
-        if self.args.pow or self.args.pow_g5k:
-            self.logger.debug("Plotting perf power")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
-            sbp += 1
-            powmax = [0]
-            if self.args.pow:
-                powmax += [self.power_perf_metrics.plot_events()]
-            if self.args.pow_g5k:
-                powmax += [self.power_g5k_metrics.plot_g5k_pow_profiles()]
-            if annotate_with_cmds:
-                annotate_with_cmds(ymax=max(powmax))
-            if self.ical_stages:
-                plot_ical_stages(self.ical_stages, ymax=max(powmax))
+            # Enable interactive plot
+            if self.args.interactive:
+                self.logger.debug("Start interactive session with matplotlib")
+                plt.show()
 
-            plt.xticks(*self.xticks)
-            plt.xlim(self.xlim)
-            plt.ylabel("Power (W)")
-            plt.legend(loc=1)
-            plt.grid()
+            # Figure saving parameters
+            dpi = {"unset": "figure", "low": 200, "medium": 600, "high": 1200}
+            figpath = f"{self.traces_repo}" if self.args.fig_path is None else self.args.fig_path
 
-        # (perf) Calltrace plot
-        if self.args.call:
-            self.logger.debug("Plotting perf call graph")
-            plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=ax)
-            self.call_traces.plot(self.call_depths,
-                                  xticks=self.xticks,
-                                  xlim=self.xlim,
-                                  legend_ncol=self.args.fig_call_legend_ncol)
+            try:
+                for fmt in self.args.fig_fmt.split(","):
+                    figname = f"{figpath}/{self.args.fig_name}.{fmt}"
+                    fig.savefig(figname, format=fmt, dpi=dpi[self.args.fig_dpi])
+                    self.logger.info(f"Figure saved: {os.path.realpath(figname)}")
+            except Exception as e:
+                self.logger.error(f"Error saving figure: {e}")
 
-        fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
-        plt.subplots_adjust(hspace=.5)
-        plt.tight_layout()
-
-        # Enable interactive plot
-        if self.args.interactive:
-            self.logger.debug("Start interactive session with matplotlib")
-            plt.show()
-
-        # Figure saving parameters
-        dpi = {"unset": "figure", "low": 200, "medium": 600, "high": 1200}
-        figpath = f"{self.traces_repo}" if self.args.fig_path is None else self.args.fig_path
-        for fmt in self.args.fig_fmt.split(","):
-            figname = f"{figpath}/{self.args.fig_name}.{fmt}"
-            fig.savefig(figname, format=fmt, dpi=dpi[self.args.fig_dpi])
-            self.logger.info(f"Figure saved: {os.path.realpath(figname)}")
+        except Exception as e:
+            self.logger.error(f"Error in run_plots: {e}")
+            return
 
     def annotate_with_cmds(self, ymax: float = 100.) -> None:
         """
@@ -445,29 +615,57 @@ class BenchmonVisualizer:
             ymax (float): max value of y-axis
             xlim (list) : limits of x-axis
         """
-        cm = plt.cm.gist_earth(np.linspace(0, 1, len(self.inline_calls_prof) + 1))
+        if not self.inline_calls_prof:
+            self.logger.warning("No inline calls profile available for annotation")
+            return
 
-        ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
-        ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
-        for idx, call in enumerate(self.inline_calls_prof):
-            call_ts_limited = self.inline_calls_prof[call][
-                np.logical_and(self.inline_calls_prof[call] > self.xlim[0],
-                               self.inline_calls_prof[call] < self.xlim[1])
-            ]
+        if not self.xlim or len(self.xlim) < 2:
+            self.logger.warning("Invalid xlim for annotation")
+            return
 
-            if len(call_ts_limited) == 0:
-                continue
+        try:
+            cm = plt.cm.gist_earth(np.linspace(0, 1, len(self.inline_calls_prof) + 1))
 
-            plt.plot(call_ts_limited,
-                     ypos(idx) * np.ones(len(call_ts_limited)),
-                     ".", ms=4, c=cm[idx])
+            ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
+            ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
 
-            plt.text(np.mean(call_ts_limited),
-                     ypos(idx) * 1.5,
-                     call,
-                     va="top",
-                     ha="center",
-                     c=cm[idx],
-                     weight="bold")
+            plot_count = 0
+            for idx, call in enumerate(self.inline_calls_prof):
+                if not self.inline_calls_prof[call] or len(self.inline_calls_prof[call]) == 0:
+                    continue
 
-        plt.ylim(ylim(idx))
+                try:
+                    call_ts_limited = self.inline_calls_prof[call][
+                        np.logical_and(self.inline_calls_prof[call] > self.xlim[0],
+                                       self.inline_calls_prof[call] < self.xlim[1])
+                    ]
+
+                    if len(call_ts_limited) == 0:
+                        continue
+
+                    plt.plot(call_ts_limited,
+                             ypos(idx) * np.ones(len(call_ts_limited)),
+                             ".", ms=4, c=cm[idx % len(cm)])
+
+                    plt.text(np.mean(call_ts_limited),
+                             ypos(idx) * 1.5,
+                             call,
+                             va="top",
+                             ha="center",
+                             c=cm[idx % len(cm)],
+                             weight="bold")
+
+                    plot_count += 1
+
+                except Exception as e:
+                    self.logger.warning(f"Error annotating command {call}: {e}")
+                    continue
+
+            if plot_count > 0:
+                # Use the last valid idx for ylim
+                plt.ylim(ylim(idx))
+            else:
+                self.logger.warning("No valid commands were annotated")
+
+        except Exception as e:
+            self.logger.error(f"Error in annotate_with_cmds: {e}")
