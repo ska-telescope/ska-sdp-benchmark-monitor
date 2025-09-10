@@ -103,6 +103,54 @@ class RunUtils:
         )
 
         parser.add_argument(
+            "--grafana",
+            action="store_true",
+            help="Enable real-time data sending to InfluxDB/Grafana"
+        )
+
+        parser.add_argument(
+            "--grafana-url",
+            type=str,
+            default="http://localhost:8086",
+            help="InfluxDB URL. Default: http://localhost:8086"
+        )
+
+        parser.add_argument(
+            "--grafana-job-name",
+            type=str,
+            default="benchmon",
+            help="Job name for metrics. Default: benchmon"
+        )
+
+        parser.add_argument(
+            "--grafana-batch-size",
+            type=int,
+            default=50,
+            help="Number of metrics to batch before sending to InfluxDB. Default: 50"
+        )
+
+        parser.add_argument(
+            "--grafana-send-interval",
+            type=float,
+            default=2.0,
+            help="Interval in seconds between InfluxDB sends. Default: 2.0"
+        )
+
+        parser.add_argument(
+            "--csv",
+            action="store_true",
+            default=True,
+            help="Enable CSV file output (default)"
+        )
+
+        parser.add_argument(
+            "--no-csv",
+            action="store_false",
+            dest="csv",
+            help="Disable CSV file output"
+        )
+
+        parser.add_argument(
             "--test-timeout",
             type=int,
             help="Timeout for testing"
