@@ -33,10 +33,12 @@ class InfluxDBSender:
 
         # HTTP session for connection reuse
         self.session = requests.Session()
-        self.session.headers.update({
-            'Authorization': f'Token {self.token}',
+        headers = {
             'Content-Type': 'text/plain; charset=utf-8'
-        })
+        }
+        if self.token:
+            headers['Authorization'] = f'Token {self.token}'
+        self.session.headers.update(headers)
 
         self.write_url = f"{self.influxdb_url}/api/v2/write?org={self.organization}&bucket={self.bucket}&precision=s"
 
@@ -133,6 +135,18 @@ class InfluxDBSender:
                 data=line_protocol_data,
                 timeout=10
             )
+
+            # If 401 Unauthorized and token is empty, try again without Authorization header
+            if response.status_code == 401 and self.token:
+                self.logger.error("InfluxDB write failed: 401 Unauthorized. Check your token or try running without --grafana-token.")
+            elif response.status_code == 401 and not self.token:
+                # Remove Authorization header and retry
+                self.session.headers.pop('Authorization', None)
+                response = self.session.post(
+                    self.write_url,
+                    data=line_protocol_data,
+                    timeout=10
+                )
 
             if response.status_code == 204:
                 self.logger.debug(f"Successfully sent {len(batch)} metrics to InfluxDB")

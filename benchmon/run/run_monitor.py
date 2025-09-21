@@ -11,12 +11,22 @@ import time
 import psutil
 import requests
 
-from .influxdb_sender import InfluxDBSender, create_influxdb_config
+from .influxdb_sender import InfluxDBSender
 from .hp_processor import HighPerformanceDataProcessor
 
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
+
+# 简化InfluxDB3配置，移除Docker依赖
+INFLUXDB3_DEFAULT_CONFIG = {
+    'url': 'http://localhost:8086',
+    'database': 'metrics',
+    'token': '',  # InfluxDB3 may not require token for local instance
+    'org': 'benchmon',
+    'batch_size': 50,
+    'send_interval': 2.0
+}
 
 
 class RunMonitor:
@@ -27,8 +37,20 @@ class RunMonitor:
     def __init__(self, args, logger):
         """Docstring @todo."""
 
+        self.args = args
         self.logger = logger
-
+        influxdb_config = {
+            'url': args.grafana_url,
+            'organization': args.grafana_org,
+            'bucket': args.grafana_bucket,
+            'token': args.grafana_token,
+            'job_name': getattr(args, 'job_name', 'benchmon'),
+            'batch_size': getattr(args, 'batch_size', 50),
+            'send_interval': getattr(args, 'send_interval', 2.0)
+        }
+        self.influxdb_config = influxdb_config 
+        self.influxdb_sender = InfluxDBSender(self.logger, influxdb_config)
+        
         self.should_run = True
 
         self.save_dir = args.save_dir
@@ -59,15 +81,22 @@ class RunMonitor:
         self.is_grafana = args.grafana
 
         if self.is_grafana:
-            self.influxdb_config = create_influxdb_config(
-                influxdb_url=args.grafana_url,
-                enabled=args.grafana,
-                job_name=args.grafana_job_name,
-                batch_size=args.grafana_batch_size,
-                send_interval=args.grafana_send_interval
-            )
-            self.influxdb_sender = None
-            self.hp_processor = None
+            influxdb_config = {
+                'url': args.grafana_url,
+                'organization': args.grafana_org,
+                'bucket': args.grafana_bucket,
+                'token': args.grafana_token,
+                'job_name': getattr(args, 'job_name', 'benchmon'),
+                'batch_size': getattr(args, 'batch_size', 50),
+                'send_interval': getattr(args, 'send_interval', 2.0)
+            }
+            self.influxdb_sender = InfluxDBSender(self.logger, influxdb_config)
+            pipe_path = f"{self.save_dir}/benchmon_data_pipe"
+            self.hp_processor = HighPerformanceDataProcessor(self.logger, self.influxdb_sender, pipe_path)
+
+            self.influxdb_sender.start()
+            self.hp_processor.start()
+            self.logger.info("InfluxDB integration enabled - HP processor started")
 
         # Profiling and callstack parameters
         self.call_filename = "call_report.txt"

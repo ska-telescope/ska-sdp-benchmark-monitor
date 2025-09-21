@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""
-Grafana Dashboard Deployment Tool
 
-This script automatically deploys dashboard JSON files to Grafana using the REST API.
-It can deploy individual dashboards or all dashboards in a directory.
+"""
+Grafana Dashboard Deployment Tool for Local Services
+Deploys dashboards to local Grafana instance (no Docker dependency)
 """
 
 import argparse
 import json
 import logging
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -18,49 +18,44 @@ import requests
 from requests.auth import HTTPBasicAuth
 
 
-class GrafanaDashboardDeployer:
-    """Deploy dashboards to Grafana using REST API"""
-
-    def __init__(self,
-                 grafana_url: str = "http://localhost:3000",
-                 username: str = "admin",
-                 password: str = "admin123"):
-        """
-        Initialize the deployer
-
-        Args:
-            grafana_url: The Grafana server URL
-            username: Grafana username
-            password: Grafana password
-        """
+class GrafanaDashboardManager:
+    """Manage Grafana dashboards for local services"""
+    
+    def __init__(
+        self,
+        grafana_url: str = "http://localhost:3000",
+        username: str = "admin",
+        password: str = "admin123",
+        timeout: float = 30.0
+    ):
         self.grafana_url = grafana_url.rstrip('/')
         self.username = username
         self.password = password
-        self.auth = HTTPBasicAuth(username, password)
+        self.timeout = timeout
         self.session = requests.Session()
-        self.session.auth = self.auth
-
-        # Configure logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
+        self.session.auth = HTTPBasicAuth(username, password)
         self.logger = logging.getLogger(__name__)
 
     def test_connection(self) -> bool:
-        """Test connection to Grafana server"""
+        """Test connection to local Grafana"""
         try:
-            response = self.session.get(f"{self.grafana_url}/api/health")
+            response = self.session.get(
+                f"{self.grafana_url}/api/health",
+                timeout=self.timeout
+            )
+            
             if response.status_code == 200:
-                self.logger.info("✅ Successfully connected to Grafana")
+                self.logger.info("✅ Connected to Grafana successfully")
                 return True
             else:
                 self.logger.error(
-                    f"Failed to connect to Grafana. Status: {response.status_code}"
+                    f"❌ Grafana health check failed: {response.status_code}"
                 )
                 return False
-        except requests.RequestException as e:
-            self.logger.error(f"Connection error: {e}")
+                
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"❌ Cannot connect to Grafana: {e}")
+            self.logger.info("💡 Make sure Grafana is running on localhost:3000")
             return False
 
     def load_dashboard_json(self, file_path: Path) -> Optional[Dict]:
@@ -339,8 +334,6 @@ class GrafanaDashboardDeployer:
                                   compose_file: str = "docker-compose.influxdb.yml") -> bool:
         """Restart Grafana container using docker-compose"""
         try:
-            import subprocess
-
             # Use the compose file in the same directory as this script
             compose_path = Path(__file__).parent / compose_file
             if not compose_path.exists():
@@ -496,7 +489,7 @@ Examples:
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Create deployer instance
-    deployer = GrafanaDashboardDeployer(
+    deployer = GrafanaDashboardManager(
         grafana_url=args.grafana_url,
         username=args.username,
         password=args.password

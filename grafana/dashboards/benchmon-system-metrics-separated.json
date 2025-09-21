@@ -22,12 +22,14 @@
   "links": [],
   "liveNow": false,
   "panels": [
-       "gridPos": {
+    {
+      "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
-        "y": 24
-      },     "datasource": {
+        "y": 0
+      },
+      "datasource": {
         "type": "influxdb",
         "name": "InfluxDB"
       },
@@ -83,12 +85,6 @@
           "unit": "percent"
         },
         "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
       },
       "id": 1,
       "options": {
@@ -613,6 +609,5 @@
   "timezone": "",
   "title": "Benchmon System Metrics - Separated",
   "uid": "benchmon-system-separated",
-  "version": 1,
   "weekStart": ""
 }
