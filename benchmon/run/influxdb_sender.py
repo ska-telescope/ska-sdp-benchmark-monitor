@@ -13,55 +13,31 @@ class InfluxDBSender:
     def __init__(self, logger: logging.Logger, config: Dict[str, Any]):
         self.logger = logger
         self.config = config
-        self.influxdb_url = config.get('url', 'http://localhost:8086')
+        self.influxdb_url = config.get('url', 'http://localhost:8081')
         self.organization = config.get('organization', 'benchmon')
         self.bucket = config.get('bucket', 'metrics')
         self.token = config.get('token', 'admin123')
         self.job_name = config.get('job_name', 'benchmon')
         self.batch_size = config.get('batch_size', 50)
         self.send_interval = config.get('send_interval', 2.0)
+        self.mode = config.get('mode', 'v2')  # 新增参数，'v2'或'v3'
         self.data_queue = queue.Queue()
         self.is_running = False
         self.sender_thread = None
-        self.mode = None  # 'v2' or 'v3'
         self._init_client()
-
-    def _init_client(self):
-        # Detect InfluxDB3 (FlightSQL) if port is 8081 or url contains 'influxdb3'
-        if (':8081' in self.influxdb_url) or ('influxdb3' in self.influxdb_url):
-            try:
-                from influxdb_client_3 import InfluxDBClient3, Point
-                self.InfluxDBClient3 = InfluxDBClient3
-                self.Point = Point
-                self.mode = 'v3'
-                self.client = InfluxDBClient3(
-                    host=self.influxdb_url.replace('http://', '').replace('https://', '').split(':')[0],
-                    port=int(self.influxdb_url.split(':')[-1]),
-                    token=self.token,
-                    org=self.organization,
-                    database=self.bucket
-                )
-                self.logger.info("InfluxDBSender: Using InfluxDB3 (FlightSQL) mode")
-            except ImportError:
-                self.logger.error("influxdb_client_3 not installed. Please pip install influxdb3-python.")
-                raise
-        else:
-            import requests
-            self.requests = requests
-            self.session = requests.Session()
-            headers = {'Content-Type': 'text/plain; charset=utf-8'}
-            if self.token:
-                headers['Authorization'] = f'Token {self.token}'
-            self.session.headers.update(headers)
-            self.write_url = f"{self.influxdb_url}/api/v2/write?org={self.organization}&bucket={self.bucket}&precision=s"
-            self.mode = 'v2'
-            self.logger.info("InfluxDBSender: Using InfluxDB2 (HTTP line protocol) mode")
 
     def start(self):
         """Start the InfluxDB sender thread"""
         if self.is_running:
             return
-
+        # 修复v2模式下session关闭后自动重建
+        if self.mode == 'v2' and (not hasattr(self, 'session') or getattr(self.session, 'closed', False)):
+            import requests
+            self.session = requests.Session()
+            headers = {'Content-Type': 'text/plain; charset=utf-8'}
+            if self.token:
+                headers['Authorization'] = f'Token {self.token}'
+            self.session.headers.update(headers)
         self.is_running = True
         self.sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
         self.sender_thread.start()
@@ -89,6 +65,44 @@ class InfluxDBSender:
                 self.data_queue.put(metric, block=False)
             except queue.Full:
                 self.logger.warning("InfluxDB queue full, dropping metric")
+
+    def _init_client(self):
+        if self.mode == 'v3':
+            try:
+                from influxdb_client_3 import InfluxDBClient3, Point
+                self.InfluxDBClient3 = InfluxDBClient3
+                self.Point = Point
+                url = self.influxdb_url.replace('http://', '').replace('https://', '')
+                if ':' in url:
+                    host, port = url.split(':')
+                    port = int(port)
+                else:
+                    host = url
+                    port = 8081
+                self.client = InfluxDBClient3(
+                    host=host,
+                    port=port,
+                    token=self.token,
+                    org=self.organization,
+                    database=self.bucket
+                )
+                self.logger.info(f"InfluxDBSender: Using InfluxDB3 (FlightSQL) mode, host={host}, port={port}")
+            except ImportError:
+                self.logger.error("influxdb_client_3 not installed. Please pip install influxdb3-python.")
+                raise
+            except Exception as e:
+                self.logger.error(f"InfluxDB3 client init failed: {e}")
+                raise
+        else:
+            import requests
+            self.requests = requests
+            self.session = requests.Session()
+            headers = {'Content-Type': 'text/plain; charset=utf-8'}
+            if self.token:
+                headers['Authorization'] = f'Token {self.token}'
+            self.session.headers.update(headers)
+            self.write_url = f"{self.influxdb_url}/api/v2/write?org={self.organization}&bucket={self.bucket}&precision=s"
+            self.logger.info("InfluxDBSender: Using InfluxDB2 (HTTP line protocol) mode")
 
     def _sender_loop(self):
         """Main sender loop running in background thread"""
