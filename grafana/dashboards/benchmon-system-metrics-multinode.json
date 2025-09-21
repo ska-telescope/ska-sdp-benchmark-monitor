@@ -1,0 +1,19 @@
+{
+  "annotations": [],
+  "description": "Multi-node benchmark monitoring",
+  "editable": true,
+  "gnetId": 12345,
+  "id": 1,
+  "isFolder": false,
+  "links": [],
+  "panels": [],
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "title": "Multi-node Benchmark",
+  "uid": "benchmon-system-multinode",
+  "weekStart": ""
+}

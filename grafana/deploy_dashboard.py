@@ -73,7 +73,7 @@ class GrafanaDashboardManager:
             self.logger.error(f"Error reading {file_path}: {e}")
             return None
 
-    def deploy_dashboard(self, dashboard_json: Dict, overwrite: bool = False) -> bool:
+    def deploy_dashboard(self, dashboard_json: Dict, overwrite: bool = True) -> bool:
         """Deploy a single dashboard to Grafana"""
         try:
             # Prepare the dashboard payload
@@ -112,7 +112,7 @@ class GrafanaDashboardManager:
             self.logger.error(f"Error deploying dashboard: {e}")
             return False
 
-    def deploy_file(self, file_path: Path, overwrite: bool = False) -> bool:
+    def deploy_file(self, file_path: Path, overwrite: bool = True) -> bool:
         """Deploy dashboard from file"""
         self.logger.info(f"Loading dashboard from: {file_path}")
 
