@@ -5,56 +5,57 @@ import queue
 import threading
 import time
 from typing import Dict, Any, List
-import requests
 
 
 class InfluxDBSender:
-    """Send metrics data to InfluxDB in real-time"""
+    """Send metrics data to InfluxDB2 or InfluxDB3 in real-time"""
 
     def __init__(self, logger: logging.Logger, config: Dict[str, Any]):
         self.logger = logger
         self.config = config
-
-        # Configuration
         self.influxdb_url = config.get('url', 'http://localhost:8086')
         self.organization = config.get('organization', 'benchmon')
         self.bucket = config.get('bucket', 'metrics')
         self.token = config.get('token', 'admin123')
         self.job_name = config.get('job_name', 'benchmon')
-
-        # Performance settings
         self.batch_size = config.get('batch_size', 50)
         self.send_interval = config.get('send_interval', 2.0)
-
-        # Internal state
         self.data_queue = queue.Queue()
         self.is_running = False
         self.sender_thread = None
+        self.mode = None  # 'v2' or 'v3'
+        self._init_client()
 
-        # HTTP session for connection reuse
-        self.session = requests.Session()
-        headers = {
-            'Content-Type': 'text/plain; charset=utf-8'
-        }
-        if self.token:
-            headers['Authorization'] = f'Token {self.token}'
-        self.session.headers.update(headers)
-
-        self.write_url = f"{self.influxdb_url}/api/v2/write?org={self.organization}&bucket={self.bucket}&precision=s"
-
-    @staticmethod
-    def create_config(influxdb_url: str = None, enabled: bool = True, **kwargs) -> Dict[str, Any]:
-        """Create configuration dictionary for InfluxDB sender"""
-        return {
-            'enabled': enabled,
-            'url': influxdb_url or 'http://localhost:8086',
-            'organization': kwargs.get('organization', 'benchmon'),
-            'bucket': kwargs.get('bucket', 'metrics'),
-            'token': kwargs.get('token', 'admin123'),
-            'job_name': kwargs.get('job_name', 'benchmon'),
-            'batch_size': kwargs.get('batch_size', 50),
-            'send_interval': kwargs.get('send_interval', 2.0)
-        }
+    def _init_client(self):
+        # Detect InfluxDB3 (FlightSQL) if port is 8081 or url contains 'influxdb3'
+        if (':8081' in self.influxdb_url) or ('influxdb3' in self.influxdb_url):
+            try:
+                from influxdb_client_3 import InfluxDBClient3, Point
+                self.InfluxDBClient3 = InfluxDBClient3
+                self.Point = Point
+                self.mode = 'v3'
+                self.client = InfluxDBClient3(
+                    host=self.influxdb_url.replace('http://', '').replace('https://', '').split(':')[0],
+                    port=int(self.influxdb_url.split(':')[-1]),
+                    token=self.token,
+                    org=self.organization,
+                    database=self.bucket
+                )
+                self.logger.info("InfluxDBSender: Using InfluxDB3 (FlightSQL) mode")
+            except ImportError:
+                self.logger.error("influxdb_client_3 not installed. Please pip install influxdb3-python.")
+                raise
+        else:
+            import requests
+            self.requests = requests
+            self.session = requests.Session()
+            headers = {'Content-Type': 'text/plain; charset=utf-8'}
+            if self.token:
+                headers['Authorization'] = f'Token {self.token}'
+            self.session.headers.update(headers)
+            self.write_url = f"{self.influxdb_url}/api/v2/write?org={self.organization}&bucket={self.bucket}&precision=s"
+            self.mode = 'v2'
+            self.logger.info("InfluxDBSender: Using InfluxDB2 (HTTP line protocol) mode")
 
     def start(self):
         """Start the InfluxDB sender thread"""
@@ -64,7 +65,7 @@ class InfluxDBSender:
         self.is_running = True
         self.sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
         self.sender_thread.start()
-        self.logger.info(f"InfluxDB sender started (URL: {self.influxdb_url}, bucket: {self.bucket})")
+        self.logger.info(f"InfluxDB sender started (mode: {self.mode}, URL: {self.influxdb_url}, bucket: {self.bucket})")
 
     def stop(self):
         """Stop the InfluxDB sender thread"""
@@ -77,7 +78,8 @@ class InfluxDBSender:
 
         # Send any remaining data
         self._send_remaining_data()
-        self.session.close()
+        if self.mode == 'v2':
+            self.session.close()
         self.logger.info("InfluxDB sender stopped")
 
     def send_metrics(self, metrics: List[Dict[str, Any]]):
@@ -124,39 +126,59 @@ class InfluxDBSender:
         """Send a batch of metrics to InfluxDB"""
         if not batch:
             return
+        if self.mode == 'v3':
+            self._send_batch_v3(batch)
+        else:
+            self._send_batch_v2(batch)
 
+    def _send_batch_v2(self, batch: List[Dict[str, Any]]):
+        """Send a batch of metrics to InfluxDB2 using HTTP line protocol"""
         try:
             line_protocol_data = self._convert_to_line_protocol(batch)
             if not line_protocol_data:
                 return
-
             response = self.session.post(
                 self.write_url,
                 data=line_protocol_data,
                 timeout=10
             )
-
-            # If 401 Unauthorized and token is empty, try again without Authorization header
-            if response.status_code == 401 and self.token:
-                self.logger.error("InfluxDB write failed: 401 Unauthorized. Check your token or try running without --grafana-token.")
-            elif response.status_code == 401 and not self.token:
-                # Remove Authorization header and retry
-                self.session.headers.pop('Authorization', None)
-                response = self.session.post(
-                    self.write_url,
-                    data=line_protocol_data,
-                    timeout=10
-                )
-
             if response.status_code == 204:
-                self.logger.debug(f"Successfully sent {len(batch)} metrics to InfluxDB")
+                self.logger.debug(f"Successfully sent {len(batch)} metrics to InfluxDB2")
             else:
-                self.logger.error(f"InfluxDB write failed: {response.status_code} - {response.text}")
-
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Failed to send metrics to InfluxDB: {e}")
+                self.logger.error(f"InfluxDB2 write failed: {response.status_code} - {response.text}")
         except Exception as e:
-            self.logger.error(f"Unexpected error sending metrics to InfluxDB: {e}")
+            self.logger.error(f"Failed to send metrics to InfluxDB2: {e}")
+
+    def _send_batch_v3(self, batch: List[Dict[str, Any]]):
+        """Send a batch of metrics to InfluxDB3 using FlightSQL"""
+        try:
+            points = []
+            for metric in batch:
+                try:
+                    point = self.Point(metric.get('metric_name', 'unknown'))
+                    point.tag("job", self.job_name)
+                    point.tag("instance", metric.get('hostname', 'unknown'))
+                    if 'cpu' in metric:
+                        point.tag("cpu", str(metric['cpu']))
+                    if 'interface' in metric:
+                        point.tag("interface", metric['interface'])
+                    if 'device' in metric:
+                        point.tag("device", metric['device'])
+                    if 'fields' in metric and metric['fields']:
+                        for k, v in metric['fields'].items():
+                            point.field(k, v)
+                    else:
+                        point.field("value", metric.get('value'))
+                    if 'timestamp' in metric:
+                        point.time(int(metric['timestamp']))
+                    points.append(point)
+                except Exception as e:
+                    self.logger.warning(f"Failed to convert metric to Point: {e}")
+            if points:
+                self.client.write(points)
+                self.logger.debug(f"Successfully sent {len(points)} metrics to InfluxDB3")
+        except Exception as e:
+            self.logger.error(f"Failed to send metrics to InfluxDB3: {e}")
 
     def _convert_to_line_protocol(self, metrics: List[Dict[str, Any]]) -> str:
         """Convert metrics to InfluxDB line protocol format"""
