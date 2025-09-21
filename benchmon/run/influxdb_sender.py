@@ -1,254 +1,168 @@
-"""InfluxDB sender for real-time data streaming"""
+"""InfluxDB3 sender for real-time data streaming (FlightSQL/Arrow)"""
 
 import logging
 import queue
 import threading
 import time
+import math
 from typing import Dict, Any, List
 
 
 class InfluxDBSender:
-    """Send metrics data to InfluxDB2 or InfluxDB3 in real-time"""
+    """Send metrics data to InfluxDB3 (FlightSQL) in real-time"""
 
     def __init__(self, logger: logging.Logger, config: Dict[str, Any]):
         self.logger = logger
         self.config = config
-        self.influxdb_url = config.get('url', 'http://localhost:8081')
-        self.organization = config.get('organization', 'benchmon')
-        self.bucket = config.get('bucket', 'metrics')
-        self.token = config.get('token', 'admin123')
+        self.influxdb_url = config.get('url', 'http://localhost:8181')  # host:port
+        self.database = config.get('database', 'metrics')
+        self.token = config.get('token', '')
         self.job_name = config.get('job_name', 'benchmon')
-        self.batch_size = config.get('batch_size', 50)
-        self.send_interval = config.get('send_interval', 2.0)
-        self.mode = config.get('mode', 'v2')  # 新增参数，'v2'或'v3'
+        self.batch_size = config.get('batch_size', 100)  # 建议更大批量
+        self.send_interval = config.get('send_interval', 1.0)
         self.data_queue = queue.Queue()
         self.is_running = False
         self.sender_thread = None
         self._init_client()
 
+    def _init_client(self):
+        try:
+            from influxdb_client_3 import InfluxDBClient3, Point
+            self.Point = Point
+            # host参数直接传http://host:port，与test脚本一致
+            self.client = InfluxDBClient3(
+                host=self.influxdb_url,
+                token=self.token,
+                database=self.database,
+                use_ssl=False,
+                insecure=True
+            )
+            self.logger.info(f"InfluxDBSender: Using InfluxDB3 (FlightSQL) mode, host={self.influxdb_url}, database={self.database}")
+        except ImportError:
+            self.logger.error("influxdb_client_3 not installed. Please pip install influxdb3-python.")
+            raise
+        except Exception as e:
+            self.logger.error(f"InfluxDB3 client init failed: {e}")
+            raise
+
     def start(self):
-        """Start the InfluxDB sender thread"""
         if self.is_running:
             return
-        # 修复v2模式下session关闭后自动重建
-        if self.mode == 'v2' and (not hasattr(self, 'session') or getattr(self.session, 'closed', False)):
-            import requests
-            self.session = requests.Session()
-            headers = {'Content-Type': 'text/plain; charset=utf-8'}
-            if self.token:
-                headers['Authorization'] = f'Token {self.token}'
-            self.session.headers.update(headers)
         self.is_running = True
         self.sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
         self.sender_thread.start()
-        self.logger.info(f"InfluxDB sender started (mode: {self.mode}, URL: {self.influxdb_url}, bucket: {self.bucket})")
+        self.logger.info(f"InfluxDB3 sender started (host:port={self.influxdb_url}, database: {self.database})")
 
     def stop(self):
-        """Stop the InfluxDB sender thread"""
         if not self.is_running:
             return
-
         self.is_running = False
         if self.sender_thread:
             self.sender_thread.join(timeout=5)
-
-        # Send any remaining data
         self._send_remaining_data()
-        if self.mode == 'v2':
-            self.session.close()
-        self.logger.info("InfluxDB sender stopped")
+        self.logger.info("InfluxDB3 sender stopped")
 
     def send_metrics(self, metrics: List[Dict[str, Any]]):
-        """Queue metrics for sending to InfluxDB"""
         for metric in metrics:
             try:
                 self.data_queue.put(metric, block=False)
             except queue.Full:
                 self.logger.warning("InfluxDB queue full, dropping metric")
 
-    def _init_client(self):
-        if self.mode == 'v3':
-            try:
-                from influxdb_client_3 import InfluxDBClient3, Point
-                self.InfluxDBClient3 = InfluxDBClient3
-                self.Point = Point
-                url = self.influxdb_url.replace('http://', '').replace('https://', '')
-                if ':' in url:
-                    host, port = url.split(':')
-                    port = int(port)
-                else:
-                    host = url
-                    port = 8081
-                self.client = InfluxDBClient3(
-                    host=host,
-                    port=port,
-                    token=self.token,
-                    org=self.organization,
-                    database=self.bucket
-                )
-                self.logger.info(f"InfluxDBSender: Using InfluxDB3 (FlightSQL) mode, host={host}, port={port}")
-            except ImportError:
-                self.logger.error("influxdb_client_3 not installed. Please pip install influxdb3-python.")
-                raise
-            except Exception as e:
-                self.logger.error(f"InfluxDB3 client init failed: {e}")
-                raise
-        else:
-            import requests
-            self.requests = requests
-            self.session = requests.Session()
-            headers = {'Content-Type': 'text/plain; charset=utf-8'}
-            if self.token:
-                headers['Authorization'] = f'Token {self.token}'
-            self.session.headers.update(headers)
-            self.write_url = f"{self.influxdb_url}/api/v2/write?org={self.organization}&bucket={self.bucket}&precision=s"
-            self.logger.info("InfluxDBSender: Using InfluxDB2 (HTTP line protocol) mode")
-
     def _sender_loop(self):
-        """Main sender loop running in background thread"""
         batch = []
         last_send_time = time.time()
-
         while self.is_running:
             try:
-                # Try to get data with timeout
                 try:
                     metric = self.data_queue.get(timeout=0.1)
                     batch.append(metric)
                 except queue.Empty:
                     pass
-
                 current_time = time.time()
                 batch_full = len(batch) >= self.batch_size
                 time_expired = batch and current_time - last_send_time >= self.send_interval
                 should_send = batch_full or time_expired
-
                 if should_send:
                     self._send_batch(batch)
                     batch = []
                     last_send_time = current_time
-
             except Exception as e:
                 self.logger.error(f"Error in InfluxDB sender loop: {e}")
                 time.sleep(1)
-
-        # Send remaining data before exit
         if batch:
             self._send_batch(batch)
 
     def _send_batch(self, batch: List[Dict[str, Any]]):
-        """Send a batch of metrics to InfluxDB"""
         if not batch:
             return
-        if self.mode == 'v3':
-            self._send_batch_v3(batch)
-        else:
-            self._send_batch_v2(batch)
-
-    def _send_batch_v2(self, batch: List[Dict[str, Any]]):
-        """Send a batch of metrics to InfluxDB2 using HTTP line protocol"""
         try:
-            line_protocol_data = self._convert_to_line_protocol(batch)
-            if not line_protocol_data:
-                return
-            response = self.session.post(
-                self.write_url,
-                data=line_protocol_data,
-                timeout=10
-            )
-            if response.status_code == 204:
-                self.logger.debug(f"Successfully sent {len(batch)} metrics to InfluxDB2")
-            else:
-                self.logger.error(f"InfluxDB2 write failed: {response.status_code} - {response.text}")
-        except Exception as e:
-            self.logger.error(f"Failed to send metrics to InfluxDB2: {e}")
-
-    def _send_batch_v3(self, batch: List[Dict[str, Any]]):
-        """Send a batch of metrics to InfluxDB3 using FlightSQL"""
-        try:
-            points = []
+            lines = []
             for metric in batch:
                 try:
-                    point = self.Point(metric.get('metric_name', 'unknown'))
-                    point.tag("job", self.job_name)
-                    point.tag("instance", metric.get('hostname', 'unknown'))
-                    if 'cpu' in metric:
-                        point.tag("cpu", str(metric['cpu']))
-                    if 'interface' in metric:
-                        point.tag("interface", metric['interface'])
-                    if 'device' in metric:
-                        point.tag("device", metric['device'])
+                    # measurement名仅用英文字母数字和_，且不为空，不以_开头
+                    mname = str(metric.get('metric_name', 'unknown'))
+                    mname = ''.join(c for c in mname if c.isalnum() or c == '_')
+                    if not mname or mname.startswith('_') or mname == '_':
+                        mname = 'unknown'
+                    # tags
+                    tags = []
+                    if metric.get('hostname') is not None:
+                        hname = str(metric.get('hostname'))
+                        hname = ''.join(c for c in hname if c.isalnum() or c == '_')
+                        if hname:
+                            tags.append(f"host={hname}")
+                    tag_str = ','.join(tags)
+                    # fields
+                    fields = []
+                    v = None
                     if 'fields' in metric and metric['fields']:
-                        for k, v in metric['fields'].items():
-                            point.field(k, v)
-                    else:
-                        point.field("value", metric.get('value'))
-                    if 'timestamp' in metric:
-                        point.time(int(metric['timestamp']))
-                    points.append(point)
+                        for k, val in metric['fields'].items():
+                            if val is not None and isinstance(val, (int, float, bool, str)):
+                                if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
+                                    continue
+                                if isinstance(val, str):
+                                    val = ''.join(c for c in val if c.isprintable())
+                                    if not val:
+                                        continue
+                                v = val
+                                break
+                    if v is None and metric.get('value') is not None and isinstance(metric.get('value'), (int, float, bool, str)):
+                        val = metric.get('value')
+                        if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
+                            pass
+                        elif isinstance(val, str):
+                            val = ''.join(c for c in val if c.isprintable())
+                            if val:
+                                v = val
+                        else:
+                            v = val
+                    if v is not None:
+                        if isinstance(v, str):
+                            fields.append(f'value="{v}"')
+                        else:
+                            fields.append(f'value={v}')
+                        field_str = ','.join(fields)
+                        # timestamp
+                        ts_str = ''
+                        if 'timestamp' in metric and metric['timestamp'] is not None:
+                            try:
+                                ts = int(metric['timestamp'])
+                                if ts > 0 and ts < 2147483647:
+                                    ts_str = f' {ts}'
+                            except Exception:
+                                pass
+                        line = f"{mname},{tag_str} {field_str}{ts_str}"
+                        lines.append(line)
                 except Exception as e:
-                    self.logger.warning(f"Failed to convert metric to Point: {e}")
-            if points:
-                self.client.write(points)
-                self.logger.debug(f"Successfully sent {len(points)} metrics to InfluxDB3")
+                    self.logger.warning(f"Failed to convert metric to line: {e}")
+            if lines:
+                self.client.write(lines)
+                self.logger.debug(f"Successfully sent {len(lines)} metrics to InfluxDB3")
         except Exception as e:
             self.logger.error(f"Failed to send metrics to InfluxDB3: {e}")
 
-    def _convert_to_line_protocol(self, metrics: List[Dict[str, Any]]) -> str:
-        """Convert metrics to InfluxDB line protocol format"""
-        lines = []
-
-        for metric in metrics:
-            try:
-                measurement = metric.get('metric_name', 'unknown')
-                timestamp = metric.get('timestamp', int(time.time()))
-                value = metric.get('value')
-
-                if value is None:
-                    continue
-
-                # Build tags
-                tags = {
-                    'job': self.job_name,
-                    'instance': metric.get('hostname', 'unknown')
-                }
-
-                # Add metric-specific tags
-                if 'cpu' in metric:
-                    tags['cpu'] = str(metric['cpu'])
-                if 'interface' in metric:
-                    tags['interface'] = metric['interface']
-                if 'device' in metric:
-                    tags['device'] = metric['device']
-
-                # Build tag string
-                tag_string = ','.join([f"{k}={v}" for k, v in tags.items()])
-
-                # Build fields
-                fields = {}
-                if 'fields' in metric and metric['fields']:
-                    # Use multiple fields if provided
-                    fields = metric['fields']
-                else:
-                    # Fall back to single value field
-                    fields['value'] = value
-
-                # Build field string
-                field_string = ','.join([f"{k}={v}" for k, v in fields.items()])
-
-                # Build line protocol entry
-                # Format: measurement,tag1=value1,tag2=value2 field1=value1,field2=value2 timestamp
-                line = f"{measurement},{tag_string} {field_string} {timestamp}"
-                lines.append(line)
-
-            except Exception as e:
-                self.logger.warning(f"Failed to convert metric to line protocol: {e}")
-                continue
-
-        return '\n'.join(lines)
-
     def _send_remaining_data(self):
-        """Send any remaining data in the queue"""
         batch = []
         try:
             while True:
@@ -256,21 +170,18 @@ class InfluxDBSender:
                 batch.append(metric)
         except queue.Empty:
             pass
-
         if batch:
             self._send_batch(batch)
-            self.logger.info(f"Sent {len(batch)} remaining metrics to InfluxDB")
+            self.logger.info(f"Sent {len(batch)} remaining metrics to InfluxDB3")
 
 
 def create_influxdb_config(influxdb_url: str = None, enabled: bool = True, **kwargs) -> Dict[str, Any]:
-    """Create high-performance InfluxDB configuration"""
-    return InfluxDBSender.create_config(
-        influxdb_url=influxdb_url,
-        enabled=enabled,
-        organization=kwargs.get('organization', 'benchmon'),
-        bucket=kwargs.get('bucket', 'metrics'),
-        token=kwargs.get('token', 'admin123'),
-        job_name=kwargs.get('job_name', 'benchmon'),
-        batch_size=kwargs.get('batch_size', 50),
-        send_interval=kwargs.get('send_interval', 2.0)
-    )
+    """Create high-performance InfluxDB3 configuration"""
+    return {
+        'url': influxdb_url or 'localhost:8182',
+        'database': kwargs.get('database', 'metrics'),
+        'token': kwargs.get('token', 'admin123'),
+        'job_name': kwargs.get('job_name', 'benchmon'),
+        'batch_size': kwargs.get('batch_size', 100),
+        'send_interval': kwargs.get('send_interval', 1.0)
+    }

@@ -94,7 +94,7 @@ start_influxdb3() {
     echo "Starting InfluxDB3 on first node..."
     
     # Find available port for InfluxDB3
-    INFLUXDB3_PORT=$(find_available_port 8081)
+    INFLUXDB3_PORT=$(find_available_port 8181)
     if [ $? -ne 0 ]; then
         echo "Could not find available port for InfluxDB3"
         return 1
@@ -114,9 +114,11 @@ start_influxdb3() {
         --object-store file \
         --data-dir data \
         --http-bind 0.0.0.0:$INFLUXDB3_PORT \
-        --admin-token-file "${INFLUXDB3_DIR}/admin_token.json" \
+        --without-auth \
         > "${LOG_DIR}/influxdb3.log" 2>&1 &
-    
+
+    # --admin-token-file "${INFLUXDB3_DIR}/admin_token.json" \
+
     local influxdb_pid=$!
     echo "${influxdb_pid}" > "${LOG_DIR}/influxdb3.pid"
     
@@ -212,7 +214,7 @@ datasources:
       version: Flux
       organization: benchmon
       defaultBucket: metrics
-      tlsSkipVerify: true
+      tlsSkipVerify: false
       timeout: 30
     secureJsonData:
       token: apiv3_admin123
