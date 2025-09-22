@@ -208,7 +208,7 @@ poetry.toml
 # ruff
 .ruff_cache/
 
-benchmon_braces_/
+benchmon_traces_/
 
 # LSP config files
 pyrightconfig.json

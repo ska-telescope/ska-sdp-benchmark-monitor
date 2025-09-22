@@ -112,6 +112,12 @@ class InfluxDBSender:
                         hname = ''.join(c for c in hname if c.isalnum() or c == '_')
                         if hname:
                             tags.append(f"host={hname}")
+                    # 新增cpu标签
+                    if metric.get('cpu') is not None:
+                        cpu_tag = str(metric.get('cpu'))
+                        cpu_tag = ''.join(c for c in cpu_tag if c.isalnum() or c == '_')
+                        if cpu_tag:
+                            tags.append(f"cpu={cpu_tag}")
                     tag_str = ','.join(tags)
                     # fields
                     fields = []
@@ -193,3 +199,19 @@ def create_influxdb_config(influxdb_url: str = None, enabled: bool = True, **kwa
         'batch_size': kwargs.get('batch_size', 100),
         'send_interval': kwargs.get('send_interval', 1.0)
     }
+
+
+def get_ns_timestamp(ts=None):
+    """返回纳秒级时间戳"""
+    import time
+    if ts is None:
+        ts = time.time()
+    ts = float(ts)
+    if ts < 1e10:  # 秒
+        return int(ts * 1_000_000_000)
+    elif ts < 1e13:  # 毫秒
+        return int(ts * 1_000_000)
+    elif ts < 1e16:  # 微秒
+        return int(ts * 1_000)
+    else:
+        return int(ts)
