@@ -73,10 +73,10 @@ else
     echo "  Port 3000 is free"
 fi
 
-if netstat -tuln 2>/dev/null | grep -q ":8081 " || ss -tuln 2>/dev/null | grep -q ":8081 "; then
-    echo "  Port 8081 still in use"
+if netstat -tuln 2>/dev/null | grep -q ":8181 " || ss -tuln 2>/dev/null | grep -q ":8181 "; then
+    echo "  Port 8181 still in use"
 else
-    echo "  Port 8081 is free"
+    echo "  Port 8181 is free"
 fi
 
 echo "All services stopped"
