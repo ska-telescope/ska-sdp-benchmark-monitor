@@ -269,7 +269,7 @@ deploy_dashboards() {
     
     if [ -f "deploy_dashboard.py" ]; then
         echo "Deploying all dashboards to http://localhost:${GRAFANA_PORT}..."
-        python3 deploy_dashboard.py --deploy-all --grafana-url "http://localhost:${GRAFANA_PORT}"
+        python3 deploy_dashboard.py --deploy-all --grafana-url "http://localhost:${GRAFANA_PORT}" --overwrite
         echo "Dashboard deployment completed"
     else
         echo "Dashboard deployment script not found"

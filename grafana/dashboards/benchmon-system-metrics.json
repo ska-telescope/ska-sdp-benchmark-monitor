@@ -385,6 +385,7 @@
   ],
   "refresh": "5s",
   "schemaVersion": 38,
+  "version": 1,
   "style": "dark",
   "tags": [
     "benchmon",
