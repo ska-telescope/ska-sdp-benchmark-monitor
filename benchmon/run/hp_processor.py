@@ -11,6 +11,22 @@ from typing import Dict
 import select
 
 
+def get_ns_timestamp(ts=None):
+    """返回纳秒级时间戳"""
+    import time
+    if ts is None:
+        ts = time.time()
+    ts = float(ts)
+    if ts < 1e10:  # 秒
+        return int(ts * 1_000_000_000)
+    elif ts < 1e13:  # 毫秒
+        return int(ts * 1_000_000)
+    elif ts < 1e16:  # 微秒
+        return int(ts * 1_000)
+    else:
+        return int(ts)
+
+
 class HighPerformanceDataProcessor:
     """
     High-performance data processor that receives data directly from monitoring scripts and sends to Grafana
@@ -295,7 +311,7 @@ class InfluxDBMonitorHook:
             metrics.append({
                 'metric_name': f'cpu_{metric_name}',
                 'value': value,
-                'timestamp': int(timestamp),
+                'timestamp': get_ns_timestamp(timestamp),
                 'hostname': hostname,
                 'cpu': cpu
             })
@@ -309,7 +325,7 @@ class InfluxDBMonitorHook:
         metric = {
             'metric_name': 'cpu_frequency',
             'value': frequency,
-            'timestamp': int(timestamp),
+            'timestamp': get_ns_timestamp(timestamp),
             'hostname': hostname,
             'cpu': cpu
         }
@@ -325,7 +341,7 @@ class InfluxDBMonitorHook:
             metrics.append({
                 'metric_name': f'memory_{metric_name.lower()}',
                 'value': value,
-                'timestamp': int(timestamp),
+                'timestamp': get_ns_timestamp(timestamp),
                 'hostname': hostname
             })
 
@@ -339,7 +355,7 @@ class InfluxDBMonitorHook:
         metric = {
             'metric_name': 'network_stats',
             'value': stats.get('rx_bytes', 0),  # Use rx_bytes as primary value
-            'timestamp': int(timestamp),
+            'timestamp': get_ns_timestamp(timestamp),
             'hostname': hostname,
             'interface': interface,
             'fields': {
@@ -360,7 +376,7 @@ class InfluxDBMonitorHook:
         metric = {
             'metric_name': 'disk_stats',
             'value': stats.get('sectors_read', 0),  # Use sectors_read as primary value
-            'timestamp': int(timestamp),
+            'timestamp': get_ns_timestamp(timestamp),
             'hostname': hostname,
             'device': device,
             'fields': {

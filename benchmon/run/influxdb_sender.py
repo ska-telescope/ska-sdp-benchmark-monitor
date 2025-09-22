@@ -148,7 +148,15 @@ class InfluxDBSender:
                         if 'timestamp' in metric and metric['timestamp'] is not None:
                             try:
                                 ts = int(metric['timestamp'])
-                                if ts > 0 and ts < 2147483647:
+                                # 自动判断单位并转为纳秒
+                                if ts < 1e10:  # 秒
+                                    ts = ts * 1_000_000_000
+                                elif ts < 1e13:  # 毫秒
+                                    ts = ts * 1_000_000
+                                elif ts < 1e16:  # 微秒
+                                    ts = ts * 1_000
+                                # 纳秒范围
+                                if ts > 1e17 and ts < 1e20:
                                     ts_str = f' {ts}'
                             except Exception:
                                 pass
