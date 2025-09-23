@@ -121,53 +121,57 @@ class InfluxDBSender:
                     tag_str = ','.join(tags)
                     # fields
                     fields = []
-                    v = None
                     if 'fields' in metric and metric['fields']:
                         for k, val in metric['fields'].items():
-                            if val is not None and isinstance(val, (int, float, bool, str)):
+                            if val is not None and isinstance(val, (int, float, bool)):
                                 if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
                                     continue
-                                if isinstance(val, str):
-                                    val = ''.join(c for c in val if c.isprintable())
-                                    if not val:
-                                        continue
-                                v = val
-                                break
-                    if v is None and metric.get('value') is not None and isinstance(metric.get('value'), (int, float, bool, str)):
-                        val = metric.get('value')
-                        if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
-                            pass
-                        elif isinstance(val, str):
-                            val = ''.join(c for c in val if c.isprintable())
-                            if val:
-                                v = val
-                        else:
-                            v = val
-                    if v is not None:
-                        if isinstance(v, str):
-                            fields.append(f'value="{v}"')
-                        else:
-                            fields.append(f'value={v}')
-                        field_str = ','.join(fields)
-                        # timestamp
-                        ts_str = ''
-                        if 'timestamp' in metric and metric['timestamp'] is not None:
-                            try:
-                                ts = int(metric['timestamp'])
-                                # 自动判断单位并转为纳秒
-                                if ts < 1e10:  # 秒
-                                    ts = ts * 1_000_000_000
-                                elif ts < 1e13:  # 毫秒
-                                    ts = ts * 1_000_000
-                                elif ts < 1e16:  # 微秒
-                                    ts = ts * 1_000
-                                # 纳秒范围
-                                if ts > 1e17 and ts < 1e20:
-                                    ts_str = f' {ts}'
-                            except Exception:
+                                fields.append(f'{k}={val}')
+                            elif isinstance(val, str):
+                                val_str = ''.join(c for c in val if c.isprintable())
+                                if val_str:
+                                    fields.append(f'{k}="{val_str}"')
+                    else:
+                        v = None
+                        if metric.get('value') is not None and isinstance(metric.get('value'), (int, float, bool, str)):
+                            val = metric.get('value')
+                            if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
                                 pass
-                        line = f"{mname},{tag_str} {field_str}{ts_str}"
-                        lines.append(line)
+                            elif isinstance(val, str):
+                                val = ''.join(c for c in val if c.isprintable())
+                                if val:
+                                    v = val
+                            else:
+                                v = val
+                        if v is not None:
+                            if isinstance(v, str):
+                                fields.append(f'value="{v}"')
+                            else:
+                                fields.append(f'value={v}')
+                    
+                    field_str = ','.join(fields)
+                    if not field_str:
+                        continue
+
+                    # timestamp
+                    ts_str = ''
+                    if 'timestamp' in metric and metric['timestamp'] is not None:
+                        try:
+                            ts = int(metric['timestamp'])
+                            # 自动判断单位并转为纳秒
+                            if ts < 1e10:  # 秒
+                                ts = ts * 1_000_000_000
+                            elif ts < 1e13:  # 毫秒
+                                ts = ts * 1_000_000
+                            elif ts < 1e16:  # 微秒
+                                ts = ts * 1_000
+                            # 纳秒范围
+                            if ts > 1e17 and ts < 1e20:
+                                ts_str = f' {ts}'
+                        except Exception:
+                            pass
+                    line = f"{mname},{tag_str} {field_str}{ts_str}"
+                    lines.append(line)
                 except Exception as e:
                     self.logger.warning(f"Failed to convert metric to line: {e}")
             if lines:
