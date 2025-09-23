@@ -103,7 +103,7 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT \n  \"user\" + \"nice\" as \"user\",\n  \"system\" + \"irq\" + \"softirq\" as \"system\",\n  \"iowait\" as \"wait\",\n  \"steal\" + \"guest\" + \"guestnice\" as \"virt\"\nFROM \"cpu\"\nWHERE\n  cpu = 'cpu' AND host = '${host}' AND\n  $__timeFilter(time)\nGROUP BY time\nORDER BY time",
+          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  avg(\"user\" + \"nice\") AS user,\n  avg(\"system\" + \"irq\" + \"softirq\") AS system,\n  avg(\"iowait\") AS wait,\n  avg(\"steal\" + \"guest\" + \"guestnice\") AS virt\nFROM cpu\nWHERE cpu='cpu' AND host='${host}' AND $__timeFilter(time)\nGROUP BY 1\nORDER BY 1",
           "queryType": "sql",
           "refId": "A"
         }
@@ -193,7 +193,7 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT \n  \"user\" + \"nice\" + \"system\" + \"irq\" + \"softirq\" + \"iowait\" as \"usage\"\nFROM \"cpu\"\nWHERE\n  cpu != 'cpu' AND host = '${host}' AND\n  $__timeFilter(time)\nGROUP BY time, cpu\nORDER BY time",
+          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  cpu,\n  avg(\"user\" + \"nice\" + \"system\" + \"irq\" + \"softirq\" + \"iowait\" + \"steal\" + \"guest\" + \"guestnice\") AS usage\nFROM cpu\nWHERE cpu!='cpu' AND host='${host}' AND $__timeFilter(time)\nGROUP BY 1, cpu\nORDER BY 1",
           "queryType": "sql",
           "refId": "A"
         }
@@ -283,7 +283,7 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT \n  \"MemTotal\" - \"MemFree\" - \"Buffers\" - \"Cached\" - \"Slab\" as \"used\",\n  \"Buffers\" + \"Cached\" + \"Slab\" as \"cache_buffers\"\nFROM \"mem\"\nWHERE\n  host = '${host}' AND $__timeFilter(time)\nGROUP BY time\nORDER BY time",
+          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  (avg(\"MemTotal\") - avg(\"MemFree\") - avg(\"Buffers\") - avg(\"Cached\") - avg(\"Slab\")) AS used,\n  (avg(\"Buffers\") + avg(\"Cached\") + avg(\"Slab\")) AS cache_buffers,\n  avg(\"MemTotal\") AS total\nFROM mem\nWHERE host='${host}' AND $__timeFilter(time)\nGROUP BY 1\nORDER BY 1",
           "queryType": "sql",
           "refId": "A"
         }
@@ -373,7 +373,7 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT \n  \"rx-bytes\" as \"received\",\n  \"tx-bytes\" as \"sent\"\nFROM \"net\"\nWHERE\n  host = '${host}' AND $__timeFilter(time)\nGROUP BY time, interface\nORDER BY time",
+          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  interface,\n  avg(\"rx-bytes\") AS received,\n  avg(\"tx-bytes\") AS sent\nFROM net\nWHERE host='${host}' AND $__timeFilter(time)\nGROUP BY 1, interface\nORDER BY 1",
           "queryType": "sql",
           "refId": "A"
         }
@@ -463,7 +463,7 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT \n  \"sect-rd\" as \"read\",\n  \"sect-wr\" as \"write\"\nFROM \"disk\"\nWHERE\n  host = '${host}' AND $__timeFilter(time)\nGROUP BY time, device\nORDER BY time",
+          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  device,\n  avg(\"sect-rd\") AS read,\n  avg(\"sect-wr\") AS write\nFROM disk\nWHERE host='${host}' AND $__timeFilter(time)\nGROUP BY 1, device\nORDER BY 1",
           "queryType": "sql",
           "refId": "A"
         }
@@ -553,7 +553,7 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT \n  \"frequency\"\nFROM \"cpufreq\"\nWHERE\n  host = '${host}' AND $__timeFilter(time)\nGROUP BY time, cpu\nORDER BY time",
+          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  cpu_core,\n  avg(\"frequency\") AS frequency\nFROM cpufreq\nWHERE host='${host}' AND $__timeFilter(time)\nGROUP BY 1, cpu_core\nORDER BY 1",
           "queryType": "sql",
           "refId": "A"
         }
