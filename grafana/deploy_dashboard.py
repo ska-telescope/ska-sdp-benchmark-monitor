@@ -58,6 +58,56 @@ class GrafanaDashboardManager:
             self.logger.info("💡 Make sure Grafana is running on localhost:3000")
             return False
 
+    def ensure_datasource(self, ds_name: str = "InfluxDB v3 SQL", ds_uid: str = "influxdb-v3-sql", influx_url: str = "http://localhost:8181", db: str = "metrics") -> bool:
+        """Ensure datasource exists or create/update it"""
+        payload = {
+            "name": ds_name,
+            "type": "influxdb",
+            "uid": ds_uid,
+            "access": "proxy",
+            "url": influx_url,
+            "basicAuth": False,
+            "isDefault": True,
+            "jsonData": {
+                "dbName": db,
+                "queryLanguage": "sql",
+                "version": "SQL",
+                "httpMode": "GET",
+                "tlsSkipVerify": True,
+                "insecureConnection": True,
+                "insecureGrpc": True
+            },
+            "secureJsonData": {}
+        }
+
+        # Check if exists
+        try:
+            resp = self.session.get(f"{self.grafana_url}/api/datasources/uid/{ds_uid}")
+            exists = resp.status_code == 200
+        except:
+            exists = False
+
+        try:
+            if exists:
+                resp = self.session.put(f"{self.grafana_url}/api/datasources/uid/{ds_uid}", json=payload)
+                if resp.status_code in [200, 204]:
+                    self.logger.info(f"✅ Updated datasource {ds_name}")
+                    return True
+                else:
+                    self.logger.error(f"❌ Failed to update datasource: {resp.text}")
+                    return False
+            else:
+                resp = self.session.post(f"{self.grafana_url}/api/datasources", json=payload)
+                if resp.status_code in [200, 201]:
+                    self.logger.info(f"✅ Created datasource {ds_name}")
+                    return True
+                else:
+                    self.logger.error(f"❌ Failed to create datasource: {resp.text}")
+                    return False
+        except Exception as e:
+            self.logger.error(f"❌ Error ensuring datasource: {e}")
+            return False
+
     def load_dashboard_json(self, file_path: Path) -> Optional[Dict]:
         """Load dashboard JSON from file"""
         try:
@@ -124,8 +174,15 @@ class GrafanaDashboardManager:
 
     def deploy_all_dashboards(self, dashboard_dir: Path,
                               pattern: str = "*.json",
-                              overwrite: bool = False) -> int:
+                              overwrite: bool = False,
+                              influx_port: int = 8181,
+                              db: str = "metrics") -> int:
         """Deploy all dashboards in a directory"""
+        # Ensure datasource before deploying dashboards
+        if not self.ensure_datasource(influx_url=f"http://localhost:{influx_port}", db=db):
+            self.logger.error("Failed to ensure datasource, aborting dashboard deployment")
+            return 0
+
         if not dashboard_dir.is_dir():
             self.logger.error(f"Directory not found: {dashboard_dir}")
             return 0
@@ -428,6 +485,9 @@ Examples:
 
   # Remove provisioned dashboard file and restart Grafana
   python deploy_dashboard.py --remove-file "Dashboard Title" --restart-grafana
+
+  # Deploy all dashboards with datasource
+  python deploy_dashboard.py --deploy-all --influx-port 8181 --db metrics
         """
     )
 
@@ -482,6 +542,14 @@ Examples:
     parser.add_argument("--verbose", action="store_true",
                         help="Enable verbose logging")
 
+    # Add influx port
+    parser.add_argument("--influx-port", type=int, default=8181,
+                        help="InfluxDB port for datasource")
+
+    # Add db
+    parser.add_argument("--db", default="metrics",
+                        help="InfluxDB database name")
+
     args = parser.parse_args()
 
     # Configure logging level
@@ -495,6 +563,8 @@ Examples:
         password=args.password
     )
 
+    success = True
+
     # Wait for Grafana if requested
     if args.wait:
         if not deployer.wait_for_grafana():
@@ -504,15 +574,13 @@ Examples:
     if not deployer.test_connection():
         sys.exit(1)
 
-    success = True
-
     # Execute requested operations
     if args.deploy:
         success = deployer.deploy_file(Path(args.deploy), args.overwrite)
 
     elif args.deploy_all:
         deployed = deployer.deploy_all_dashboards(
-            args.dashboard_dir, args.pattern, args.overwrite
+            args.dashboard_dir, args.pattern, args.overwrite, args.influx_port, args.db
         )
         success = deployed > 0
 

@@ -1,17 +1,15 @@
 apiVersion: 1
-
 datasources:
   - name: InfluxDB v3 SQL
     uid: influxdb-v3-sql
     type: influxdb
     access: proxy
-    url: http://localhost:8181          # 修改为实际 InfluxDB3 地址
+    url: http://localhost:8181
     isDefault: true
-    basicAuth: false
     editable: true
     jsonData:
-      dbName: metrics                   # InfluxDB3 database
+      dbName: metrics
+      version: Sql
       httpMode: GET
-      tlsSkipVerify: true               # 关闭安全校验
-      version: Sql                      # 明确使用 SQL (重要)
+      tlsSkipVerify: true
     secureJsonData: {}

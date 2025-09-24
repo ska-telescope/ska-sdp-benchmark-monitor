@@ -198,26 +198,25 @@ allow_sign_up = false
 EOF
     fi
     
-    # 生成Grafana InfluxDB数据源配置
+    # 生成Grafana InfluxDB数据源配置 (直接在 Bash 中生成)
     DATASOURCE_DIR="${GRAFANA_DIR}/conf/provisioning/datasources"
     mkdir -p "$DATASOURCE_DIR"
-    cat > "$DATASOURCE_DIR/influxdb.yml" <<EOF
+    cat > "$DATASOURCE_DIR/influxdb3.yml" <<EOF
 apiVersion: 1
 datasources:
-  - name: InfluxDB
+  - name: InfluxDB v3 SQL
+    uid: influxdb-v3-sql
     type: influxdb
     access: proxy
     url: http://localhost:${INFLUXDB3_PORT}
     isDefault: true
     editable: true
     jsonData:
-      version: Flux
-      organization: benchmon
-      defaultBucket: metrics
-      tlsSkipVerify: false
-      timeout: 30
-    secureJsonData:
-      token: apiv3_admin123
+      dbName: metrics
+      version: Sql
+      httpMode: GET
+      tlsSkipVerify: true
+    secureJsonData: {}
 EOF
     
     # Start Grafana in background
