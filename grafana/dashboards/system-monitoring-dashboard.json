@@ -103,9 +103,9 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  avg(\"user\" + \"nice\") AS user,\n  avg(\"system\" + \"irq\" + \"softirq\") AS system,\n  avg(\"iowait\") AS wait,\n  avg(\"steal\" + \"guest\" + \"guestnice\") AS virt\nFROM cpu\nWHERE cpu='cpu' AND host='${host}' AND $__timeFilter(time)\nGROUP BY 1\nORDER BY 1",
           "queryType": "sql",
-          "refId": "A"
+          "refId": "A",
+          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  mean(\"user\") AS cpu_user,\\n  mean(\"nice\") AS cpu_nice,\\n  mean(\"system\") AS cpu_system,\\n  mean(\"irq\") AS cpu_irq,\\n  mean(\"softirq\") AS cpu_softirq,\\n  mean(\"iowait\") AS cpu_iowait,\\n  mean(\"steal\") AS cpu_steal\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"cpu\\\"\\nWHERE cpu = 'cpu' AND host = '${host}' AND $__timeFilter(time)\\nGROUP BY t\\nORDER BY t"
         }
       ],
       "title": "CPU Average Usage",
@@ -193,9 +193,9 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  cpu,\n  avg(\"user\" + \"nice\" + \"system\" + \"irq\" + \"softirq\" + \"iowait\" + \"steal\" + \"guest\" + \"guestnice\") AS usage\nFROM cpu\nWHERE cpu!='cpu' AND host='${host}' AND $__timeFilter(time)\nGROUP BY 1, cpu\nORDER BY 1",
           "queryType": "sql",
-          "refId": "A"
+          "refId": "A",
+          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  cpu,\\n  (mean(\"user\") + mean(\"nice\") + mean(\"system\") + mean(\"irq\") + mean(\"softirq\") + mean(\"iowait\")) AS usage\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"cpu\\\"\\nWHERE cpu != 'cpu' AND host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, cpu\\nORDER BY t"
         }
       ],
       "title": "CPU Usage per Core",
@@ -283,9 +283,9 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  (avg(\"MemTotal\") - avg(\"MemFree\") - avg(\"Buffers\") - avg(\"Cached\") - avg(\"Slab\")) AS used,\n  (avg(\"Buffers\") + avg(\"Cached\") + avg(\"Slab\")) AS cache_buffers,\n  avg(\"MemTotal\") AS total\nFROM mem\nWHERE host='${host}' AND $__timeFilter(time)\nGROUP BY 1\nORDER BY 1",
           "queryType": "sql",
-          "refId": "A"
+          "refId": "A",
+          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  (mean(\"MemTotal\") - mean(\"MemFree\") - mean(\"Buffers\") - mean(\"Cached\") - mean(\"Slab\")) AS used,\\n  (mean(\"Buffers\") + mean(\"Cached\") + mean(\"Slab\")) AS cache_buffers,\\n  mean(\"MemTotal\") AS total\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"mem\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t\\nORDER BY t"
         }
       ],
       "title": "Memory Usage",
@@ -373,9 +373,9 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  interface,\n  avg(\"rx-bytes\") AS received,\n  avg(\"tx-bytes\") AS sent\nFROM net\nWHERE host='${host}' AND $__timeFilter(time)\nGROUP BY 1, interface\nORDER BY 1",
           "queryType": "sql",
-          "refId": "A"
+          "refId": "A",
+          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  interface,\\n  mean(\"rx-bytes\") AS received,\\n  mean(\"tx-bytes\") AS sent\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"net\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, interface\\nORDER BY t"
         }
       ],
       "title": "Network Traffic",
@@ -463,9 +463,9 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  device,\n  avg(\"sect-rd\") AS read,\n  avg(\"sect-wr\") AS write\nFROM disk\nWHERE host='${host}' AND $__timeFilter(time)\nGROUP BY 1, device\nORDER BY 1",
           "queryType": "sql",
-          "refId": "A"
+          "refId": "A",
+          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  device,\\n  mean(\"sect-rd\") AS read,\\n  mean(\"sect-wr\") AS write\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"disk\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, device\\nORDER BY t"
         }
       ],
       "title": "Disk I/O",
@@ -553,9 +553,9 @@
             "type": "influxdb",
             "uid": "influxdb-v3-sql"
           },
-          "query": "SELECT\n  date_bin(INTERVAL '$__interval', time) AS t,\n  cpu_core,\n  avg(\"frequency\") AS frequency\nFROM cpufreq\nWHERE host='${host}' AND $__timeFilter(time)\nGROUP BY 1, cpu_core\nORDER BY 1",
           "queryType": "sql",
-          "refId": "A"
+          "refId": "A",
+          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  cpu AS cpu_core,\\n  mean(\"frequency\") AS frequency\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"cpufreq\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, cpu\\nORDER BY t"
         }
       ],
       "title": "CPU Frequency",
@@ -578,14 +578,14 @@
           "type": "influxdb",
           "uid": "influxdb-v3-sql"
         },
-        "definition": "SHOW TAG VALUES FROM cpu WITH KEY = \"host\"",
+        "definition": "SELECT DISTINCT host FROM cpu ORDER BY host",
         "hide": 0,
         "includeAll": true,
         "multi": false,
         "name": "host",
         "options": [],
         "query": {
-          "query": "SHOW TAG VALUES FROM cpu WITH KEY = \"host\"",
+          "query": "SELECT DISTINCT host FROM \\\"public\\\".\\\"metrics\\\".\\\"cpu\\\" ORDER BY host",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,

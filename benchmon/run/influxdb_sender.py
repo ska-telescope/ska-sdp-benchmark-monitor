@@ -5,6 +5,8 @@ import queue
 import threading
 import time
 import math
+import re
+import socket
 from typing import Dict, Any, List
 
 
@@ -107,48 +109,88 @@ class InfluxDBSender:
                         mname = 'unknown'
                     # tags
                     tags = []
-                    if metric.get('hostname') is not None:
-                        hname = str(metric.get('hostname'))
-                        hname = ''.join(c for c in hname if c.isalnum() or c == '_')
-                        if hname:
-                            tags.append(f"host={hname}")
-                    # 新增cpu标签
+                    # Prefer explicit 'host' then 'hostname' if provided by sender
+                    host_raw = None
+                    if metric.get('host'):
+                        host_raw = str(metric.get('host'))
+                    elif metric.get('hostname'):
+                        host_raw = str(metric.get('hostname'))
+                    else:
+                        # fallback to system fqdn
+                        try:
+                            host_raw = socket.getfqdn()
+                        except Exception:
+                            host_raw = None
+                    if host_raw:
+                        # allow alnum, dot, dash, underscore in tag value
+                        host_clean = re.sub(r'[^0-9A-Za-z\.\-_]', '', host_raw)
+                        if host_clean:
+                            tags.append(f"host={host_clean}")
+
+                    # 新增cpu标签 (preserve dots/dashes if any, but cpu names usually simple)
                     if metric.get('cpu') is not None:
                         cpu_tag = str(metric.get('cpu'))
-                        cpu_tag = ''.join(c for c in cpu_tag if c.isalnum() or c == '_')
+                        cpu_tag = re.sub(r'[^0-9A-Za-z\.\-_]', '', cpu_tag)
                         if cpu_tag:
                             tags.append(f"cpu={cpu_tag}")
+
                     tag_str = ','.join(tags)
                     # fields
                     fields = []
                     if 'fields' in metric and metric['fields']:
                         for k, val in metric['fields'].items():
-                            if val is not None and isinstance(val, (int, float, bool)):
+                            # Skip None
+                            if val is None:
+                                continue
+
+                            # Preserve incoming types:
+                            # - bool -> true/false (unquoted)
+                            # - int/float -> numeric literal (no coercion)
+                            # - everything else -> string (quoted, escaped)
+                            if isinstance(val, bool):
+                                fields.append(f'{k}={"true" if val else "false"}')
+                            elif isinstance(val, (int, float)):
+                                # filter NaN/Inf for floats
                                 if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
                                     continue
                                 fields.append(f'{k}={val}')
-                            elif isinstance(val, str):
-                                val_str = ''.join(c for c in val if c.isprintable())
-                                if val_str:
-                                    fields.append(f'{k}="{val_str}"')
+                            else:
+                                # Treat any other type (including numeric-looking strings) as string
+                                s = str(val)
+                                # remove non-printable characters
+                                s = ''.join(c for c in s if c.isprintable())
+                                # escape backslashes and double quotes
+                                s = s.replace('\\', '\\\\').replace('"', '\\"')
+                                fields.append(f'{k}="{s}"')
                     else:
                         v = None
-                        if metric.get('value') is not None and isinstance(metric.get('value'), (int, float, bool, str)):
-                            val = metric.get('value')
-                            if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
-                                pass
-                            elif isinstance(val, str):
-                                val = ''.join(c for c in val if c.isprintable())
-                                if val:
-                                    v = val
+                        if metric.get('value') is not None:
+                            raw = metric.get('value')
+                            # Preserve incoming types similarly for single 'value'
+                            if isinstance(raw, bool):
+                                v = f'{"true" if raw else "false"}'
+                                is_string = False
+                            elif isinstance(raw, (int, float)):
+                                if isinstance(raw, float) and (math.isinf(raw) or math.isnan(raw)):
+                                    v = None
+                                else:
+                                    v = str(raw)
+                                    is_string = False
                             else:
-                                v = val
+                                # Always treat as string
+                                sval = str(raw)
+                                sval = ''.join(c for c in sval if c.isprintable())
+                                sval = sval.replace('\\', '\\\\').replace('"', '\\"')
+                                v = f'"{sval}"'
+                                is_string = True
                         if v is not None:
-                            if isinstance(v, str):
-                                fields.append(f'value="{v}"')
-                            else:
+                            # If v already a quoted string (starts with "), append as-is
+                            if isinstance(v, str) and v.startswith('"'):
                                 fields.append(f'value={v}')
-                    
+                            else:
+                                # numeric or boolean literal represented as string
+                                fields.append(f'value={v}')
+
                     field_str = ','.join(fields)
                     if not field_str:
                         continue
@@ -165,12 +207,18 @@ class InfluxDBSender:
                                 ts = ts * 1_000_000
                             elif ts < 1e16:  # 微秒
                                 ts = ts * 1_000
-                            # 纳秒范围
+                            # If ts looks like nanoseconds, include it
                             if ts > 1e17 and ts < 1e20:
                                 ts_str = f' {ts}'
                         except Exception:
                             pass
-                    line = f"{mname},{tag_str} {field_str}{ts_str}"
+
+                    # Compose line without extra comma when no tags
+                    if tag_str:
+                        line = f"{mname},{tag_str} {field_str}{ts_str}"
+                    else:
+                        line = f"{mname} {field_str}{ts_str}"
+
                     lines.append(line)
                 except Exception as e:
                     self.logger.warning(f"Failed to convert metric to line: {e}")

@@ -17,14 +17,18 @@ online_cpu_curfreq=$(for file in /sys/devices/system/cpu/cpu*/online; do  if [[ 
 
 test -e ${cpu0_repo}/online || online_cpu_curfreq="${cpu0_repo}/cpufreq/scaling_cur_freq $online_cpu_curfreq"
 
+# Determine FQDN once (use hostname -f)
+HOST_FQDN=$(hostname -f 2>/dev/null || hostname)
+
 # Function to send CPU frequency data to HP processor
 send_to_influxdb() {
     local timestamp=$1
     local cpu_core=$2
     local frequency=$3
     
-    # HP processor format: CPUFREQ|timestamp|cpu_core frequency
-    echo "CPUFREQ|$timestamp|$cpu_core $frequency" > "$influxdb_pipe"
+    # HP processor expects three '|' segments; put host inside third segment separated by space
+    # Format: CPUFREQ|timestamp|cpu_core frequency host=<fqdn>
+    echo "CPUFREQ|$timestamp|$cpu_core $frequency host=${HOST_FQDN}" > "$influxdb_pipe"
 }
 
 while true
