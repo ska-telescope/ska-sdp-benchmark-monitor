@@ -314,20 +314,18 @@ class InfluxDBMonitorHook:
         pass
 
     def on_cpu_data(self, timestamp: float, cpu: str, stats: Dict[str, float]):
-        """Handle CPU data for InfluxDB"""
-        metrics = []
+        """Handle CPU data for InfluxDB using a wide table model."""
         hostname = os.uname()[1]
 
-        for metric_name, value in stats.items():
-            metrics.append({
-                'metric_name': f'cpu_{metric_name}',
-                'value': value,
-                'timestamp': timestamp,
-                'hostname': hostname,
-                'cpu': cpu
-            })
+        metric = {
+            'metric_name': 'cpu',
+            'timestamp': timestamp,
+            'hostname': hostname,
+            'cpu': cpu,
+            'fields': stats  # Use the whole stats dictionary as fields
+        }
 
-        self.influxdb_sender.send_metrics(metrics)
+        self.influxdb_sender.send_metrics([metric])
 
     def on_cpufreq_data(self, timestamp: float, cpu: str, frequency: int):
         """Handle CPU frequency data for InfluxDB"""
@@ -344,19 +342,20 @@ class InfluxDBMonitorHook:
         self.influxdb_sender.send_metrics([metric])
 
     def on_memory_data(self, timestamp: float, stats: Dict[str, int]):
-        """Handle memory data for InfluxDB"""
-        metrics = []
+        """Handle memory data for InfluxDB using a wide table model."""
         hostname = os.uname()[1]
 
-        for metric_name, value in stats.items():
-            metrics.append({
-                'metric_name': f'memory_{metric_name.lower()}',
-                'value': value,
-                'timestamp': timestamp,
-                'hostname': hostname
-            })
+        # Lowercase all keys in stats for consistency
+        fields = {k.lower(): v for k, v in stats.items()}
 
-        self.influxdb_sender.send_metrics(metrics)
+        metric = {
+            'metric_name': 'memory',
+            'timestamp': timestamp,
+            'hostname': hostname,
+            'fields': fields # Use the whole stats dictionary as fields
+        }
+
+        self.influxdb_sender.send_metrics([metric])
 
     def on_network_data(self, timestamp: float, interface: str, stats: Dict[str, int]):
         """Handle network data for InfluxDB"""
@@ -414,4 +413,5 @@ class InfluxDBMonitorHook:
             }
         }
 
+        self.influxdb_sender.send_metrics([metric_data])
         self.influxdb_sender.send_metrics([metric_data])
