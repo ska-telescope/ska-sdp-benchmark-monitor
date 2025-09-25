@@ -9,26 +9,18 @@ csv_file=$2  # Not used, always /dev/null
 grafana_enabled=$3
 influxdb_pipe=$4
 
-cpu0_repo=/sys/devices/system/cpu/cpu0
-cpu_freq_min=$(cat ${cpu0_repo}/cpufreq/cpuinfo_min_freq)
-cpu_freq_max=$(cat ${cpu0_repo}/cpufreq/cpuinfo_max_freq)
+# Use a more robust method to find all scaling_cur_freq files, similar to cpufreq_mon.sh
+# This is more reliable than checking the 'online' status.
+CPU_FREQ_FILES=$(find /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq 2>/dev/null)
 
-online_cpu_curfreq=$(for file in /sys/devices/system/cpu/cpu*/online; do  if [[ $(cat $file) = 1 ]]; then echo $(dirname $file)/cpufreq/scaling_cur_freq; fi; done)
-
-test -e ${cpu0_repo}/online || online_cpu_curfreq="${cpu0_repo}/cpufreq/scaling_cur_freq $online_cpu_curfreq"
-
-# Determine FQDN once (use hostname -f)
-HOST_FQDN=$(hostname -f 2>/dev/null || hostname)
-
-# Function to send CPU frequency data to HP processor
+# Function to send CPU frequency data in the format expected by hp_processor.py
 send_to_influxdb() {
     local timestamp=$1
     local cpu_core=$2
     local frequency=$3
     
-    # HP processor expects three '|' segments; put host inside third segment separated by space
-    # Format: CPUFREQ|timestamp|cpu_core frequency host=<fqdn>
-    echo "CPUFREQ|$timestamp|$cpu_core $frequency host=${HOST_FQDN}" > "$influxdb_pipe"
+    # Format: CPUFREQ|timestamp|cpu_core frequency
+    echo "CPUFREQ|$timestamp|$cpu_core $frequency" > "$influxdb_pipe"
 }
 
 while true
@@ -36,17 +28,19 @@ do
     timestamp=$(date +'%s.%N')
     
     # Process CPU frequency data and send to InfluxDB only
-    for file in $online_cpu_curfreq; do
-        if [[ -r "$file" ]]; then
-            cpu_core=$(echo "$file" | awk -F'/' '{print $6}')
-            frequency=$(cat "$file")
-            
-            # Send to InfluxDB only
-            if [[ "$grafana_enabled" == "true" && -n "$influxdb_pipe" ]]; then
-                send_to_influxdb "$timestamp" "$cpu_core" "$frequency"
+    if [[ "$grafana_enabled" == "true" && -n "$influxdb_pipe" ]]; then
+        for file in $CPU_FREQ_FILES; do
+            if [[ -r "$file" ]]; then
+                # Extract cpu core from path, e.g. /sys/devices/system/cpu/cpu12/.. -> cpu12
+                cpu_core=$(echo "$file" | sed -n 's;^/sys/devices/system/cpu/\(cpu[0-9]*\)/.*$;\1;p')
+                frequency=$(cat "$file")
+                
+                if [[ -n "$cpu_core" && -n "$frequency" ]]; then
+                    send_to_influxdb "$timestamp" "$cpu_core" "$frequency"
+                fi
             fi
-        fi
-    done
+        done
+    fi
     
     sleep $delay
 done

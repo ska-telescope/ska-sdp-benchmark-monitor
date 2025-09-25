@@ -1,59 +1,57 @@
-#!/usr/bin/bash
+#!/bin/bash
 
-# High-performance InfiniBand monitoring with direct InfluxDB output
-# This script only handles InfluxDB output, CSV is handled by regular ib_mon.sh
+# High-performance InfiniBand monitoring by reading /sys filesystem directly
 
 freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
+csv_file=$2 # Not used
+grafana_enabled=$3
+influxdb_pipe=$4
 
-# Check if Infiband is available
-cat /sys/class/infiniband/*/ports/1/counters/port*data >/dev/null 2>&1
-retval=$?
-if [ $retval != 0 ]; then
-    echo "Infiniband is not available"
+# The directory where IB devices are exposed
+IB_SYSFS_PATH="/sys/class/infiniband"
+
+# Check if the IB sysfs path exists
+if [ ! -d "$IB_SYSFS_PATH" ]; then
     exit 0
 fi
 
-csv_file=$2  # Not used, always /dev/null
-enable_grafana=$3
-influxdb_pipe=$4
+# Define the metrics we want to capture
+IB_METRICS="port_xmit_data port_rcv_data port_xmit_pkts port_rcv_pkts"
 
-# Function to send data to InfluxDB
-send_to_influxdb() {
-    local timestamp_ns=$1
-    local interface=$2
-    local port=$3
-    local metric_key=$4
-    local metric_value=$5
-    local hostname=$(hostname)
-    
-    # Convert timestamp to nanoseconds if needed
-    if [[ $timestamp_ns == *.* ]]; then
-        timestamp_ns=$(echo "$timestamp_ns * 1000000000" | bc | cut -d. -f1)
-    else
-        timestamp_ns="${timestamp_ns}000000000"
-    fi
-    
-    # InfluxDB Line Protocol format
-    echo "infiniband_stats,host=$hostname,interface=$interface,port=$port,metric=$metric_key value=$metric_value $timestamp_ns" > "$influxdb_pipe"
-}
+while true; do
+    timestamp=$(date +'%s.%N')
 
-while true
-do
-    timestamp="$(date +'%s.%N')"
-    
-    # Send data to InfluxDB only
-    if [[ "$enable_grafana" == "true" && -n "$influxdb_pipe" ]]; then
-        for file in /sys/class/infiniband/*/ports/1/counters/port*data; do
-            if [[ -r "$file" ]]; then
-                interface=$(echo $file | awk -F'/' '{print $5}')
-                port=$(echo $file | awk -F'/' '{print $7}')
-                metric_key=$(echo $file | awk -F'/' '{print $9}')
-                metric_value=$(cat $file)
-                send_to_influxdb "$timestamp" "$interface" "$port" "$metric_key" "$metric_value"
+    if [[ "$grafana_enabled" == "true" && -n "$influxdb_pipe" ]]; then
+        # Loop through each InfiniBand device (e.g., mlx5_0)
+        for device_path in "$IB_SYSFS_PATH"/*; do
+            if [ ! -d "$device_path/ports" ]; then
+                continue
             fi
+            device_name=$(basename "$device_path")
+
+            # Loop through each port for the device
+            for port_path in "$device_path/ports"/*; do
+                port_num=$(basename "$port_path")
+                
+                # Check if the port is active
+                if [[ -r "$port_path/state" ]] && grep -q "4: ACTIVE" "$port_path/state"; then
+                    # Loop through the metrics we want to collect
+                    for metric in $IB_METRICS; do
+                        counter_file="$port_path/counters/$metric"
+                        if [[ -r "$counter_file" ]]; then
+                            value=$(cat "$counter_file")
+                            # Use a combined device_port identifier
+                            device_id="${device_name}_${port_num}"
+                            
+                            # Format: IB|timestamp|value device=<device_id> metric=<metric_name>
+                            echo "IB|$timestamp|$value device=$device_id metric=$metric" > "$influxdb_pipe"
+                        fi
+                    done
+                fi
+            done
         done
     fi
 
-    sleep $delay
+    sleep "$delay"
 done

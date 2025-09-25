@@ -149,7 +149,7 @@ class HighPerformanceDataProcessor:
 
             if data_type == 'CPU':
                 self._process_cpu_data(timestamp, data)
-            elif data_type == 'CPUFREQ':
+            elif data_type == 'CPUFREQ' or data_type == 'CPU_FREQ':
                 self._process_cpufreq_data(timestamp, data)
             elif data_type == 'MEMORY':
                 self._process_memory_data(timestamp, data)
@@ -157,6 +157,8 @@ class HighPerformanceDataProcessor:
                 self._process_network_data(timestamp, data)
             elif data_type == 'DISK':
                 self._process_disk_data(timestamp, data)
+            elif data_type == 'IB':
+                self._process_ib_data(timestamp, data)
 
             self.data_points_processed += 1
 
@@ -194,6 +196,7 @@ class HighPerformanceDataProcessor:
             # Parse CPU frequency data: "cpu0 2400000"
             parts = data.strip().split()
             if len(parts) < 2:
+                self.logger.debug(f"Invalid cpufreq data format: '{data}'")
                 return
 
             cpu_core = parts[0]
@@ -274,6 +277,30 @@ class HighPerformanceDataProcessor:
         except (ValueError, IndexError) as e:
             self.logger.debug(f"Error parsing disk data '{data}': {e}")
 
+    def _process_ib_data(self, timestamp: float, data: str):
+        """Process InfiniBand data line"""
+        try:
+            # Parse IB data: "value device=<port_name> metric=<metric_name>"
+            parts = data.strip().split()
+            if len(parts) < 3:
+                return
+
+            value = int(parts[0])
+            tags = {}
+            for part in parts[1:]:
+                if '=' in part:
+                    key, val = part.split('=', 1)
+                    tags[key] = val
+            
+            device = tags.get('device')
+            metric = tags.get('metric')
+
+            if device and metric:
+                self.hook.on_ib_data(timestamp, device, metric, value)
+
+        except (ValueError, IndexError) as e:
+            self.logger.debug(f"Error parsing IB data '{data}': {e}")
+
 
 class InfluxDBMonitorHook:
     """Monitor hook for InfluxDB integration"""
@@ -307,7 +334,7 @@ class InfluxDBMonitorHook:
         hostname = os.uname()[1]
 
         metric = {
-            'metric_name': 'cpu_frequency',
+            'metric_name': 'cpu_freq',
             'value': frequency,
             'timestamp': timestamp,
             'hostname': hostname,
@@ -372,3 +399,19 @@ class InfluxDBMonitorHook:
         }
 
         self.influxdb_sender.send_metrics([metric])
+
+    def on_ib_data(self, timestamp: float, device: str, metric: str, value: int):
+        """Handle InfiniBand data for InfluxDB"""
+        hostname = os.uname()[1]
+
+        metric_data = {
+            'metric_name': 'infiniband',
+            'timestamp': timestamp,
+            'hostname': hostname,
+            'device': device,
+            'fields': {
+                metric: value
+            }
+        }
+
+        self.influxdb_sender.send_metrics([metric_data])
