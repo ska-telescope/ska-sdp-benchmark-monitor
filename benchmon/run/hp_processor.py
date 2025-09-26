@@ -1,74 +1,45 @@
-"""
-High-performance data processor for direct monitoring integration
-Reads named pipe data and sends directly to InfluxDB, avoiding CSV file intermediate performance overhead
-"""
-
 import os
 import time
 import threading
 import logging
-from typing import Dict
 import select
 
-
 class HighPerformanceDataProcessor:
-    """
-    High-performance data processor that receives data directly from monitoring scripts and sends to Grafana
-    """
+    """High-performance data processor for benchmon."""
 
-    def __init__(self, logger: logging.Logger, data_sender, pipe_path: str):
-        """
-        Initialize high-performance data processor
-
-        Args:
-            logger: Logger instance
-            data_sender: Data sender instance (InfluxDBSender)
-            pipe_path: Named pipe path for receiving data
-        """
+    def __init__(self, logger: logging.Logger, influxdb_sender, pipe_path: str):
         self.logger = logger
-        self.data_sender = data_sender
+        self.influxdb_sender = influxdb_sender
         self.pipe_path = pipe_path
-
-        # Create InfluxDB hook
-        self.hook = InfluxDBMonitorHook(data_sender)
-
-        self.should_run = True
+        self.is_running = False
         self.processor_thread = None
-
-        # Performance counters
         self.data_points_processed = 0
-        self.start_time = time.time()
+        self.start_time = 0
+
+        # Create the named pipe if it doesn't exist
+        if not os.path.exists(self.pipe_path):
+            try:
+                os.mkfifo(self.pipe_path)
+                self.logger.info(f"Created named pipe: {self.pipe_path}")
+            except Exception as e:
+                self.logger.error(f"Failed to create named pipe {self.pipe_path}: {e}")
 
     def start(self):
         """Start the data processor"""
-        if not getattr(self.data_sender, 'config', {}).get('enabled', True):
-            self.logger.info("Data sender disabled, skipping high-performance processor")
-            return
-
-        # Create named pipe
-        try:
-            if os.path.exists(self.pipe_path):
-                os.unlink(self.pipe_path)
-            os.mkfifo(self.pipe_path)
-            self.logger.info(f"Created named pipe: {self.pipe_path}")
-        except Exception as e:
-            self.logger.error(f"Failed to create named pipe {self.pipe_path}: {e}")
-            return
-
-        self.should_run = True
+        self.is_running = True
+        self.start_time = time.time()
         self.processor_thread = threading.Thread(target=self._processor_worker, daemon=True)
         self.processor_thread.start()
         self.logger.info("High-performance data processor started")
 
     def stop(self):
-        """Stop the data processor"""
-        if not self.processor_thread:
+        """Stops the processor thread."""
+        if not self.is_running:
             return
+        self.is_running = False
 
-        self.should_run = False
-
-        # Force flush any remaining data
-        self.hook.flush()
+        if self.processor_thread:
+            self.processor_thread.join(timeout=3.0)
 
         # Clean up named pipe
         try:
@@ -77,341 +48,156 @@ class HighPerformanceDataProcessor:
         except Exception as e:
             self.logger.warning(f"Failed to clean up named pipe: {e}")
 
-        self.processor_thread.join(timeout=3.0)
-
         # Report performance
-        elapsed = time.time() - self.start_time
-        if elapsed > 0:
-            rate = self.data_points_processed / elapsed
-            self.logger.info(f"Processed {self.data_points_processed} data points at {rate:.1f} points/sec")
+        if self.start_time > 0:
+            elapsed = time.time() - self.start_time
+            if elapsed > 0 and self.data_points_processed > 0:
+                rate = self.data_points_processed / elapsed
+                self.logger.info(f"Processed {self.data_points_processed} data points at {rate:.1f} points/sec")
 
     def _processor_worker(self):
         """Worker thread that processes data from named pipe"""
         pipe_fd = None
-
         try:
-            # Open named pipe for reading (non-blocking)
-            pipe_fd = os.open(self.pipe_path, os.O_RDONLY | os.O_NONBLOCK)
+            pipe_fd = os.open(self.pipe_path, os.O_RDONLY)
             self.logger.debug("Named pipe opened for reading")
 
             buffer = ""
+            poller = select.poll()
+            poller.register(pipe_fd, select.POLLIN)
 
-            while self.should_run:
-                try:
-                    # Use select to check if data is available
-                    ready, _, _ = select.select([pipe_fd], [], [], 0.1)
-
-                    if ready:
-                        # Read data from pipe
-                        data = os.read(pipe_fd, 4096).decode('utf-8')
-                        if data:
-                            buffer += data
-
-                            # Process complete lines
-                            while '\n' in buffer:
-                                line, buffer = buffer.split('\n', 1)
-                                if line.strip():
-                                    self._process_data_line(line.strip())
-
-                    # Periodic flush to ensure data is sent (every 100 data points)
-                    if self.data_points_processed > 0 and self.data_points_processed % 100 == 0:
-                        self.hook.flush()
-
-                except OSError as e:
-                    if e.errno != 11:  # EAGAIN/EWOULDBLOCK
-                        self.logger.error(f"Error reading from pipe: {e}")
-                        break
-                except Exception as e:
-                    self.logger.error(f"Error in processor worker: {e}")
-                    time.sleep(0.1)
-
+            while self.is_running:
+                events = poller.poll(1000)  # 1 second timeout
+                for fileno, event in events:
+                    if fileno == pipe_fd and (event & select.POLLIN):
+                        data = os.read(pipe_fd, 8192).decode('utf-8')
+                        if not data:  # Pipe closed by writer
+                            self.is_running = False
+                            break
+                        buffer += data
+                        while '\n' in buffer:
+                            line, buffer = buffer.split('\n', 1)
+                            if line.strip():
+                                self._process_data_line(line.strip())
+                if not self.is_running:
+                    break
+        except Exception as e:
+            self.logger.error(f"Error in processor worker: {e}")
         finally:
             if pipe_fd:
-                try:
-                    os.close(pipe_fd)
-                except OSError:
-                    pass
+                os.close(pipe_fd)
+            self.logger.debug("Pipe processing worker finished.")
 
     def _process_data_line(self, line: str):
         """
         Process a single data line from monitoring script
-
         Args:
-            line: Data line in format "TYPE|timestamp|data"
+            line: Data line in format "TYPE|aggregated_data"
         """
         try:
-            parts = line.split('|', 2)
-            if len(parts) != 3:
+            # --- TIMESTAMP FIX: Generate a single timestamp for the entire aggregated batch ---
+            timestamp_str = f"{time.time():.9f}"
+
+            parts = line.split('|', 1)
+            if len(parts) != 2:
                 return
 
-            data_type, timestamp_str, data = parts
-            timestamp = timestamp_str  # 保持原始字符串，不做任何类型转换
+            data_type, aggregated_data = parts
+            
+            # Split the aggregated data by the pipe separator
+            records = aggregated_data.split('|')
+            
+            # --- BATCHING FIX: Collect all metrics from this line into a single batch ---
+            metrics_batch = []
 
-            if data_type == 'CPU':
-                self._process_cpu_data(timestamp, data)
-            elif data_type == 'CPUFREQ' or data_type == 'CPU_FREQ':
-                self._process_cpufreq_data(timestamp, data)
-            elif data_type == 'MEMORY':
-                self._process_memory_data(timestamp, data)
-            elif data_type == 'NETWORK':
-                self._process_network_data(timestamp, data)
-            elif data_type == 'DISK':
-                self._process_disk_data(timestamp, data)
-            elif data_type == 'IB':
-                self._process_ib_data(timestamp, data)
+            for record in records:
+                if not record.strip():
+                    continue
+                
+                data = record.strip()
+                metric = None
+                hostname = os.uname()[1]
 
-            self.data_points_processed += 1
+                if data_type == 'CPU':
+                    parts = data.split()
+                    if len(parts) >= 8:
+                        # --- CRITICAL FIX: Separate total and per-core metrics ---
+                        core_id = parts[0]
+                        fields_data = {
+                            'user': int(parts[1]), 'nice': int(parts[2]), 'system': int(parts[3]),
+                            'idle': int(parts[4]), 'iowait': int(parts[5]), 'irq': int(parts[6]),
+                            'softirq': int(parts[7]), 'steal': int(parts[8]) if len(parts) > 8 else 0
+                        }
+                        
+                        if core_id == 'cpu':
+                            # This is the total CPU usage, write to 'cpu_total' measurement
+                            metric = {
+                                'metric_name': 'cpu_total',
+                                'timestamp': timestamp_str,
+                                'hostname': hostname,
+                                'fields': fields_data
+                            }
+                        else:
+                            # This is a per-core usage, write to 'cpu_core' measurement
+                            metric = {
+                                'metric_name': 'cpu_core',
+                                'timestamp': timestamp_str,
+                                'hostname': hostname,
+                                'cpu': core_id,
+                                'fields': fields_data
+                            }
+                elif data_type == 'CPUFREQ':
+                    parts = data.split()
+                    if len(parts) == 2:
+                        metric = {
+                            'metric_name': 'cpu_freq', 'timestamp': timestamp_str, 'hostname': hostname,
+                            'cpu': parts[0], 'value': int(parts[1])
+                        }
+                elif data_type == 'MEMORY':
+                    values = data.split(',')
+                    fields = {k.lower(): v for k, v in zip(['MemTotal', 'MemFree', 'MemAvailable', 'Buffers', 'Cached', 'Slab'], values)}
+                    metric = {
+                        'metric_name': 'memory', 'timestamp': timestamp_str, 'hostname': hostname,
+                        'fields': {k: int(v) for k, v in fields.items() if v}
+                    }
+                elif data_type == 'NETWORK':
+                    if ':' in data:
+                        iface_part, data_part = data.split(':', 1)
+                        iface = iface_part.strip()
+                        parts = data_part.strip().split()
+                        if len(parts) >= 16:
+                            metric = {
+                                'metric_name': 'network_stats', 'timestamp': timestamp_str, 'hostname': hostname,
+                                'interface': iface,
+                                'fields': {'rx_bytes': int(parts[0]), 'tx_bytes': int(parts[8])}
+                            }
+                elif data_type == 'DISK':
+                    parts = data.strip().split()
+                    if len(parts) >= 14:
+                         metric = {
+                            'metric_name': 'disk_stats', 'timestamp': timestamp_str, 'hostname': hostname,
+                            'device': parts[2],
+                            'fields': {'sectors_read': int(parts[5]), 'sectors_written': int(parts[9])}
+                        }
+                elif data_type == 'IB':
+                    parts = data.split()
+                    if len(parts) == 3:
+                        metric = {
+                            'metric_name': 'infiniband', 'timestamp': timestamp_str, 'hostname': hostname,
+                            'device': parts[0],
+                            'fields': {
+                                'port_rcv_data': int(parts[1]),
+                                'port_xmit_data': int(parts[2])
+                            }
+                        }
+
+                if metric:
+                    metrics_batch.append(metric)
+
+            # --- Send the entire batch of metrics from this sample at once ---
+            if metrics_batch:
+                self.influxdb_sender.send_metrics(metrics_batch)
+                self.data_points_processed += len(metrics_batch)
 
         except Exception as e:
             self.logger.debug(f"Error processing data line '{line}': {e}")
-
-    def _process_cpu_data(self, timestamp: float, data: str):
-        """Process CPU data line"""
-        try:
-            # Parse CPU data: "cpu0 user nice system idle iowait irq softirq steal guest guest_nice"
-            parts = data.strip().split()
-            if len(parts) < 8:
-                return
-
-            cpu_core = parts[0]
-            stats = {
-                'user': int(parts[1]),
-                'nice': int(parts[2]),
-                'system': int(parts[3]),
-                'idle': int(parts[4]),
-                'iowait': int(parts[5]),
-                'irq': int(parts[6]),
-                'softirq': int(parts[7]),
-                'steal': int(parts[8]) if len(parts) > 8 else 0
-            }
-
-            self.hook.on_cpu_data(timestamp, cpu_core, stats)
-
-        except (ValueError, IndexError) as e:
-            self.logger.debug(f"Error parsing CPU data '{data}': {e}")
-
-    def _process_cpufreq_data(self, timestamp: float, data: str):
-        """Process CPU frequency data line"""
-        try:
-            # Parse CPU frequency data: "cpu0 2400000"
-            parts = data.strip().split()
-            if len(parts) < 2:
-                self.logger.debug(f"Invalid cpufreq data format: '{data}'")
-                return
-
-            cpu_core = parts[0]
-            frequency = int(parts[1])
-
-            self.hook.on_cpufreq_data(timestamp, cpu_core, frequency)
-
-        except (ValueError, IndexError) as e:
-            self.logger.debug(f"Error parsing CPU frequency data '{data}': {e}")
-
-    def _process_memory_data(self, timestamp: float, data: str):
-        """Process memory data line"""
-        try:
-            # Parse memory data from /proc/meminfo values
-            values = data.split(',')
-
-            # Get memory field names (simplified)
-            memory_fields = [
-                'MemTotal', 'MemFree', 'MemAvailable', 'Buffers', 'Cached',
-                'SwapCached', 'Active', 'Inactive', 'SwapTotal', 'SwapFree'
-            ]
-
-            stats = {}
-            for i, field in enumerate(memory_fields[:len(values)]):
-                try:
-                    stats[field] = int(values[i])
-                except (ValueError, IndexError):
-                    continue
-
-            self.hook.on_memory_data(timestamp, stats)
-
-        except Exception as e:
-            self.logger.debug(f"Error parsing memory data '{data}': {e}")
-
-    def _process_network_data(self, timestamp: float, data: str):
-        """Process network data line"""
-        try:
-            # Parse network data: "interface rx_bytes rx_packets ... tx_bytes tx_packets ..."
-            parts = data.strip().split()
-            if len(parts) < 17:
-                return
-
-            interface = parts[0].rstrip(':')
-            stats = {
-                'rx_bytes': int(parts[1]),
-                'rx_packets': int(parts[2]),
-                'rx_errs': int(parts[3]),
-                'rx_drop': int(parts[4]),
-                'tx_bytes': int(parts[9]),
-                'tx_packets': int(parts[10]),
-                'tx_errs': int(parts[11]),
-                'tx_drop': int(parts[12])
-            }
-
-            self.hook.on_network_data(timestamp, interface, stats)
-
-        except (ValueError, IndexError) as e:
-            self.logger.debug(f"Error parsing network data '{data}': {e}")
-
-    def _process_disk_data(self, timestamp: float, data: str):
-        """Process disk data line"""
-        try:
-            # Parse disk data from /proc/diskstats
-            parts = data.strip().split()
-            if len(parts) < 14:
-                return
-
-            device = parts[2]
-            stats = {
-                'reads_completed': int(parts[3]),
-                'sectors_read': int(parts[5]),
-                'writes_completed': int(parts[7]),
-                'sectors_written': int(parts[9])
-            }
-
-            self.hook.on_disk_data(timestamp, device, stats)
-
-        except (ValueError, IndexError) as e:
-            self.logger.debug(f"Error parsing disk data '{data}': {e}")
-
-    def _process_ib_data(self, timestamp: float, data: str):
-        """Process InfiniBand data line"""
-        try:
-            # Parse IB data: "value device=<port_name> metric=<metric_name>"
-            parts = data.strip().split()
-            if len(parts) < 3:
-                return
-
-            value = int(parts[0])
-            tags = {}
-            for part in parts[1:]:
-                if '=' in part:
-                    key, val = part.split('=', 1)
-                    tags[key] = val
-            
-            device = tags.get('device')
-            metric = tags.get('metric')
-
-            if device and metric:
-                self.hook.on_ib_data(timestamp, device, metric, value)
-
-        except (ValueError, IndexError) as e:
-            self.logger.debug(f"Error parsing IB data '{data}': {e}")
-
-
-class InfluxDBMonitorHook:
-    """Monitor hook for InfluxDB integration"""
-
-    def __init__(self, influxdb_sender):
-        self.influxdb_sender = influxdb_sender
-
-    def flush(self):
-        """Flush any pending data to InfluxDB"""
-        # InfluxDBSender handles batching internally, nothing to flush here
-        pass
-
-    def on_cpu_data(self, timestamp: float, cpu: str, stats: Dict[str, float]):
-        """Handle CPU data for InfluxDB using a wide table model."""
-        hostname = os.uname()[1]
-
-        metric = {
-            'metric_name': 'cpu',
-            'timestamp': timestamp,
-            'hostname': hostname,
-            'cpu': cpu,
-            'fields': stats  # Use the whole stats dictionary as fields
-        }
-
-        self.influxdb_sender.send_metrics([metric])
-
-    def on_cpufreq_data(self, timestamp: float, cpu: str, frequency: int):
-        """Handle CPU frequency data for InfluxDB"""
-        hostname = os.uname()[1]
-
-        metric = {
-            'metric_name': 'cpu_freq',
-            'value': frequency,
-            'timestamp': timestamp,
-            'hostname': hostname,
-            'cpu': cpu
-        }
-
-        self.influxdb_sender.send_metrics([metric])
-
-    def on_memory_data(self, timestamp: float, stats: Dict[str, int]):
-        """Handle memory data for InfluxDB using a wide table model."""
-        hostname = os.uname()[1]
-
-        # Lowercase all keys in stats for consistency
-        fields = {k.lower(): v for k, v in stats.items()}
-
-        metric = {
-            'metric_name': 'memory',
-            'timestamp': timestamp,
-            'hostname': hostname,
-            'fields': fields # Use the whole stats dictionary as fields
-        }
-
-        self.influxdb_sender.send_metrics([metric])
-
-    def on_network_data(self, timestamp: float, interface: str, stats: Dict[str, int]):
-        """Handle network data for InfluxDB"""
-        hostname = os.uname()[1]
-
-        # Create single measurement with multiple fields for dashboard compatibility
-        metric = {
-            'metric_name': 'network_stats',
-            'value': stats.get('rx_bytes', 0),  # Use rx_bytes as primary value
-            'timestamp': timestamp,
-            'hostname': hostname,
-            'interface': interface,
-            'fields': {
-                'rx_bytes': stats.get('rx_bytes', 0),
-                'tx_bytes': stats.get('tx_bytes', 0),
-                'rx_packets': stats.get('rx_packets', 0),
-                'tx_packets': stats.get('tx_packets', 0)
-            }
-        }
-
-        self.influxdb_sender.send_metrics([metric])
-
-    def on_disk_data(self, timestamp: float, device: str, stats: Dict[str, int]):
-        """Handle disk data for InfluxDB"""
-        hostname = os.uname()[1]
-
-        # Create single measurement with multiple fields for dashboard compatibility
-        metric = {
-            'metric_name': 'disk_stats',
-            'value': stats.get('sectors_read', 0),  # Use sectors_read as primary value
-            'timestamp': timestamp,
-            'hostname': hostname,
-            'device': device,
-            'fields': {
-                'sectors_read': stats.get('sectors_read', 0),
-                'sectors_written': stats.get('sectors_written', 0),
-                'reads_completed': stats.get('reads_completed', 0),
-                'writes_completed': stats.get('writes_completed', 0)
-            }
-        }
-
-        self.influxdb_sender.send_metrics([metric])
-
-    def on_ib_data(self, timestamp: float, device: str, metric: str, value: int):
-        """Handle InfiniBand data for InfluxDB"""
-        hostname = os.uname()[1]
-
-        metric_data = {
-            'metric_name': 'infiniband',
-            'timestamp': timestamp,
-            'hostname': hostname,
-            'device': device,
-            'fields': {
-                metric: value
-            }
-        }
-
-        self.influxdb_sender.send_metrics([metric_data])
-        self.influxdb_sender.send_metrics([metric_data])

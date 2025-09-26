@@ -111,8 +111,8 @@ class RunUtils:
         parser.add_argument(
             "--grafana-url",
             type=str,
-            default="http://localhost:8086",
-            help="InfluxDB URL. Default: http://localhost:8086"
+            default="http://localhost:3000",
+            help="InfluxDB URL. Default: http://localhost:3000"
         )
 
         parser.add_argument(
@@ -151,10 +151,10 @@ class RunUtils:
         )
 
         parser.add_argument(
-            "--grafana-send-interval",
+            "--grafana-sample-interval",
             type=float,
-            default=2.0,
-            help="Interval in seconds between InfluxDB sends. Default: 2.0"
+            default=1.0,
+            help="Interval in seconds for high-performance (Grafana) sampling. Default: 1.0 (1 Hz)"
         )
 
         parser.add_argument(

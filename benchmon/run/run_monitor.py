@@ -39,24 +39,11 @@ class RunMonitor:
 
         self.args = args
         self.logger = logger
-        influxdb_config = {
-            'url': args.grafana_url,
-            'organization': args.grafana_org,
-            'bucket': args.grafana_bucket,
-            'token': args.grafana_token,
-            'job_name': getattr(args, 'job_name', 'benchmon'),
-            'batch_size': getattr(args, 'batch_size', 50),
-            'send_interval': getattr(args, 'send_interval', 2.0)
-        }
-        self.influxdb_config = influxdb_config 
-        self.influxdb_sender = InfluxDBSender(self.logger, influxdb_config)
         
         self.should_run = True
 
-        self.save_dir = args.save_dir
-
         self.save_dir_base = args.save_dir
-        self.save_dir = f"{self.save_dir}/benchmon_traces_{HOSTNAME}"
+        self.save_dir = f"{self.save_dir_base}/benchmon_traces_{HOSTNAME}"
 
         self.verbose = args.verbose
 
@@ -80,23 +67,19 @@ class RunMonitor:
         # InfluxDB integration
         self.is_grafana = args.grafana
 
+        # --- FIX: Defer ALL initialization and starting to the run() method ---
+        self.influxdb_sender = None
+        self.hp_processor = None
         if self.is_grafana:
-            influxdb_config = {
+            self.influxdb_config = {
                 'url': args.grafana_url,
                 'organization': args.grafana_org,
                 'bucket': args.grafana_bucket,
                 'token': args.grafana_token,
                 'job_name': getattr(args, 'job_name', 'benchmon'),
-                'batch_size': getattr(args, 'batch_size', 50),
-                'send_interval': getattr(args, 'send_interval', 2.0)
+                'batch_size': args.grafana_batch_size,
+                # 'send_interval' is no longer used by influxdb_sender
             }
-            self.influxdb_sender = InfluxDBSender(self.logger, influxdb_config)
-            pipe_path = f"{self.save_dir}/benchmon_data_pipe"
-            self.hp_processor = HighPerformanceDataProcessor(self.logger, self.influxdb_sender, pipe_path)
-
-            self.influxdb_sender.start()
-            self.hp_processor.start()
-            self.logger.info("InfluxDB integration enabled - HP processor started")
 
         # Profiling and callstack parameters
         self.call_filename = "call_report.txt"
@@ -139,16 +122,19 @@ class RunMonitor:
 
         os.makedirs(self.save_dir, exist_ok=True)
 
-        # Initialize InfluxDB components if enabled
+        # --- FIX: Initialize and start components ONCE and in the correct order ---
         if self.is_grafana:
+            # 1. Initialize components
             self.influxdb_sender = InfluxDBSender(self.logger, self.influxdb_config)
             pipe_path = f"{self.save_dir}/benchmon_data_pipe"
             self.hp_processor = HighPerformanceDataProcessor(self.logger, self.influxdb_sender, pipe_path)
 
+            # 2. Start background threads (reader first)
             self.influxdb_sender.start()
             self.hp_processor.start()
-            self.logger.info("InfluxDB integration enabled - HP processor started")
+            self.logger.info("InfluxDB integration e nabled - HP processor started")
 
+        # 3. Start writer processes
         if self.is_system:
             self.run_sys_monitoring()
 
@@ -158,16 +144,20 @@ class RunMonitor:
         if self.is_call:
             self.run_perf_call()
 
+        # --- FIX: Replace blocking wait() with a main loop ---
         if timeout:
+            self.logger.info(f"Running for a fixed duration of {timeout} seconds.")
             time.sleep(timeout)
-        elif self.is_system:
-            self.sys_process[0].wait()
-        elif self.is_power:
-            self.perfpow_process.wait()
-        elif self.is_call:
-            self.perfcall_process.wait()
+        else:
+            self.logger.info("Monitoring started. Press Ctrl+C to stop.")
+            try:
+                while self.should_run:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                self.logger.info("Ctrl+C received, initiating termination.")
+                self.should_run = False
 
-        self.terminate("", "")
+        self.terminate()
         self.post_process()
 
 
@@ -209,10 +199,20 @@ class RunMonitor:
 
             # Start InfluxDB monitoring if enabled (independent of CSV)
             if self.is_grafana:
+                # --- CRITICAL FIX: Use the correct frequency for HP monitoring ---
+                # The frequency for HP scripts is derived from --grafana-sample-interval.
+                try:
+                    hp_freq = 1.0 / self.args.grafana_sample_interval
+                except ZeroDivisionError:
+                    hp_freq = 1 # Default to 1Hz if interval is 0
+
                 hp_script_path = f"{sh_repo}/{device}_mon_hp.sh"
                 pipe_path = f"{self.save_dir}/benchmon_data_pipe"
-                hp_args = ["bash", hp_script_path, f"{freq}", "/dev/null", "true", pipe_path]
-                hp_msg = f"InfluxDB script: {hp_script_path} → InfluxDB"
+                
+                # --- SIMPLIFICATION: Pass only the required arguments ---
+                # The _hp scripts no longer need csv_file or grafana_enabled flags.
+                hp_args = ["bash", hp_script_path, f"{hp_freq}", pipe_path]
+                hp_msg = f"InfluxDB script: {hp_script_path} @ {hp_freq:.2f}Hz → InfluxDB"
 
                 self.logger.debug(f"Starting: {hp_msg}")
                 self.sys_process += [

@@ -1,57 +1,36 @@
 #!/bin/bash
 
-# High-performance InfiniBand monitoring by reading /sys filesystem directly
+# High-performance InfiniBand monitoring for InfluxDB.
 
 freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
-csv_file=$2 # Not used
-grafana_enabled=$3
-influxdb_pipe=$4
+influxdb_pipe=$2
 
-# The directory where IB devices are exposed
-IB_SYSFS_PATH="/sys/class/infiniband"
+# Use a pipe as the record separator for consistency
+RS="|"
 
-# Check if the IB sysfs path exists
-if [ ! -d "$IB_SYSFS_PATH" ]; then
-    exit 0
-fi
-
-# Define the metrics we want to capture
-IB_METRICS="port_xmit_data port_rcv_data port_xmit_pkts port_rcv_pkts"
+# Find all InfiniBand ports
+IB_PORTS=$(find /sys/class/infiniband/*/ports/*/counters -type f -name 'port_xmit_data' | sed -e 's;/sys/class/infiniband/\(.*\)/ports/.*/counters/.*$;\1;')
 
 while true; do
-    timestamp=$(date +'%s.%N')
+    if [[ -n "$influxdb_pipe" ]]; then
+        payload=""
+        for port in $IB_PORTS; do
+            # Transmitted data
+            xmit_data=$(cat "/sys/class/infiniband/${port}/ports/1/counters/port_xmit_data")
+            
+            # Received data
+            rcv_data=$(cat "/sys/class/infiniband/${port}/ports/1/counters/port_rcv_data")
 
-    if [[ "$grafana_enabled" == "true" && -n "$influxdb_pipe" ]]; then
-        # Loop through each InfiniBand device (e.g., mlx5_0)
-        for device_path in "$IB_SYSFS_PATH"/*; do
-            if [ ! -d "$device_path/ports" ]; then
-                continue
-            fi
-            device_name=$(basename "$device_path")
-
-            # Loop through each port for the device
-            for port_path in "$device_path/ports"/*; do
-                port_num=$(basename "$port_path")
-                
-                # Check if the port is active
-                if [[ -r "$port_path/state" ]] && grep -q "4: ACTIVE" "$port_path/state"; then
-                    # Loop through the metrics we want to collect
-                    for metric in $IB_METRICS; do
-                        counter_file="$port_path/counters/$metric"
-                        if [[ -r "$counter_file" ]]; then
-                            value=$(cat "$counter_file")
-                            # Use a combined device_port identifier
-                            device_id="${device_name}_${port_num}"
-                            
-                            # Format: IB|timestamp|value device=<device_id> metric=<metric_name>
-                            echo "IB|$timestamp|$value device=$device_id metric=$metric" > "$influxdb_pipe"
-                        fi
-                    done
-                fi
-            done
+            # Append "port_name rcv_data xmit_data<RS>" to the payload
+            payload+="$port $rcv_data $xmit_data$RS"
         done
-    fi
 
+        # Send the entire aggregated payload in one line
+        # New Format: IB|port0 rcv0 xmit0|port1 rcv1 xmit1|...
+        if [[ -n "$payload" ]]; then
+            echo "IB|$payload" > "$influxdb_pipe"
+        fi
+    fi
     sleep "$delay"
 done

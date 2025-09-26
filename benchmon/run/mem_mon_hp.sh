@@ -1,50 +1,27 @@
 #!/bin/bash
 
-# High-performance Memory monitoring with direct InfluxDB output
+# High-performance Memory monitoring for InfluxDB.
 
 freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
-csv_file=$2 # Not used
-grafana_enabled=$3
-influxdb_pipe=$4
+influxdb_pipe=$2
 
-# These fields MUST match the order in hp_processor.py's _process_memory_data
-MEMORY_FIELDS="MemTotal MemFree MemAvailable Buffers Cached SwapCached Active Inactive SwapTotal SwapFree"
+# Define the memory fields we are interested in
+MEM_FIELDS="MemTotal MemFree MemAvailable Buffers Cached Slab"
 
 while true; do
-    timestamp=$(date +'%s.%N')
-
-    if [[ "$grafana_enabled" == "true" && -n "$influxdb_pipe" ]]; then
-        # Read all required values from /proc/meminfo
-        values_line=$(grep -E "^($(echo $MEMORY_FIELDS | sed 's/ /|/g')):" /proc/meminfo | awk '{print $2}' | paste -sd, -)
-        
-        # Format: MEMORY|timestamp|value1,value2,value3...
-        echo "MEMORY|$timestamp|$values_line" > "$influxdb_pipe"
-    fi
-
-    sleep "$delay"
-done
-            
-            if [[ -n "$value" ]]; then
-                # Format: MEMORY|timestamp|value metric=<metric_name> hostname=<fqdn>
-                echo "MEMORY|$timestamp|$value metric=$metric hostname=$HOST_FQDN" > "$influxdb_pipe"
-            fi
+    if [[ -n "$influxdb_pipe" ]]; then
+        values=""
+        for field in $MEM_FIELDS; do
+            # Extract the value for each field from /proc/meminfo
+            value=$(grep "^${field}:" /proc/meminfo | awk '{print $2}')
+            values+="${value},"
         done
+        # Remove trailing comma
+        values=${values%,}
+        
+        # New Format: MEMORY|value1,value2,value3...
+        echo "MEMORY|$values" > "$influxdb_pipe"
     fi
-
     sleep "$delay"
-done
-    echo "MEMORY|$timestamp|$meminfo_values" > "$influxdb_pipe"
-}
-
-while true
-do
-    timestamp=$(date +'%s.%N')
-    
-    # Send data to InfluxDB only
-    if [[ "$grafana_enabled" == "true" && -n "$influxdb_pipe" ]]; then
-        send_to_influxdb "$timestamp"
-    fi
-    
-    sleep $delay
 done
