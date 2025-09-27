@@ -20,7 +20,7 @@ from requests.auth import HTTPBasicAuth
 
 class GrafanaDashboardManager:
     """Manage Grafana dashboards for local services"""
-    
+
     def __init__(
         self,
         grafana_url: str = "http://localhost:3000",
@@ -43,7 +43,7 @@ class GrafanaDashboardManager:
                 f"{self.grafana_url}/api/health",
                 timeout=self.timeout
             )
-            
+
             if response.status_code == 200:
                 self.logger.info("✅ Connected to Grafana successfully")
                 return True
@@ -52,13 +52,16 @@ class GrafanaDashboardManager:
                     f"❌ Grafana health check failed: {response.status_code}"
                 )
                 return False
-                
+
         except requests.exceptions.RequestException as e:
             self.logger.error(f"❌ Cannot connect to Grafana: {e}")
             self.logger.info("💡 Make sure Grafana is running on localhost:3000")
             return False
 
-    def ensure_datasource(self, ds_name: str = "InfluxDB v3 SQL", ds_uid: str = "influxdb-v3-sql", influx_url: str = "http://localhost:8181", db: str = "metrics") -> bool:
+    def ensure_datasource(self, ds_name: str = "InfluxDB v3 SQL",
+                          ds_uid: str = "influxdb-v3-sql",
+                          influx_url: str = "http://localhost:8181",
+                          db: str = "metrics") -> bool:
         """Ensure datasource exists or create/update it"""
         payload = {
             "name": ds_name,
@@ -84,7 +87,7 @@ class GrafanaDashboardManager:
         try:
             resp = self.session.get(f"{self.grafana_url}/api/datasources/uid/{ds_uid}")
             exists = resp.status_code == 200
-        except:
+        except Exception:
             exists = False
 
         try:

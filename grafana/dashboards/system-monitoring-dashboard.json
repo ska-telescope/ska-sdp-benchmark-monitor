@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 28,
+  "id": 33,
   "links": [],
   "panels": [
     {
@@ -115,7 +115,7 @@
           "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  mean(\"user\") AS cpu_user,\\n  mean(\"nice\") AS cpu_nice,\\n  mean(\"system\") AS cpu_system,\\n  mean(\"irq\") AS cpu_irq,\\n  mean(\"softirq\") AS cpu_softirq,\\n  mean(\"iowait\") AS cpu_iowait,\\n  mean(\"steal\") AS cpu_steal\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"cpu\\\"\\nWHERE cpu = 'cpu' AND host = '${host}' AND $__timeFilter(time)\\nGROUP BY t\\nORDER BY t",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT\n  hostname,\n  time,\n  ROUND(\n    100.0 * (total_delta - idle_delta) / total_delta,\n    2\n  ) AS cpu_utilization_percent\nFROM (\n  SELECT\n    hostname,\n    time,\n    -- 计算总 CPU 时间差值\n    (\"user\" - LAG(\"user\") OVER w) +\n    (nice - LAG(nice) OVER w) +\n    (system - LAG(system) OVER w) +\n    (iowait - LAG(iowait) OVER w) +\n    (irq - LAG(irq) OVER w) +\n    (softirq - LAG(softirq) OVER w) +\n    (steal - LAG(steal) OVER w) +\n    (idle - LAG(idle) OVER w) AS total_delta,\n    -- 计算空闲时间差值\n    (idle - LAG(idle) OVER w) AS idle_delta\n  FROM cpu_total\n  WHERE time >= $__timeFrom AND time < $__timeTo AND hostname IN ('${host}')\n  WINDOW w AS (\n    PARTITION BY hostname\n    ORDER BY time\n  )\n) AS deltas\nORDER BY time,hostname,cpu_utilization_percent;",
+          "rawSql": "SELECT\n  hostname,\n  time,\n  ROUND(\n    100.0 * (total_delta - idle_delta) / total_delta,\n    2\n  ) AS cpu_utilization_percent\nFROM (\n  SELECT\n    hostname,\n    time,\n    -- 计算总 CPU 时间差值\n    (\"user\" - LAG(\"user\") OVER w) +\n    (nice - LAG(nice) OVER w) +\n    (system - LAG(system) OVER w) +\n    (iowait - LAG(iowait) OVER w) +\n    (irq - LAG(irq) OVER w) +\n    (softirq - LAG(softirq) OVER w) +\n    (steal - LAG(steal) OVER w) +\n    (idle - LAG(idle) OVER w) AS total_delta,\n    -- 计算空闲时间差值\n    (idle - LAG(idle) OVER w) AS idle_delta\n  FROM cpu_total\n  WHERE time >= $__timeFrom AND time < $__timeTo AND hostname = ANY(string_to_array('${host}', ','))\n  WINDOW w AS (\n    PARTITION BY hostname\n    ORDER BY time\n  )\n) AS deltas\nORDER BY time,hostname,cpu_utilization_percent;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -197,7 +197,32 @@
           },
           "unit": "percent"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "cpu_utilization_percent {cpu=\"cpu102\", hostname=\"lab-3.hpc.astrolab.cn\"}"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 9,
@@ -232,7 +257,7 @@
           "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  cpu,\\n  (mean(\"user\") + mean(\"nice\") + mean(\"system\") + mean(\"irq\") + mean(\"softirq\") + mean(\"iowait\")) AS usage\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"cpu\\\"\\nWHERE cpu != 'cpu' AND host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, cpu\\nORDER BY t",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT\n  hostname,\n  cpu,\n  time,\n  ROUND(\n    100.0 * (total_delta - idle_delta) / total_delta,\n    2\n  ) AS cpu_utilization_percent\nFROM (\n  SELECT\n    hostname,\n    cpu,\n    time,\n    -- 计算总 CPU 时间差值\n    (\"user\" - LAG(\"user\") OVER w) +\n    (nice - LAG(nice) OVER w) +\n    (system - LAG(system) OVER w) +\n    (iowait - LAG(iowait) OVER w) +\n    (irq - LAG(irq) OVER w) +\n    (softirq - LAG(softirq) OVER w) +\n    (steal - LAG(steal) OVER w) +\n    (idle - LAG(idle) OVER w) AS total_delta,\n    -- 计算空闲时间差值\n    (idle - LAG(idle) OVER w) AS idle_delta\n  FROM cpu_core\n  WHERE time >= $__timeFrom AND time < $__timeTo AND hostname IN ('${host}')\n  WINDOW w AS (\n    PARTITION BY cpu,hostname\n    ORDER BY time\n  )\n) AS deltas\nORDER BY time,cpu,cpu_utilization_percent;",
+          "rawSql": "SELECT\n  hostname,\n  cpu,\n  time,\n  ROUND(\n    100.0 * (total_delta - idle_delta) / total_delta,\n    2\n  ) AS cpu_utilization_percent\nFROM (\n  SELECT\n    hostname,\n    cpu,\n    time,\n    -- 计算总 CPU 时间差值\n    (\"user\" - LAG(\"user\") OVER w) +\n    (nice - LAG(nice) OVER w) +\n    (system - LAG(system) OVER w) +\n    (iowait - LAG(iowait) OVER w) +\n    (irq - LAG(irq) OVER w) +\n    (softirq - LAG(softirq) OVER w) +\n    (steal - LAG(steal) OVER w) +\n    (idle - LAG(idle) OVER w) AS total_delta,\n    -- 计算空闲时间差值\n    (idle - LAG(idle) OVER w) AS idle_delta\n  FROM cpu_core\n  WHERE time >= $__timeFrom AND time < $__timeTo AND hostname = ANY(string_to_array('${host}', ','))\n  WINDOW w AS (\n    PARTITION BY cpu,hostname\n    ORDER BY time\n  )\n) AS deltas\nORDER BY time,cpu,cpu_utilization_percent;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -253,6 +278,240 @@
         }
       ],
       "title": "CPU Usage per Core",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-v3-sql"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "hertz"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "dataset": "iox",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-v3-sql"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  cpu AS cpu_core,\\n  mean(\"frequency\") AS frequency\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"cpufreq\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, cpu\\nORDER BY t",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  time,\n  hostname,\n  cpu AS cpu_core,\n  value / 1000000.0 AS frequency_GHz\nFROM cpu_freq\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname = ANY(string_to_array('${host}', ','))\nORDER BY time, cpu_core",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ]
+          }
+        }
+      ],
+      "title": "CPU Frequency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-v3-sql"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "dataset": "iox",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-v3-sql"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  interface,\\n  mean(\"rx-bytes\") AS received,\\n  mean(\"tx-bytes\") AS sent\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"net\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, interface\\nORDER BY t",
+          "queryType": "sql",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  time,\n  hostname,\n  interface,\n  CASE\n    WHEN EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) = 0 THEN NULL\n    ELSE ((rx_bytes - LAG(rx_bytes) OVER w) / EXTRACT(EPOCH FROM (time - LAG(time) OVER w)))\n  END AS received_bps,\n  CASE\n    WHEN EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) = 0 THEN NULL\n    ELSE ((tx_bytes - LAG(tx_bytes) OVER w) / EXTRACT(EPOCH FROM (time - LAG(time) OVER w)))\n  END AS sent_bps\nFROM network_stats\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname = ANY(string_to_array('${host}', ','))\nWINDOW w AS (PARTITION BY hostname, interface ORDER BY time)\nORDER BY time, interface;",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ]
+          }
+        }
+      ],
+      "title": "Network Traffic",
       "type": "timeseries"
     },
     {
@@ -320,7 +579,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 9
+        "y": 18
       },
       "id": 6,
       "options": {
@@ -349,7 +608,7 @@
           "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  (mean(\"MemTotal\") - mean(\"MemFree\") - mean(\"Buffers\") - mean(\"Cached\") - mean(\"Slab\")) AS used,\\n  (mean(\"Buffers\") + mean(\"Cached\") + mean(\"Slab\")) AS cache_buffers,\\n  mean(\"MemTotal\") AS total\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"mem\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t\\nORDER BY t",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT\n  time,\n  hostname,\n  (memtotal - memfree - buffers - cached - slab) * 1024 AS used_MiB,\n  (buffers + cached + slab)* 1024  AS cache_buffers_MiB,\n  memtotal* 1024 AS total_MiB\nFROM memory\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname IN ('${host}')\nORDER BY time",
+          "rawSql": "SELECT\n  time,\n  hostname,\n  (memtotal - memfree - buffers - cached - slab) * 1024 AS used_MiB,\n  (buffers + cached + slab)* 1024  AS cache_buffers_MiB,\n  memtotal* 1024 AS total_MiB\nFROM memory\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname = ANY(string_to_array('${host}', ','))\nORDER BY time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -497,9 +756,9 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 9
+        "y": 18
       },
-      "id": 8,
+      "id": 13,
       "options": {
         "legend": {
           "calcs": [],
@@ -526,7 +785,7 @@
           "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  interface,\\n  mean(\"rx-bytes\") AS received,\\n  mean(\"tx-bytes\") AS sent\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"net\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, interface\\nORDER BY t",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT\n  time,\n  hostname,\n  interface,\n  CASE\n    WHEN EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) = 0 THEN NULL\n    ELSE (rx_bytes - LAG(rx_bytes) OVER w) / EXTRACT(EPOCH FROM (time - LAG(time) OVER w))\n  END AS received_bps,\n  CASE\n    WHEN EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) = 0 THEN NULL\n    ELSE (tx_bytes - LAG(tx_bytes) OVER w) / EXTRACT(EPOCH FROM (time - LAG(time) OVER w))\n  END AS sent_bps\nFROM network_stats\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname IN ('${host}')\nWINDOW w AS (PARTITION BY hostname, interface ORDER BY time)\nORDER BY time, interface;",
+          "rawSql": "SELECT\n  time,\n  hostname,\n  device,\n  CASE\n    WHEN EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) = 0 THEN NULL\n    ELSE ((port_rcv_data - LAG(port_rcv_data) OVER w) / EXTRACT(EPOCH FROM (time - LAG(time) OVER w))) * 4\n  END AS received_bps,\n  CASE\n    WHEN EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) = 0 THEN NULL\n    ELSE ((port_xmit_data - LAG(port_xmit_data) OVER w) / EXTRACT(EPOCH FROM (time - LAG(time) OVER w))) * 4\n  END AS sent_bps\nFROM infiniband\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname = ANY(string_to_array('${host}', ','))\nWINDOW w AS (PARTITION BY hostname, device ORDER BY time)\nORDER BY time, device;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -546,7 +805,7 @@
           }
         }
       ],
-      "title": "Network Traffic",
+      "title": "IB Traffic",
       "type": "timeseries"
     },
     {
@@ -614,7 +873,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 27
       },
       "id": 10,
       "options": {
@@ -643,7 +902,7 @@
           "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  device,\\n  mean(\"sect-rd\") AS read,\\n  mean(\"sect-wr\") AS write\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"disk\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, device\\nORDER BY t",
           "queryType": "sql",
           "rawQuery": true,
-          "rawSql": "SELECT\n  hostname,\n  time,\n  device,\n  CASE\n    WHEN date_part('epoch', time - lag(time) OVER w) = 0 THEN NULL\n    ELSE GREATEST(0, (sectors_read - lag(sectors_read) OVER w) / date_part('epoch', time - lag(time) OVER w))\n  END AS read_sectors_ps,\n  CASE\n    WHEN date_part('epoch', time - lag(time) OVER w) = 0 THEN NULL\n    ELSE GREATEST(0, (sectors_written - lag(sectors_written) OVER w) / date_part('epoch', time - lag(time) OVER w))\n  END AS write_sectors_ps\nFROM disk_stats\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname IN ('${host}')\nWINDOW w AS (PARTITION BY hostname, device ORDER BY time)\nORDER BY time, device;",
+          "rawSql": "SELECT\n  hostname,\n  time,\n  device,\n  CASE\n    WHEN date_part('epoch', time - lag(time) OVER w) = 0 THEN NULL\n    ELSE GREATEST(0, (sectors_read - lag(sectors_read) OVER w) / date_part('epoch', time - lag(time) OVER w))\n  END AS read_sectors_ps,\n  CASE\n    WHEN date_part('epoch', time - lag(time) OVER w) = 0 THEN NULL\n    ELSE GREATEST(0, (sectors_written - lag(sectors_written) OVER w) / date_part('epoch', time - lag(time) OVER w))\n  END AS write_sectors_ps\nFROM disk_stats\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname = ANY(string_to_array('${host}', ','))\nWINDOW w AS (PARTITION BY hostname, device ORDER BY time)\nORDER BY time, device;",
           "refId": "A",
           "sql": {
             "columns": [
@@ -665,123 +924,6 @@
       ],
       "title": "Disk I/O",
       "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb-v3-sql"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "hertz"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 18
-      },
-      "id": 12,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "table",
-          "placement": "right",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.1.1",
-      "targets": [
-        {
-          "dataset": "iox",
-          "datasource": {
-            "type": "influxdb",
-            "uid": "influxdb-v3-sql"
-          },
-          "editorMode": "code",
-          "format": "time_series",
-          "query": "SELECT date_bin(INTERVAL '$__interval', time) AS t,\\n  cpu AS cpu_core,\\n  mean(\"frequency\") AS frequency\\nFROM \\\"public\\\".\\\"metrics\\\".\\\"cpufreq\\\"\\nWHERE host = '${host}' AND $__timeFilter(time)\\nGROUP BY t, cpu\\nORDER BY t",
-          "queryType": "sql",
-          "rawQuery": true,
-          "rawSql": "SELECT\n  time,\n  hostname,\n  cpu AS cpu_core,\n  value / 1000000.0 AS frequency_GHz\nFROM cpu_freq\nWHERE time >= $__timeFrom AND time < $__timeTo AND hostname IN ('${host}')\nORDER BY time, cpu_core",
-          "refId": "A",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ]
-          }
-        }
-      ],
-      "title": "CPU Frequency",
-      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -792,8 +934,8 @@
     "list": [
       {
         "current": {
-          "text": "All",
-          "value": "$__all"
+          "text": "lab-3.hpc.astrolab.cn",
+          "value": "lab-3.hpc.astrolab.cn"
         },
         "datasource": {
           "type": "influxdb",
@@ -821,5 +963,5 @@
   "timezone": "",
   "title": "System Monitoring (InfluxDB v3 SQL)",
   "uid": "new-dashboard-sql",
-  "version": 16
+  "version": 7
 }

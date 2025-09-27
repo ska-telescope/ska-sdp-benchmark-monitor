@@ -36,8 +36,8 @@ class RunMonitor:
 
         self.args = args
         self.logger = logger
-        
         self.should_run = True
+        self.is_shutting_down = False
 
         self.save_dir_base = args.save_dir
         self.save_dir = f"{self.save_dir_base}/benchmon_traces_{HOSTNAME}"
@@ -85,14 +85,8 @@ class RunMonitor:
         # Enable sudo-g5k (for Grid5000 clusters)
         self.sudo_g5k = "sudo-g5k" if "grid5000" in HOSTNAME else ""
 
-        # Mark the node 0 as main node responsible for collecting all the different reports
-        oar_check = subprocess.run(args=["oarprint", "host"],
-                                   capture_output=True,
-                                   shell=True,
-                                   text=True,
-                                   check=False).stdout.split("\n")[0] == HOSTNAME
-        slurm_check = os.environ.get("SLURM_NODEID") == "0"
-        self.is_benchmon_control_node = True if oar_check or slurm_check else False
+        # Defer node check to the run method
+        self.is_benchmon_control_node = False
 
         # Setup SIGTERM handler for graceful termination
         signal.signal(signal.SIGTERM, self.terminate)
@@ -102,6 +96,15 @@ class RunMonitor:
         self.perfpow_process = None
         self.perfcall_process = None
 
+    def _check_control_node(self):
+        """Checks if the current node is the control node for post-processing."""
+        oar_check = subprocess.run(args=["oarprint", "host"],
+                                   capture_output=True,
+                                   shell=True,
+                                   text=True,
+                                   check=False).stdout.split("\n")[0] == HOSTNAME
+        slurm_check = os.environ.get("SLURM_NODEID") == "0"
+        self.is_benchmon_control_node = oar_check or slurm_check
 
     def run(self, timeout: int = None):
         """
@@ -114,6 +117,9 @@ class RunMonitor:
         self.t0 = time.time()
 
         os.makedirs(self.save_dir, exist_ok=True)
+
+        # Check if this is the control node
+        self._check_control_node()
 
         # --- REFACTOR: Initialize and start the new HP Collector ---
         if self.is_grafana:
@@ -147,9 +153,7 @@ class RunMonitor:
                 self.logger.info("Ctrl+C received, initiating termination.")
                 self.should_run = False
 
-        self.terminate()
-        self.post_process()
-
+        self._shutdown()
 
     def run_sys_monitoring(self):
         """
@@ -295,8 +299,18 @@ class RunMonitor:
         """
         Terminate background process after catching term signal
         """
-        signum = signum
-        frame = frame
+        # This method is now only for signal handling
+        self.logger.info(f"Signal {signum} received, initiating termination.")
+        self.should_run = False
+
+    def _shutdown(self):
+        """
+        Internal method to perform all shutdown operations once.
+        """
+        if self.is_shutting_down:
+            return
+        self.is_shutting_down = True
+        self.logger.info("Shutting down monitoring processes...")
 
         # --- REFACTOR: Stop the new HP Collector ---
         if self.is_grafana and self.hp_collector:
@@ -350,6 +364,8 @@ class RunMonitor:
 
             self.logger.debug(f"Terminated system monitoring with stdout: {process_stdout}")
 
+        # Perform post-processing after all processes are terminated
+        self.post_process()
 
     def post_process(self):
         """
