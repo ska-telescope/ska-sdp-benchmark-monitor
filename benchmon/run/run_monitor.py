@@ -11,8 +11,7 @@ import time
 import psutil
 import requests
 
-from .influxdb_sender import InfluxDBSender
-from .hp_processor import HighPerformanceDataProcessor
+from .hp_collector import HighPerformanceCollector
 
 
 HOSTNAME = os.uname()[1]
@@ -24,8 +23,6 @@ INFLUXDB3_DEFAULT_CONFIG = {
     'database': 'metrics',
     'token': '',  # InfluxDB3 may not require token for local instance
     'org': 'benchmon',
-    'batch_size': 50,
-    'send_interval': 2.0
 }
 
 
@@ -67,18 +64,14 @@ class RunMonitor:
         # InfluxDB integration
         self.is_grafana = args.grafana
 
-        # --- FIX: Defer ALL initialization and starting to the run() method ---
-        self.influxdb_sender = None
-        self.hp_processor = None
+        # --- REFACTOR: Use the new HighPerformanceCollector ---
+        self.hp_collector = None
         if self.is_grafana:
             self.influxdb_config = {
                 'url': args.grafana_url,
-                'organization': args.grafana_org,
-                'bucket': args.grafana_bucket,
                 'token': args.grafana_token,
-                'job_name': getattr(args, 'job_name', 'benchmon'),
-                'batch_size': args.grafana_batch_size,
-                # 'send_interval' is no longer used by influxdb_sender
+                'org': args.grafana_org,
+                'database': args.grafana_bucket,
             }
 
         # Profiling and callstack parameters
@@ -122,19 +115,16 @@ class RunMonitor:
 
         os.makedirs(self.save_dir, exist_ok=True)
 
-        # --- FIX: Initialize and start components ONCE and in the correct order ---
+        # --- REFACTOR: Initialize and start the new HP Collector ---
         if self.is_grafana:
-            # 1. Initialize components
-            self.influxdb_sender = InfluxDBSender(self.logger, self.influxdb_config)
-            pipe_path = f"{self.save_dir}/benchmon_data_pipe"
-            self.hp_processor = HighPerformanceDataProcessor(self.logger, self.influxdb_sender, pipe_path)
+            self.hp_collector = HighPerformanceCollector(
+                self.logger,
+                self.influxdb_config,
+                self.args.grafana_sample_interval
+            )
+            self.hp_collector.start()
 
-            # 2. Start background threads (reader first)
-            self.influxdb_sender.start()
-            self.hp_processor.start()
-            self.logger.info("InfluxDB integration e nabled - HP processor started")
-
-        # 3. Start writer processes
+        # Start writer processes (Only for CSV now)
         if self.is_system:
             self.run_sys_monitoring()
 
@@ -171,16 +161,10 @@ class RunMonitor:
 
         sh_repo = os.path.dirname(os.path.realpath(__file__))
 
-        # Setup pipe path for Grafana if needed
-        pipe_path = f"{self.save_dir}/benchmon_data_pipe" if self.is_grafana else ""
+        # --- REFACTOR: This loop now only handles CSV monitoring ---
+        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):
 
-        # CPU + CPUfreq + Memory + Network + Disk monitoring processes
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):  # , "timing_mapping"):
-
-            # Determine which script to use
-            sh_repo = os.path.dirname(os.path.realpath(__file__))
-
-            # Start CSV monitoring if enabled (default behavior)
+            # Start CSV monitoring if enabled
             if self.is_csv:
                 script_path = f"{sh_repo}/{device}_mon.sh"
                 csv_file = f"{self.save_dir}/{self.sys_filename(device)}"
@@ -197,36 +181,7 @@ class RunMonitor:
                     )
                 ]
 
-            # Start InfluxDB monitoring if enabled (independent of CSV)
-            if self.is_grafana:
-                # --- CRITICAL FIX: Use the correct frequency for HP monitoring ---
-                # The frequency for HP scripts is derived from --grafana-sample-interval.
-                try:
-                    hp_freq = 1.0 / self.args.grafana_sample_interval
-                except ZeroDivisionError:
-                    hp_freq = 1 # Default to 1Hz if interval is 0
-
-                hp_script_path = f"{sh_repo}/{device}_mon_hp.sh"
-                pipe_path = f"{self.save_dir}/benchmon_data_pipe"
-                
-                # --- SIMPLIFICATION: Pass only the required arguments ---
-                # The _hp scripts no longer need csv_file or grafana_enabled flags.
-                hp_args = ["bash", hp_script_path, f"{hp_freq}", pipe_path]
-                hp_msg = f"InfluxDB script: {hp_script_path} @ {hp_freq:.2f}Hz → InfluxDB"
-
-                self.logger.debug(f"Starting: {hp_msg}")
-                self.sys_process += [
-                    subprocess.Popen(
-                        args=hp_args,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True
-                    )
-                ]
-
-            # Skip if both CSV and Grafana are disabled
-            if not self.is_csv and not self.is_grafana:
-                self.logger.debug(f"Skipping {device} monitoring (both CSV and Grafana disabled)")
+            # The 'if self.is_grafana:' block is no longer needed here.
 
     def run_perf_pow(self):
         """
@@ -343,12 +298,9 @@ class RunMonitor:
         signum = signum
         frame = frame
 
-        # Stop InfluxDB components
-        if self.is_grafana:
-            if hasattr(self, 'hp_processor') and self.hp_processor:
-                self.hp_processor.stop()
-            if hasattr(self, 'influxdb_sender') and self.influxdb_sender:
-                self.influxdb_sender.stop()
+        # --- REFACTOR: Stop the new HP Collector ---
+        if self.is_grafana and self.hp_collector:
+            self.hp_collector.stop()
 
         # kill perf (call)
         if self.perfcall_process:
