@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import time
+from pathlib import Path
 
 import psutil
 import requests
@@ -22,7 +23,6 @@ INFLUXDB3_DEFAULT_CONFIG = {
     'url': 'http://localhost:8086',
     'database': 'metrics',
     'token': '',  # InfluxDB3 may not require token for local instance
-    'org': 'benchmon',
 }
 
 
@@ -40,11 +40,13 @@ class RunMonitor:
         self.is_shutting_down = False
 
         self.save_dir_base = args.save_dir
+        # This is the unique directory for this node's CSV files
         self.save_dir = f"{self.save_dir_base}/benchmon_traces_{HOSTNAME}"
 
         self.verbose = args.verbose
 
         # System monitoring
+        # Filename no longer needs hostname, as the parent directory is unique
         self.sys_filename = lambda device: f"{device}_report.csv"  # @nc
         self.is_system = args.system
         self.sys_freq = args.sys_freq
@@ -66,13 +68,8 @@ class RunMonitor:
 
         # --- REFACTOR: Use the new HighPerformanceCollector ---
         self.hp_collector = None
-        if self.is_grafana:
-            self.influxdb_config = {
-                'url': args.grafana_url,
-                'token': args.grafana_token,
-                'org': args.grafana_org,
-                'database': args.grafana_bucket,
-            }
+        # This is now just a placeholder; config is loaded in run()
+        self.influxdb_config = {}
 
         # Profiling and callstack parameters
         self.call_filename = "call_report.txt"
@@ -120,6 +117,22 @@ class RunMonitor:
 
         # Check if this is the control node
         self._check_control_node()
+
+        if self.is_grafana:
+            # --- REFACTOR: Load connection info from the correct shared path ---
+            connection_file = Path(self.save_dir_base) / "grafana-data" / "connection.json"
+            if not connection_file.is_file():
+                self.logger.error(f"Grafana connection file not found at {connection_file}")
+                self.logger.error("Hint: Run 'benchmon-start-grafana' before 'benchmon-run'.")
+                self.is_grafana = False  # Disable grafana features if config is missing
+            else:
+                with open(connection_file, "r") as f:
+                    conn_info = json.load(f)
+                self.influxdb_config = {
+                    'url': conn_info.get("influxdb_url"),
+                    'token': conn_info.get("influxdb_token"),
+                    'database': self.args.grafana_bucket,
+                }
 
         # --- REFACTOR: Initialize and start the new HP Collector ---
         if self.is_grafana:

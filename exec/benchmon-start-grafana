@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+# filepath: /home/wangfeng/work/ska-sdp-benchmark-monitor/benchmon/exec/benchmon-run-grafana
+import argparse
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+# --- MODIFICATION: Import logging ---
+import logging
+
+# --- MODIFICATION: Import the deployment manager ---
+# Assuming deploy_dashboard.py is in the same project structure
+# We might need to adjust the path based on how the project is installed
+try:
+    from grafana.deploy_dashboard import GrafanaDashboardManager
+except ImportError:
+    print("Error: Could not import GrafanaDashboardManager.", file=sys.stderr)
+    print("Hint: Ensure benchmon is installed correctly or PYTHONPATH is set.", file=sys.stderr)
+    sys.exit(1)
+
+
+# Get application paths from environment variables, with sensible defaults
+INFLUXDB_PATH = os.environ.get("BENCHMON_INFLUXDB_PATH", "./benchmon-stack/influxdb")
+GRAFANA_PATH = os.environ.get("BENCHMON_GRAFANA_PATH", "./benchmon-stack/grafana")
+
+INFLUXDB_BINARY = f"{INFLUXDB_PATH}/influxdb3"
+GRAFANA_BINARY = f"{GRAFANA_PATH}/bin/grafana-server"
+
+def is_port_in_use(port: int) -> bool:
+    """Checks if a TCP port is in use on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('localhost', port)) == 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Start Benchmon Grafana/InfluxDB Stack")
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        help="Base directory for traces. Defaults to current directory."
+    )
+    parser.add_argument("--influxdb-port", type=int, default=8181, help="Port for InfluxDB")
+    parser.add_argument("--grafana-port", type=int, default=3000, help="Port for Grafana")
+    # --- MODIFICATION: Remove hardcoded default ---
+    parser.add_argument(
+        "--dashboard-dir",
+        type=Path,
+        default=None,
+        help="Directory containing dashboard JSON files. Defaults to internal package dashboards."
+    )
+    args = parser.parse_args()
+
+    # --- MODIFICATION: Programmatically find default dashboard directory ---
+    if args.dashboard_dir is None:
+        try:
+            # This is the modern and correct way for installed packages (Python 3.9+)
+            import importlib.resources
+            # Assumes your package structure is benchmon/grafana/dashboards
+            args.dashboard_dir = importlib.resources.files('benchmon.grafana.dashboards')
+            print(f"--dashboard-dir not provided, defaulting to internal package path: {args.dashboard_dir}")
+        except (ImportError, AttributeError, ModuleNotFoundError):
+            # Fallback for development mode or older Python versions
+            # Assumes this script is in exec/, and grafana/ is a sibling to ../
+            fallback_path = Path(__file__).parent.parent / "grafana" / "dashboards"
+            if fallback_path.is_dir():
+                args.dashboard_dir = fallback_path
+                print(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
+            else:
+                print("Error: Could not determine default dashboard directory.", file=sys.stderr)
+                print("Hint: Please specify --dashboard-dir manually.", file=sys.stderr)
+                sys.exit(1)
+
+
+    # --- MODIFICATION: Align directory logic with benchmon-run ---
+    # The traces_dir is now the primary directory, not a subdirectory.
+    traces_dir = args.save_dir if args.save_dir is not None else Path("./benchmon_traces_")
+    print(f"Using traces directory: {traces_dir.resolve()}")
+
+
+    # 1. Prepare runtime directory inside the traces directory
+    runtime_dir = traces_dir / "grafana-data"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+
+    influxdb_data_dir = runtime_dir / "influxdb_data"
+    influxdb_data_dir.mkdir(exist_ok=True)
+
+    log_dir = runtime_dir / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    pid_file = runtime_dir / "pids.json"
+    connection_file = runtime_dir / "connection.json"
+
+    # 2. Check for required binaries
+    if not Path(INFLUXDB_BINARY).is_file():
+        print(f"Error: InfluxDB binary not found at {INFLUXDB_BINARY}", file=sys.stderr)
+        print(f"Hint: Set the BENCHMON_INFLUXDB_PATH environment variable.", file=sys.stderr)
+        sys.exit(1)
+    if not Path(GRAFANA_BINARY).is_file():
+        print(f"Error: Grafana binary not found at {GRAFANA_BINARY}", file=sys.stderr)
+        print(f"Hint: Set the BENCHMON_GRAFANA_PATH environment variable.", file=sys.stderr)
+        sys.exit(1)
+
+    # 3. Check ports
+    if is_port_in_use(args.influxdb_port):
+        print(f"Error: Port {args.influxdb_port} for InfluxDB is already in use.", file=sys.stderr)
+        sys.exit(1)
+    if is_port_in_use(args.grafana_port):
+        print(f"Error: Port {args.grafana_port} for Grafana is already in use.", file=sys.stderr)
+        sys.exit(1)
+
+    pids = {}
+    
+    # 4. Start InfluxDB
+    print(f"Starting InfluxDB on port {args.influxdb_port}...")
+    influx_log_file = log_dir / "influxdb.log"
+    
+    # --- MODIFICATION: Use short hostname for node-id, like in the shell script ---
+    node_id = socket.gethostname().split('.')[0]
+    print(f"Using node-id: {node_id}")
+
+    with open(influx_log_file, "w") as log:
+        influx_process = subprocess.Popen(
+            [
+                INFLUXDB_BINARY, "serve",
+                "--object-store", "file",
+                "--node-id", node_id,
+                "--http-bind", f"0.0.0.0:{args.influxdb_port}",
+                "--data-dir", str(influxdb_data_dir),
+                "--without-auth"
+            ],
+            stdout=log, stderr=subprocess.STDOUT
+        )
+    pids["influxdb"] = influx_process.pid
+    print(f"InfluxDB started with PID: {influx_process.pid}. Log: {influx_log_file}")
+
+    # 5. Start Grafana
+    print(f"Starting Grafana on port {args.grafana_port}...")
+    grafana_log_file = log_dir / "grafana.log"
+    with open(grafana_log_file, "w") as log:
+        grafana_process = subprocess.Popen(
+            [GRAFANA_BINARY, f"--config={GRAFANA_PATH}/conf/defaults.ini",
+             f"--homepath={GRAFANA_PATH}", f"cfg:server.http_port={args.grafana_port}"],
+            stdout=log, stderr=subprocess.STDOUT
+        )
+    pids["grafana"] = grafana_process.pid
+    print(f"Grafana started with PID: {grafana_process.pid}. Log: {grafana_log_file}")
+
+    # 6. Write PID and connection info files
+    with open(pid_file, "w") as f:
+        json.dump(pids, f)
+    print(f"PIDs saved to {pid_file}")
+
+    # --- MODIFICATION: Use hostname instead of IP address ---
+    hostname = socket.gethostname()
+    connection_info = {
+        "influxdb_url": f"http://{hostname}:{args.influxdb_port}",
+        "grafana_url": f"http://{hostname}:{args.grafana_port}",
+        "influxdb_token": ""  # Placeholder for token
+    }
+    with open(connection_file, "w") as f:
+        json.dump(connection_info, f)
+    print(f"Connection info saved to {connection_file}")
+
+    print("\n--- Post-start Configuration ---")
+
+    # 7. Wait for services and configure Grafana
+    grafana_url = f"http://localhost:{args.grafana_port}"
+    deployer = GrafanaDashboardManager(grafana_url=grafana_url)
+
+    # --- MODIFICATION: Temporarily suppress connection errors during wait ---
+    print("Waiting for Grafana to be ready...")
+    original_log_level = logging.getLogger().getEffectiveLevel()
+    logging.getLogger().setLevel(logging.CRITICAL)  # Suppress errors
+
+    grafana_ready = deployer.wait_for_grafana(timeout=60)
+
+    logging.getLogger().setLevel(original_log_level)  # Restore log level
+
+    if not grafana_ready:
+        print("Error: Grafana did not become available in time. Please check logs.", file=sys.stderr)
+        # Consider stopping the services here if Grafana fails to start
+        sys.exit(1)
+
+    print("Grafana is up. Configuring datasource and dashboards...")
+
+    # Configure datasource
+    if not deployer.ensure_datasource(influx_url=connection_info["influxdb_url"]):
+        print("Error: Failed to configure Grafana datasource.", file=sys.stderr)
+        sys.exit(1)
+
+    # Deploy dashboards
+    deployed_count = deployer.deploy_all_dashboards(
+        dashboard_dir=args.dashboard_dir,
+        overwrite=True
+    )
+
+    if deployed_count > 0:
+        print(f"Successfully deployed {deployed_count} dashboards.")
+        print(f"Grafana is ready at: {connection_info['grafana_url']}")
+    else:
+        print("Warning: No dashboards were deployed. Please check the dashboard directory.", file=sys.stderr)
+
+    print("\nMonitoring stack started and configured successfully.")
+
+if __name__ == "__main__":
+    main()
