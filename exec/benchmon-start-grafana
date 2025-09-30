@@ -220,7 +220,7 @@ def main():
     influx_log_file = log_dir / "influxdb.log"
     
     # --- MODIFICATION: Use short hostname for node-id, like in the shell script ---
-    node_id = socket.gethostname().split('.')[0]
+    node_id = "benchmon-node-id"
     print(f"Using node-id: {node_id}")
 
     with open(influx_log_file, "w") as log:
