@@ -25,6 +25,7 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--recursive", action="store_true", default=False)
 
     # System metrics
+    parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
     parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
     parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
     parser.add_argument("--cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")

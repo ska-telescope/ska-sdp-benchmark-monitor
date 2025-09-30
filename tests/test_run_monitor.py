@@ -13,6 +13,7 @@ JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
 
 
 def create_args(save_dir: str = "/tmp/benchmon_savedir_test",
+                binary: bool = False,
                 verbose: bool = False,
                 system: bool = False,
                 sys_freq: int = 10,
