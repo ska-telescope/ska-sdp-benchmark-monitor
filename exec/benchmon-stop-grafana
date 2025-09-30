@@ -4,9 +4,9 @@ import argparse
 import json
 import os
 import signal
-import socket
 import sys
 from pathlib import Path
+
 
 def main():
     """
@@ -21,10 +21,8 @@ def main():
     args = parser.parse_args()
 
     # --- Align directory logic with benchmon-run-grafana ---
-    hostname = socket.gethostname()
-    base_dir = args.save_dir if args.save_dir is not None else Path(".")
-    traces_dir = base_dir / f"benchmon_traces_"
-    runtime_dir = traces_dir / "grafana-data"
+    base_dir = args.save_dir if args.save_dir is not None else Path("./benchmon_traces_")
+    runtime_dir = base_dir / "grafana-data"
     pid_file = runtime_dir / "pids.json"
 
     if not pid_file.is_file():
@@ -58,6 +56,7 @@ def main():
         print(f"Warning: Could not remove PID file: {e}", file=sys.stderr)
 
     print("\nMonitoring stack stopped.")
+
 
 if __name__ == "__main__":
     main()

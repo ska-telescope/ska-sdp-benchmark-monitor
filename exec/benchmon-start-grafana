@@ -8,19 +8,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-
-# --- MODIFICATION: Import logging ---
+import requests
+from requests.auth import HTTPBasicAuth
 import logging
-
-# --- MODIFICATION: Import the deployment manager ---
-# Assuming deploy_dashboard.py is in the same project structure
-# We might need to adjust the path based on how the project is installed
-try:
-    from grafana.deploy_dashboard import GrafanaDashboardManager
-except ImportError:
-    print("Error: Could not import GrafanaDashboardManager.", file=sys.stderr)
-    print("Hint: Ensure benchmon is installed correctly or PYTHONPATH is set.", file=sys.stderr)
-    sys.exit(1)
 
 
 # Get application paths from environment variables, with sensible defaults
@@ -34,6 +24,130 @@ def is_port_in_use(port: int) -> bool:
     """Checks if a TCP port is in use on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('localhost', port)) == 0
+    
+def setup_influxdb_datasource(grafana_port: int, influxdb_port: int) -> bool:
+    """
+    Configures Grafana to use InfluxDB as a data source.
+    """
+
+    grafana_url = f"http://localhost:{grafana_port}"
+
+    # --- MODIFICATION: Temporarily suppress connection errors during wait ---
+    print("Waiting for Grafana to be ready...")
+    original_log_level = logging.getLogger().getEffectiveLevel()
+    logging.getLogger().setLevel(logging.CRITICAL)  # Suppress errors
+
+    session = requests.Session()
+    session.auth = HTTPBasicAuth("admin", "admin")
+
+    start_time = time.time()
+    grafana_ready = False
+    while time.time() - start_time < 60:
+        try:
+            response = session.get(
+                f"{grafana_url}/api/health",
+                timeout=60
+            )
+            if response.status_code == 200:
+                grafana_ready = True
+                break
+        except requests.RequestException:
+            pass
+        print("Grafana not ready yet, retrying in 2 seconds...")
+        time.sleep(2)
+
+    logging.getLogger().setLevel(original_log_level)  # Restore log level
+
+    if not grafana_ready:
+        print("Error: Grafana did not become available in time. Please check logs.", file=sys.stderr)
+        # Consider stopping the services here if Grafana fails to start
+        sys.exit(1)
+
+    print("Grafana is up. Configuring datasource and dashboards...")
+
+    # Configure datasource
+
+    payload = {
+        "name": "InfluxDB v3 SQL",
+        "type": "influxdb",
+        "uid": "influxdb-v3-sql",
+        "access": "proxy",
+        "url": f"http://localhost:{influxdb_port}",
+        "basicAuth": False,
+        "isDefault": True,
+        "jsonData": {
+            "dbName": "metrics",
+            "queryLanguage": "sql",
+            "version": "SQL",
+            "httpMode": "GET",
+            "tlsSkipVerify": True,
+            "insecureConnection": True,
+            "insecureGrpc": True
+        },
+        "secureJsonData": {}
+    }
+
+    datasource_ready = False
+
+    response = session.get(f"{grafana_url}/api/datasources/uid/{payload['uid']}")
+    if response.status_code == 200:
+        print("Datasource already exists, skipping creation.")
+        datasource_ready = True
+    else:
+        response = session.post(
+            f"{grafana_url}/api/datasources",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        if response.status_code in (200, 201):
+            print("Datasource created successfully.")
+            datasource_ready = True
+        else:
+            print(f"Error creating datasource: {response.status_code} {response.text}", file=sys.stderr)
+
+    return datasource_ready
+
+
+def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path) -> bool:
+    """
+    Uploads dashboards from the specified directory to Grafana.
+    """
+    grafana_url = f"http://localhost:{grafana_port}"
+    session = requests.Session()
+    session.auth = HTTPBasicAuth("admin", "admin")
+
+    if not dashboard_dir.is_dir():
+        print(f"Error: Dashboard directory {dashboard_dir} does not exist or is not a directory.", file=sys.stderr)
+        return False
+
+    success = True
+    for dashboard_file in dashboard_dir.glob("*.json"):
+        print(f"Uploading dashboard: {dashboard_file.name}")
+        with open(dashboard_file, "r") as f:
+            dashboard_json = json.load(f)
+
+        payload = {
+            "dashboard": dashboard_json,
+            "overwrite": True,
+            "message": f"Uploaded {dashboard_file} via benchmon-run-grafana"
+        }
+
+        if "id" in payload["dashboard"]:
+            del payload["dashboard"]["id"]
+
+        response = session.post(
+            f"{grafana_url}/api/dashboards/db",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+
+        if response.status_code in (200, 201):
+            print(f"Dashboard {dashboard_file.name} uploaded successfully.")
+        else:
+            print(f"Error uploading dashboard {dashboard_file.name}: {response.status_code} {response.text}", file=sys.stderr)
+            success = False
+
+    return success
 
 def main():
     parser = argparse.ArgumentParser(description="Start Benchmon Grafana/InfluxDB Stack")
@@ -55,23 +169,11 @@ def main():
 
     # --- MODIFICATION: Programmatically find default dashboard directory ---
     if args.dashboard_dir is None:
-        try:
-            # This is the modern and correct way for installed packages (Python 3.9+)
-            import importlib.resources
-            # Assumes your package structure is benchmon/grafana/dashboards
-            args.dashboard_dir = importlib.resources.files('benchmon.grafana.dashboards')
-            print(f"--dashboard-dir not provided, defaulting to internal package path: {args.dashboard_dir}")
-        except (ImportError, AttributeError, ModuleNotFoundError):
-            # Fallback for development mode or older Python versions
-            # Assumes this script is in exec/, and grafana/ is a sibling to ../
-            fallback_path = Path(__file__).parent.parent / "grafana" / "dashboards"
-            if fallback_path.is_dir():
-                args.dashboard_dir = fallback_path
-                print(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
-            else:
-                print("Error: Could not determine default dashboard directory.", file=sys.stderr)
-                print("Hint: Please specify --dashboard-dir manually.", file=sys.stderr)
-                sys.exit(1)
+        fallback_path = Path(__file__).parent.parent / "grafana" / "dashboards"
+        if fallback_path.is_dir():
+            args.dashboard_dir = fallback_path
+            print(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
+  
 
 
     # --- MODIFICATION: Align directory logic with benchmon-run ---
@@ -166,42 +268,15 @@ def main():
 
     print("\n--- Post-start Configuration ---")
 
-    # 7. Wait for services and configure Grafana
-    grafana_url = f"http://localhost:{args.grafana_port}"
-    deployer = GrafanaDashboardManager(grafana_url=grafana_url)
-
-    # --- MODIFICATION: Temporarily suppress connection errors during wait ---
-    print("Waiting for Grafana to be ready...")
-    original_log_level = logging.getLogger().getEffectiveLevel()
-    logging.getLogger().setLevel(logging.CRITICAL)  # Suppress errors
-
-    grafana_ready = deployer.wait_for_grafana(timeout=60)
-
-    logging.getLogger().setLevel(original_log_level)  # Restore log level
-
-    if not grafana_ready:
-        print("Error: Grafana did not become available in time. Please check logs.", file=sys.stderr)
-        # Consider stopping the services here if Grafana fails to start
+    # Setup InfluxDB data source in Grafana
+    if not setup_influxdb_datasource(args.grafana_port, args.influxdb_port):
+        print("Error: Failed to set up InfluxDB data source in Grafana.", file=sys.stderr)
         sys.exit(1)
 
-    print("Grafana is up. Configuring datasource and dashboards...")
-
-    # Configure datasource
-    if not deployer.ensure_datasource(influx_url=connection_info["influxdb_url"]):
-        print("Error: Failed to configure Grafana datasource.", file=sys.stderr)
+    # Upload dashboards
+    if not setup_grafana_dashboards(args.grafana_port, args.dashboard_dir):
+        print("Error: Failed to upload one or more dashboards to Grafana.", file=sys.stderr)
         sys.exit(1)
-
-    # Deploy dashboards
-    deployed_count = deployer.deploy_all_dashboards(
-        dashboard_dir=args.dashboard_dir,
-        overwrite=True
-    )
-
-    if deployed_count > 0:
-        print(f"Successfully deployed {deployed_count} dashboards.")
-        print(f"Grafana is ready at: {connection_info['grafana_url']}")
-    else:
-        print("Warning: No dashboards were deployed. Please check the dashboard directory.", file=sys.stderr)
 
     print("\nMonitoring stack started and configured successfully.")
 
