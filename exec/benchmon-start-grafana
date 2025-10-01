@@ -14,7 +14,7 @@ import logging
 
 
 # Get application paths from environment variables, with sensible defaults
-INFLUXDB_PATH = os.environ.get("BENCHMON_INFLUXDB_PATH", "./benchmon-stack/influxdb")
+INFLUXDB_PATH = os.environ.get("BENCHMON_INFLUXDB_PATH", "./benchmon-stack/influxdb3")
 GRAFANA_PATH = os.environ.get("BENCHMON_GRAFANA_PATH", "./benchmon-stack/grafana")
 
 INFLUXDB_BINARY = f"{INFLUXDB_PATH}/influxdb3"
@@ -25,6 +25,21 @@ def is_port_in_use(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('localhost', port)) == 0
     
+def pick_available_port(requested: int, service: str) -> int:
+    """Return the first free port at or above the requested value."""
+    candidate = requested
+    attempts = 0
+    while attempts < 100 and is_port_in_use(candidate):
+        print(f"Port {candidate} already in use for {service}, trying {candidate + 1}...")
+        candidate += 1
+        attempts += 1
+    if attempts >= 100:
+        print(f"Error: Could not find a free port for {service} starting from {requested}.", file=sys.stderr)
+        sys.exit(1)
+    if candidate != requested:
+        print(f"{service} port changed from {requested} to {candidate}.")
+    return candidate
+
 def setup_influxdb_datasource(grafana_port: int, influxdb_port: int) -> bool:
     """
     Configures Grafana to use InfluxDB as a data source.
@@ -38,7 +53,7 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int) -> bool:
     logging.getLogger().setLevel(logging.CRITICAL)  # Suppress errors
 
     session = requests.Session()
-    session.auth = HTTPBasicAuth("admin", "admin")
+    session.auth = HTTPBasicAuth("admin", "admin123")
 
     start_time = time.time()
     grafana_ready = False
@@ -114,7 +129,7 @@ def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path) -> bool:
     """
     grafana_url = f"http://localhost:{grafana_port}"
     session = requests.Session()
-    session.auth = HTTPBasicAuth("admin", "admin")
+    session.auth = HTTPBasicAuth("admin", "admin123")
 
     if not dashboard_dir.is_dir():
         print(f"Error: Dashboard directory {dashboard_dir} does not exist or is not a directory.", file=sys.stderr)
@@ -192,6 +207,10 @@ def main():
     log_dir = runtime_dir / "logs"
     log_dir.mkdir(exist_ok=True)
 
+    grafana_data_dir = runtime_dir / "grafana"
+    grafana_data_dir.mkdir(exist_ok=True)
+    (grafana_data_dir / "plugins").mkdir(exist_ok=True)
+
     pid_file = runtime_dir / "pids.json"
     connection_file = runtime_dir / "connection.json"
 
@@ -216,7 +235,8 @@ def main():
     pids = {}
     
     # 4. Start InfluxDB
-    print(f"Starting InfluxDB on port {args.influxdb_port}...")
+    influxdb_port = pick_available_port(args.influxdb_port, "InfluxDB")
+    print(f"Starting InfluxDB on port {influxdb_port}...")
     influx_log_file = log_dir / "influxdb.log"
     
     # --- MODIFICATION: Use short hostname for node-id, like in the shell script ---
@@ -229,7 +249,7 @@ def main():
                 INFLUXDB_BINARY, "serve",
                 "--object-store", "file",
                 "--node-id", node_id,
-                "--http-bind", f"0.0.0.0:{args.influxdb_port}",
+                "--http-bind", f"0.0.0.0:{influxdb_port}",
                 "--data-dir", str(influxdb_data_dir),
                 "--without-auth"
             ],
@@ -239,13 +259,20 @@ def main():
     print(f"InfluxDB started with PID: {influx_process.pid}. Log: {influx_log_file}")
 
     # 5. Start Grafana
-    print(f"Starting Grafana on port {args.grafana_port}...")
+    grafana_port = pick_available_port(args.grafana_port, "Grafana")
+    print(f"Starting Grafana on port {grafana_port}...")
     grafana_log_file = log_dir / "grafana.log"
     with open(grafana_log_file, "w") as log:
+        grafana_env = os.environ.copy()
+        grafana_env.setdefault("GF_SECURITY_ADMIN_USER", "admin")
+        grafana_env.setdefault("GF_SECURITY_ADMIN_PASSWORD", "admin123")
+        grafana_env.setdefault("GF_PATHS_DATA", str(grafana_data_dir))
+        grafana_env.setdefault("GF_PATHS_LOGS", str(log_dir))
+        grafana_env.setdefault("GF_PATHS_PLUGINS", str(grafana_data_dir / "plugins"))
         grafana_process = subprocess.Popen(
             [GRAFANA_BINARY, f"--config={GRAFANA_PATH}/conf/defaults.ini",
-             f"--homepath={GRAFANA_PATH}", f"cfg:server.http_port={args.grafana_port}"],
-            stdout=log, stderr=subprocess.STDOUT
+             f"--homepath={GRAFANA_PATH}", f"cfg:server.http_port={grafana_port}"],
+            stdout=log, stderr=subprocess.STDOUT, env=grafana_env
         )
     pids["grafana"] = grafana_process.pid
     print(f"Grafana started with PID: {grafana_process.pid}. Log: {grafana_log_file}")
@@ -258,8 +285,8 @@ def main():
     # --- MODIFICATION: Use hostname instead of IP address ---
     hostname = socket.gethostname()
     connection_info = {
-        "influxdb_url": f"http://{hostname}:{args.influxdb_port}",
-        "grafana_url": f"http://{hostname}:{args.grafana_port}",
+        "influxdb_url": f"http://{hostname}:{influxdb_port}",
+        "grafana_url": f"http://{hostname}:{grafana_port}",
         "influxdb_token": ""  # Placeholder for token
     }
     with open(connection_file, "w") as f:
@@ -269,7 +296,7 @@ def main():
     print("\n--- Post-start Configuration ---")
 
     # Setup InfluxDB data source in Grafana
-    if not setup_influxdb_datasource(args.grafana_port, args.influxdb_port):
+    if not setup_influxdb_datasource(args.grafana_port, influxdb_port):
         print("Error: Failed to set up InfluxDB data source in Grafana.", file=sys.stderr)
         sys.exit(1)
 
@@ -278,7 +305,9 @@ def main():
         print("Error: Failed to upload one or more dashboards to Grafana.", file=sys.stderr)
         sys.exit(1)
 
-    print("\nMonitoring stack started and configured successfully.")
+    print(f"\nInfluxDB ready at http://{hostname}:{influxdb_port}")
+    print(f"Grafana ready at http://{hostname}:{grafana_port}\n")
+    print("Monitoring stack started and configured successfully.")
 
 if __name__ == "__main__":
     main()

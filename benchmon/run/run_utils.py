@@ -123,20 +123,6 @@ class RunUtils:
         )
 
         parser.add_argument(
-            "--grafana-org",
-            type=str,
-            default="benchmon",
-            help="InfluxDB organization. Default: benchmon"
-        )
-
-        parser.add_argument(
-            "--grafana-bucket",
-            type=str,
-            default="metrics",
-            help="InfluxDB bucket. Default: metrics"
-        )
-
-        parser.add_argument(
             "--grafana-job-name",
             type=str,
             default="benchmon",

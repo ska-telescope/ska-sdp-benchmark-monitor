@@ -49,6 +49,37 @@ else
     echo "InfluxDB3 already installed."
 fi
 
-echo "Installation complete!"
-echo "Grafana:   $INSTALL_DIR/grafana"
-echo "InfluxDB3: $INSTALL_DIR/influxdb3"
+GRAFANA_CONF_DIR="${INSTALL_DIR}/grafana/conf"
+GRAFANA_CUSTOM_INI="${GRAFANA_CONF_DIR}/custom.ini"
+
+mkdir -p "${INSTALL_DIR}/grafana/data" "${INSTALL_DIR}/grafana/logs"
+
+cat > "${GRAFANA_CUSTOM_INI}" <<'EOF'
+[security]
+admin_password = admin123
+
+[auth.anonymous]
+enabled = true
+org_name = Main Org.
+org_role = Viewer
+
+[users]
+allow_sign_up = false
+EOF
+echo "Grafana custom configuration written to ${GRAFANA_CUSTOM_INI}"
+
+# --- 7. Finalize ---
+echo ""
+echo "--- Installation Complete! ---"
+grafana_env="export BENCHMON_GRAFANA_PATH=${INSTALL_DIR}/grafana"
+influx_env="export BENCHMON_INFLUXDB_PATH=${INSTALL_DIR}/influxdb3"
+echo "To run the stack, you may need to set these environment variables:"
+echo $grafana_env
+echo $influx_env
+echo ""
+echo "Persist the settings (adjust the profile file for your shell):"
+echo "  echo '${grafana_env}' >> ~/.bashrc"
+echo "  echo '${influx_env}' >> ~/.bashrc"
+echo "  source ~/.bashrc  # reload the session"
+echo ""
+echo "For other shells (e.g. zsh), update the corresponding profile file."
