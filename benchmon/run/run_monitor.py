@@ -121,6 +121,8 @@ class RunMonitor:
             else:
                 with open(connection_file, "r") as f:
                     conn_info = json.load(f)
+                if self.args.grafana_influxdb_url != "http://localhost:8181":
+                    conn_info["influxdb_url"] = self.args.grafana_influxdb_url
                 self.influxdb_config = {
                     'url': conn_info.get("influxdb_url"),
                     'token': conn_info.get("influxdb_token"),
@@ -132,7 +134,8 @@ class RunMonitor:
             self.hp_collector = HighPerformanceCollector(
                 self.logger,
                 self.influxdb_config,
-                self.args.grafana_sample_interval
+                self.args.grafana_sample_interval,
+                self.args.grafana_batch_size
             )
             self.hp_collector.start()
 

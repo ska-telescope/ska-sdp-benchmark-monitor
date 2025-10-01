@@ -207,9 +207,6 @@ def main():
     log_dir = runtime_dir / "logs"
     log_dir.mkdir(exist_ok=True)
 
-    grafana_data_dir = runtime_dir / "grafana"
-    grafana_data_dir.mkdir(exist_ok=True)
-    (grafana_data_dir / "plugins").mkdir(exist_ok=True)
 
     pid_file = runtime_dir / "pids.json"
     connection_file = runtime_dir / "connection.json"
@@ -266,9 +263,6 @@ def main():
         grafana_env = os.environ.copy()
         grafana_env.setdefault("GF_SECURITY_ADMIN_USER", "admin")
         grafana_env.setdefault("GF_SECURITY_ADMIN_PASSWORD", "admin123")
-        grafana_env.setdefault("GF_PATHS_DATA", str(grafana_data_dir))
-        grafana_env.setdefault("GF_PATHS_LOGS", str(log_dir))
-        grafana_env.setdefault("GF_PATHS_PLUGINS", str(grafana_data_dir / "plugins"))
         grafana_process = subprocess.Popen(
             [GRAFANA_BINARY, f"--config={GRAFANA_PATH}/conf/defaults.ini",
              f"--homepath={GRAFANA_PATH}", f"cfg:server.http_port={grafana_port}"],

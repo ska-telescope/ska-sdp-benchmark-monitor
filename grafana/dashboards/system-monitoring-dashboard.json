@@ -941,12 +941,12 @@
           "type": "influxdb",
           "uid": "influxdb-v3-sql"
         },
-        "definition": "SELECT DISTINCT hostname FROM cpu_core ORDER BY hostname",
+        "definition": "SELECT DISTINCT hostname FROM variable ORDER BY hostname",
         "includeAll": true,
         "name": "host",
         "options": [],
         "query": {
-          "query": "SELECT DISTINCT hostname FROM cpu_core ORDER BY hostname",
+          "query": "SELECT DISTINCT hostname FROM variable ORDER BY hostname",
           "refId": "InfluxVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

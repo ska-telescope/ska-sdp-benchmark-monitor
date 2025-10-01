@@ -109,10 +109,10 @@ class RunUtils:
         )
 
         parser.add_argument(
-            "--grafana-url",
+            "--grafana-influxdb-url",
             type=str,
-            default="http://localhost:3000",
-            help="InfluxDB URL. Default: http://localhost:3000"
+            default="http://localhost:8181",
+            help="InfluxDB URL. Default: http://localhost:8181"
         )
 
         parser.add_argument(
