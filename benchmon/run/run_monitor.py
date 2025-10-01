@@ -18,14 +18,6 @@ from .hp_collector import HighPerformanceCollector
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
 
-# 简化InfluxDB3配置，移除Docker依赖
-INFLUXDB3_DEFAULT_CONFIG = {
-    'url': 'http://localhost:8086',
-    'database': 'metrics',
-    'token': '',  # InfluxDB3 may not require token for local instance
-}
-
-
 class RunMonitor:
     """
     Run monitor class starting, stoping, post-processing monitoring processes
@@ -131,7 +123,7 @@ class RunMonitor:
                 self.influxdb_config = {
                     'url': conn_info.get("influxdb_url"),
                     'token': conn_info.get("influxdb_token"),
-                    'database': self.args.grafana_bucket,
+                    'database': 'metrics',
                 }
 
         # --- REFACTOR: Initialize and start the new HP Collector ---
