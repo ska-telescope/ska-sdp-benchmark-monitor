@@ -18,6 +18,7 @@ from .hp_collector import HighPerformanceCollector
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
 
+
 class RunMonitor:
     """
     Run monitor class starting, stoping, post-processing monitoring processes
