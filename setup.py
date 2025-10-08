@@ -69,7 +69,8 @@ setup(
         "Documentation": "https://ska-telescope-ska-sdp-benchmark-monitor.readthedocs.io",
     },
     data_files=[
-        ("bin", glob.glob("exec/*"))
+        ("bin", glob.glob("exec/bin/*")),
+        ("lib", glob.glob("exec/lib/*"))
     ],
     package_data={
         "benchmon.run": ["*.sh"],

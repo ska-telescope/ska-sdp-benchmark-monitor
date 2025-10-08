@@ -7,11 +7,23 @@
 
 namespace rt_monitor::io
 {
+/**
+ * @brief Creates and returns a binary output file stream with a custom buffer size.
+ *
+ * This function opens a file with the specified filename in binary mode and sets a custom buffer of 16 MB for the file
+ * stream to potentially improve I/O performance.
+ *
+ * @param filename The name of the file to open for binary output.
+ * @return std::ofstream The output file stream with the custom buffer set.
+ *
+ * @note The buffer is local to the function and will be destroyed when the function returns, which may lead to
+ * undefined behavior. Consider managing the buffer's lifetime appropriately.
+ */
 inline std::ofstream make_buffer(std::string filename)
 {
     std::ofstream file(filename, std::ios::binary);
 
-    const size_t buffer_size = 16 * 1024 * 1024; // 1 MB, for example
+    const size_t buffer_size = 16 * 1024 * 1024;
     std::vector<char> buffer(buffer_size);
 
     file.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
