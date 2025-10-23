@@ -69,6 +69,7 @@ def main():
     if output_dir == "":
         output_dir = "./"
 
+    Image.MAX_IMAGE_PIXELS = 5000000000
     figure = Image.open(figure_path)
     target_width = 1600
     figure = figure.resize((target_width, int(figure.size[1] * target_width / figure.size[0])))

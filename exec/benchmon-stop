@@ -34,6 +34,7 @@ fi
 traces_repo=$save_dir/benchmon_traces_$(hostname)
 benchmon_visu=$(dirname $0)/benchmon-visu
 benchmon_report=$(dirname $0)/benchmon-report
+benchmon_template=$(python -c 'import benchmon; print(benchmon.__path__.pop())')/report/template.md
 if [[ $level == 0 ]]; then
     $benchmon_visu --cpu --mem --net --disk --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
     $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo
@@ -48,8 +49,9 @@ elif [[ $level == 2 ]]; then
      # --pow
 fi
 
-$benchmon_report --software-report "$save_dir/swmon-$(hostname).json" --hardware-report "$save_dir/hwmon-$(hostname).json" \
-                 --figure-path "$traces_repo/benchmon_figure_detailed.png"                                                 \
-                 --template "/home/hchouh/src/ska-sdp-benchmark-monitor/benchmon/report/template.md"                       \
+$benchmon_report --software-report "$save_dir/swmon_merged.json" --hardware-report "$save_dir/hwmon_merged.json" \
+                 --figure-path "$traces_repo/benchmon_figure_detailed.png"                                       \
+                 --ps-report "$traces_repo/timing_mapping_report.csv"                                            \
+                 --template "$benchmon_template"                                                                 \
                  --output "$traces_repo/benchmon_report.md"
 python3 -m pandoc read $traces_repo/benchmon_report.md | python -m pandoc write -f html -o $traces_repo/benchmon_report.html

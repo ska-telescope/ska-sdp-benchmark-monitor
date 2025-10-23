@@ -86,7 +86,7 @@ class RunMonitor:
                                    shell=True,
                                    text=True,
                                    check=False).stdout.split("\n")[0] == HOSTNAME
-        slurm_check = os.environ.get("SLURM_NODEID") == "0"
+        slurm_check = os.environ.get("SLURM_NODEID") == "0" or os.environ.get("SLURM_NODEID") is None
         self.is_benchmon_control_node = True if oar_check or slurm_check else False
 
         # Setup SIGTERM handler for graceful termination
@@ -156,8 +156,7 @@ class RunMonitor:
         pipe_path = f"{self.save_dir}/benchmon_data_pipe" if self.is_grafana else ""
 
         # CPU + CPUfreq + Memory + Network + Disk monitoring processes
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):  # , "timing_mapping"):
-
+        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib", "timing_mapping"):
             # Determine which script to use
             sh_repo = os.path.dirname(os.path.realpath(__file__))
 
