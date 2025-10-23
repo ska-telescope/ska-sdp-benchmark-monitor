@@ -31,6 +31,7 @@ def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
 
     return energy
 
+
 class PerfPowerData:
     """
     Perf power database
