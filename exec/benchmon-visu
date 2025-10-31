@@ -138,12 +138,10 @@ def main():
     traces_repos = []
     if args.test:
         pass
-    elif is_recursive:
+    else:
         for name in os.listdir(traces_repo):
             if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
                 traces_repos += [f"{traces_repo}/{name}"]
-    else:
-        traces_repos += [traces_repo]
 
     nodes_data = []
     for repo in traces_repos:
