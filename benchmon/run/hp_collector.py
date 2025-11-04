@@ -147,7 +147,7 @@ class HighPerformanceCollector:
     def _variable_producer(self, q: queue.Queue):
         """ Just push hostname and timestamp to the queue once."""
 
-        timestamp = int(time.time() * 1e9)
+        timestamp = time.time_ns()
         lp = f"variable,hostname={self.hostname} stamp={timestamp} {timestamp}"
         q.put([lp])
 
@@ -158,7 +158,7 @@ class HighPerformanceCollector:
             try:
                 with open("/proc/stat", "r") as f:
                     content = f.read()
-                timestamp = int(time.time() * 1e9)
+                timestamp = time.time_ns()
                 for line in content.splitlines():
                     if line.startswith('cpu'):
                         parts = line.split()
@@ -196,7 +196,7 @@ class HighPerformanceCollector:
                 with open("/proc/meminfo", "r") as f:
                     content = f.read()
 
-                timestamp = int(time.time() * 1e9)
+                timestamp = time.time_ns()
                 fields = []
                 for line in content.splitlines():
                     parts = line.split(':')
@@ -220,7 +220,7 @@ class HighPerformanceCollector:
         batch_list = []
         while not self.stop_event.wait(self.interval):
             try:
-                timestamp = int(time.time() * 1e9)
+                timestamp = time.time_ns()
                 for file_path in freq_files:
                     with open(file_path, 'r') as f:
                         freq = f.read().strip()
@@ -243,7 +243,7 @@ class HighPerformanceCollector:
                 with open("/proc/net/dev", "r") as f:
                     content = f.readlines()[2:]   # Skip header lines
 
-                timestamp = int(time.time() * 1e9)
+                timestamp = time.time_ns()
                 for line in content:
                     parts = line.split()
                     iface = parts[0].strip(':')
@@ -269,7 +269,7 @@ class HighPerformanceCollector:
                 with open("/proc/diskstats", "r") as f:
                     content = f.readlines()
 
-                timestamp = int(time.time() * 1e9)
+                timestamp = time.time_ns()
                 for line in content:
                     parts = line.split()
                     device = parts[2]
@@ -302,7 +302,7 @@ class HighPerformanceCollector:
 
         while not self.stop_event.wait(self.interval):
             try:
-                timestamp = int(time.time() * 1e9)
+                timestamp = time.time_ns()
                 for port in ib_ports:
                     try:
                         with open(f"/sys/class/infiniband/{port}/ports/1/counters/port_xmit_data") as f:

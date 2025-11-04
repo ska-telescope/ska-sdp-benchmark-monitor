@@ -27,10 +27,6 @@ echo "Current Node: ${CURRENT_NODE}"
 # Set environment variables
 export BENCHMON_HOME="${HOME}/ska-sdp-benchmark-monitor"
 
-# Load required modules (adjust for your cluster)
-# module load python/3.9
-# module load curl
-
 # Navigate to benchmon directory
 cd "${BENCHMON_HOME}/grafana"
 
@@ -58,7 +54,7 @@ echo "✅ Monitoring completed on $(hostname)"
 # Only stop services from the first node
 if [ "$CURRENT_NODE" == "$FIRST_NODE" ]; then
     echo "🛑 Stopping services from first node..."
-    benchmark-stop-grafana
+    benchmon-stop-grafana
     # Clean up service info
 fi
 

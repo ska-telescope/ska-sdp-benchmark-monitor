@@ -2,7 +2,7 @@
 
 set -e
 
-# 支持传入项目目录参数
+# Input argument: installation directory
 if [ -n "$1" ]; then
     INSTALL_DIR="$1"
 else
