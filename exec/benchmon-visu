@@ -9,7 +9,6 @@ from datetime import datetime
 from benchmon.visualization import BenchmonMNSyncVisualizer
 from benchmon.visualization import BenchmonVisualizer
 
-
 def parsing() -> argparse.Namespace:
     """
     Parse benchmonspc_visu arguments
@@ -21,7 +20,7 @@ def parsing() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     # Repositories
-    parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Traces repository path")
+    parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Top-level traces repository path")
     parser.add_argument("--recursive", action="store_true", default=False)
 
     # System metrics
@@ -142,6 +141,8 @@ def main():
         for name in os.listdir(traces_repo):
             if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
                 traces_repos += [f"{traces_repo}/{name}"]
+    if not traces_repos:
+        logger.info("Warning: No *bennchmon_traces* directory found in {traces_repo}")
 
     nodes_data = []
     for repo in traces_repos:
