@@ -58,6 +58,8 @@ def parsing() -> argparse.Namespace:
     parser.add_argument('--call-cmd', type=str, default="", help="Command to visualize")
 
     parser.add_argument("--annotate-with-log", type=str, default="", help="Annotate the plots with a given log file")
+    parser.add_argument("--annotate-from-dict", type=str, default="",
+                        help="Annotate the plots with pre populated json dictionary")
 
     # Time limits
     parser.add_argument("--start-time", type=str, help="Start time")
