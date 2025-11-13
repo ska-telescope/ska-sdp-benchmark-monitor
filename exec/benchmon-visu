@@ -142,7 +142,7 @@ def main():
             if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
                 traces_repos += [f"{traces_repo}/{name}"]
     if not traces_repos:
-        logger.info("Warning: No *bennchmon_traces* directory found in {traces_repo}")
+        logger.warning(f"No *bennchmon_traces* directory found in {traces_repo}")
 
     nodes_data = []
     for repo in traces_repos:
