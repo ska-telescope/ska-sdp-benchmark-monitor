@@ -8,7 +8,6 @@ from dateutil.parser import parse
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.dates.date2num as date2num
 
 
 def read_ical_log_file(traces_repo: str) -> dict:
@@ -114,6 +113,12 @@ def plot_stage_boxes(stage_file, ymax=100.0) -> None:
         ymax       (float) max value for y-axis
     """
 
+    # Graph potentially starts after first timestamp
+    # Take x limits from plot and apply them to boxes
+    xmin, xmax = plt.xlim()
+    # Introduce small margin between boxes so that its easier to see the divide
+    margin = 1
+
     with open(stage_file, "r") as file_in:
         stages = json.load(file_in, object_hook=datetime_object_hook)
 
@@ -121,24 +126,25 @@ def plot_stage_boxes(stage_file, ymax=100.0) -> None:
         start_time = stages[stage]["Start"]
         end_time = stages[stage]["End"]
 
-        # Draw a filled rectangle that spans the whole y-axis extent
+        # Draw a rectangle for the stage
         plt.axvspan(
-            xmin=date2num(start_time),
-            xmax=date2num(end_time),
-            ymin=-ymax * 0.1,
-            ymax=ymax * 1.1,
-            alpha=0.2,
-            color="gray",
-            edgecolor=(1, 1, 1, 1),
+            max(xmin, start_time.timestamp())+margin,
+            min(xmax, end_time.timestamp())-margin,
+            -0.1,
+            1.1,
+            facecolor=(0, 0, 0, 0),
+            edgecolor=stages[stage]["Color"],
+            clip_on=False
         )
 
-        # Add stage label
+        # Add a label centered in top of rectangle
         plt.text(
-            end_time - start_time,
-            ymax,
+            (start_time+((end_time-start_time)/2)).timestamp(),
+            ymax * 1.1,
             f"{stage}",
-            va="baseline",
+            va="bottom",
             ha="center",
             size="x-small",
             weight="semibold",
+            color=stages[stage]["Color"]
         )
