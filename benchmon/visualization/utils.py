@@ -104,6 +104,32 @@ def datetime_object_hook(json_dict):
     return json_dict
 
 
+def parse_color(value):
+    # If its a single digit then treat it as an index into our colour map
+    if isinstance(value, int):
+        match value:
+            case 1:
+                return "#1b9e77"
+            case 2:
+                return "#d95f02"
+            case 3:
+                return "#7570b3"
+            case 4:
+                return "#e7298a"
+            case 5:
+                return "#66a61e"
+            case 6:
+                return "#e6ab02"
+            case 7:
+                return "#a6761d"
+            case 8:
+                return "#ff7f00"
+            case 9:
+                return "#cab2d6"
+
+    # Assume explicit color  (e.g. hex value or similar)
+    return value
+
 def plot_stage_boxes(stage_file, ymax=100.0) -> None:
     """
     Plot stages with boxes for each stage that has been stored in the json file.
@@ -133,7 +159,7 @@ def plot_stage_boxes(stage_file, ymax=100.0) -> None:
             -0.1,
             1.1,
             facecolor=(0, 0, 0, 0),
-            edgecolor=stages[stage]["Color"],
+            edgecolor=parse_color(stages[stage]["Color"]),
             clip_on=False
         )
 
@@ -146,5 +172,5 @@ def plot_stage_boxes(stage_file, ymax=100.0) -> None:
             ha="center",
             size="x-small",
             weight="semibold",
-            color=stages[stage]["Color"]
+            color=parse_color(stages[stage]["Color"])
         )
