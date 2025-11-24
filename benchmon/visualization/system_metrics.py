@@ -664,14 +664,15 @@ class SystemData:
         HZ_UNIT = 1e6  # noqa: N806
 
         cores = [core for core in range(self.ncpu_freq)]
+        if (len(cores) == 0):
+            # There is no data
+            self.logger.warning("Empty cpufreq journal, generating empty plot")
+            return 0
         if len(cores_in) > 0:
             cores = [int(core) for core in cores_in.split(",")]
         elif len(cores_in) == 0 and len(cores_out) > 0:
             for core_ex in cores_out.split(","):
                 cores.remove(int(core_ex))
-        else:
-            # There is no data
-            return -1
         _ncpu = len(cores)
 
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu + 1))
