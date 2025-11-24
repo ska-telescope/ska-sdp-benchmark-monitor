@@ -108,8 +108,8 @@ class SystemData:
         cpu_report_lines = self.read_csv_line_as_list(csv_report=csv_cpu_report)
         self.logger.debug(f"\t open+read = {round(time.time() - t0, 3)} s")
 
-        # Check if csv file is empty
-        if not cpu_report_lines:
+        # Check if csv file is empty or limited to header
+        if not cpu_report_lines or len(cpu_report_lines) <= 1:
             self.logger.warning("CPU CSV report is empty, returning empty data")
             return {}, []
 
@@ -255,6 +255,11 @@ class SystemData:
         alpha = 0.8
         prefix = f"{number}: " if number else ""
 
+        # Check there is content
+        if (len(self.cpu_stamps) < 1):
+            self.logger.warning("Empty cpu journal, skipping corresponding overall plot")
+            return -1
+        
         cpu_usr = self.cpu_prof[core]["user"] + self.cpu_prof[core]["nice"]
         cpu_sys = (
             self.cpu_prof[core]["system"]
@@ -335,6 +340,12 @@ class SystemData:
         """
         Plot cpu per core
         """
+
+        # Check there is content
+        if (len(self.cpu_stamps) < 1):
+            self.logger.warning("Empty cpu journal, skipping corresponding core plot")
+            return -1
+
         cores = [core for core in range(self.ncpu)]
         if len(cores_in) > 0:
             cores = [int(core) for core in cores_in.split(",")]
@@ -385,7 +396,7 @@ class SystemData:
         mem_report_lines = self.read_csv_line_as_list(csv_report=csv_mem_report)
 
         # Check if csv file is empty
-        if not mem_report_lines:
+        if not mem_report_lines or len(mem_report_lines) <= 1:
             self.logger.warning("Memory CSV report is empty, returning empty data")
             return [], {}
 
@@ -504,7 +515,12 @@ class SystemData:
             self.mem_stamps, swap_used, alpha=alpha * 3, label="SwapUsed", color="r"
         )
 
-        total_max = max(total)
+        if (len(self.mem_prof["timestamp"]) < 1):
+            total_max = 0
+            self.logger.warning("Empty memory journal, generating empty plot")
+        else:
+            total_max = max(total)
+
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
 
@@ -559,9 +575,10 @@ class SystemData:
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
             # Check if csv file is empty
-            if not cpufreq_report_lines:
-                self.logger.warning("CPUFreq CSV report is empty, using default values")
-                cpufreq_report_lines = [["timestamp", "cpu_core", "frequency[1500000-3529052]"]]
+            if not cpufreq_report_lines or len(cpufreq_report_lines) <= 1:
+                self.logger.warning("CPUFreq CSV report is empty (NB does not work on virtual machines), returning empty data")
+                return [], {}
+#                cpufreq_report_lines = [["timestamp", "cpu_core", "frequency[1500000-3529052]"]]
 
             self.logger.debug("Create CPUFreq profile...")
             t0 = time.time()
@@ -571,7 +588,7 @@ class SystemData:
 
             # Parse CPU frequency range with error handling
             try:
-                if (len(cpufreq_report_lines) > 0 and len(cpufreq_report_lines[0]) > 2
+                if (len(cpufreq_report_lines[0]) > 2
                         and '[' in cpufreq_report_lines[0][2] and ']' in cpufreq_report_lines[0][2]):
                     freq_range_str = cpufreq_report_lines[0][2].split('[')[1].split(']')[0]
                     if '-' in freq_range_str:
@@ -580,27 +597,14 @@ class SystemData:
                         self.cpufreq_max = (cpu_freq_parsing[1] if len(cpu_freq_parsing) > 1
                                             and cpu_freq_parsing[1] else None)
                     else:
-                        self.logger.warning("CPU frequency range format not recognized, using defaults")
-                        self.cpufreq_min = None
-                        self.cpufreq_max = None
+                        self.logger.warning("CPU frequency range format not recognized (expecting \"frequency[min-max]\" in header), returning empty data")
+                        return [], {}
                 else:
-                    self.logger.warning("CPU frequency header format not recognized, using defaults")
-                    self.cpufreq_min = None
-                    self.cpufreq_max = None
+                    self.logger.warning("CPU frequency header format not recognized (expecting \"timestamp,cpu core,frequency[min-max]\" in header), returning empty data")
+                    return [], {}
             except (IndexError, ValueError, AttributeError) as e:
-                self.logger.warning(f"Error parsing CPU frequency range: {e}, using defaults")
-                self.cpufreq_min = None
-                self.cpufreq_max = None
-
-            if (
-                len(cpufreq_report_lines) <= 1
-            ):  # @hard-coded For VM when --cpufreq is enabled
-                cpufreq_report_lines += [["0.0", "cpu0", "0"]]
-                cpufreq_report_lines += [["1.0", "cpu0", "0"]]
-
-                self.logger.warning(
-                    "Dont plot cpu frequencies (dont use --cpu-freq) on virtual machines"
-                )
+                self.logger.warning(f"Error parsing CPU frequency range {e} (expecting \"timestamp,cpu core,frequency[min-max]\" in header), returning empty data")
+                return [], {}
 
             # Get ncpu
             ts_0 = cpufreq_report_lines[1][0]
@@ -665,6 +669,9 @@ class SystemData:
         elif len(cores_in) == 0 and len(cores_out) > 0:
             for core_ex in cores_out.split(","):
                 cores.remove(int(core_ex))
+        else:
+            # There is no data
+            return -1
         _ncpu = len(cores)
 
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu + 1))
@@ -718,7 +725,7 @@ class SystemData:
         net_report_lines = self.read_csv_line_as_list(csv_report=csv_net_report)
 
         # Check if csv file is empty
-        if not net_report_lines:
+        if not net_report_lines or len(net_report_lines) <= 1:
             self.logger.warning("Network CSV report is empty, returning empty data")
             return {}, []
 
@@ -949,7 +956,12 @@ class SystemData:
                             markersize=_mrksz,
                         )
 
-        netmax = max(max(self.net_rx_total), max(self.net_tx_total))
+        if (len(self.net_stamps) < 1):
+            self.logger.warning("Empty network journal, generating empty plot")
+            netmax = 0
+        else:
+            netmax = max(max(self.net_rx_total), max(self.net_tx_total))
+
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         for powtwo in range(25):
@@ -972,19 +984,18 @@ class SystemData:
         """
         disk_report_lines = self.read_csv_line_as_list(csv_report=csv_disk_report)
 
-        # Check if csv file is empty
-        if not disk_report_lines:
-            self.logger.warning("Disk CSV report is empty, returning empty data")
-            return {}, []
-
         # useful indexes for the csv report
         _maj_blk_indx = 0  # noqa: F841
         _all_blk_indx = 1  # noqa: F841
         _sect_blk_indx = 2
         _header_indx = 3
         _samples_idx = 4
-
         _blk_idx = 3  # Horizontal
+
+        # Check if csv file is empty
+        if not disk_report_lines or len(disk_report_lines) <= _samples_idx:
+            self.logger.warning("Disk CSV report is empty, returning empty data")
+            return {}, []
 
         # self.disk_field_keys = { # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
         #     "#rd-cd": 4, "#rd-md": 5, "sect-rd": 6, "time-rd": 7,
@@ -1194,6 +1205,8 @@ class SystemData:
         alpha = 0.5
         diskmax = 0.0
 
+        if (len(self.disk_stamps) < 1):
+            self.logger.warning("Empty disk journal, generating empty plot")
         self.disk_rd_total = np.zeros_like(self.disk_stamps)
         self.disk_wr_total = np.zeros_like(self.disk_stamps)
 
@@ -1275,7 +1288,7 @@ class SystemData:
         ib_report_lines = self.read_csv_line_as_list(csv_report=csv_ib_report)
 
         # Check if csv file is empty
-        if not ib_report_lines:
+        if not ib_report_lines or len(ib_report_lines) <= 1:
             self.logger.warning("IB CSV report is empty, returning empty data")
             return {}, []
 
