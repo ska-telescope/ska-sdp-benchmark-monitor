@@ -125,6 +125,11 @@ def main():
     traces_repo = args.traces_repo
     is_recursive = args.recursive
 
+    # Check traces directory exists or return
+    if (not os.path.exists(traces_repo)):
+        print(f"Input trace directory {traces_repo} not found. Exiting.")
+        return -1
+
     # Create logging
     logger = create_logger(traces_repo=traces_repo, verbose=args.verbose)
     logger.info(f"benchmon-visu processes traces on {traces_repo}")
