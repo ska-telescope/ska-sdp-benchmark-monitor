@@ -406,15 +406,7 @@ class BenchmonVisualizer:
                 # Try CPU frequency timestamps
                 t0, tf = safe_get_timestamps('cpufreq_stamps', 'CPU frequency')
 
-        # If we still don't have valid timestamps, use fallback or exit
-        if t0 is None or tf is None:
-            self.logger.error("No valid timestamps found in any system metrics")
-            # Use current time as fallback
-            current_time = time.time()
-            t0, tf = current_time, current_time + 60  # 1 minute default range
-            self.logger.warning("Using fallback time range")
-
-        # Apply user-specified time range if provided
+        # Override identified time range if a user-specified time range was provided
         fmt = "%Y-%m-%dT%H:%M:%S"
         try:
             if self.args.start_time:
@@ -424,12 +416,12 @@ class BenchmonVisualizer:
         except ValueError as e:
             self.logger.warning(f"Error parsing time format: {e}")
 
-        # Ensure tf > t0
-        if tf <= t0:
-            self.logger.warning("End time is not greater than start time, adjusting")
-            tf = t0 + 60  # Add 1 minute
-
         try:
+            # If we still don't have valid timestamps raise an exception
+            if t0 is None or tf is None or tf <= t0:
+                self.logger.error("No valid timestamps found in any system metrics")
+                raise ValueError
+
             xticks_val = np.linspace(t0, tf, self.args.fig_xrange)
 
             t0_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(t0))
@@ -451,9 +443,6 @@ class BenchmonVisualizer:
 
         except Exception as e:
             self.logger.error(f"Error setting up x-axis parameters: {e}")
-            # Set minimal fallback parameters
-            self.xticks = (np.array([t0, tf]), [str(t0), str(tf)])
-            self.xlim = [t0, tf]
 
     def apply_xaxis_params(self) -> None:
         """
