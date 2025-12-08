@@ -9,6 +9,7 @@ from datetime import datetime
 from benchmon.visualization import BenchmonMNSyncVisualizer
 from benchmon.visualization import BenchmonVisualizer
 
+
 def parsing() -> argparse.Namespace:
     """
     Parse benchmonspc_visu arguments
