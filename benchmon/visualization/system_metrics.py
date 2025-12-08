@@ -578,13 +578,9 @@ class SystemData:
             if not cpufreq_report_lines or len(cpufreq_report_lines) <= 1:
                 self.logger.warning("CPUFreq CSV report is empty (NB does not work on virtual machines), returning empty data")
                 return [], {}
-#                cpufreq_report_lines = [["timestamp", "cpu_core", "frequency[1500000-3529052]"]]
 
             self.logger.debug("Create CPUFreq profile...")
             t0 = time.time()
-            cpu_freq_parsing = (
-                cpufreq_report_lines[0][2].split("[")[1].split("]")[0].split("-")
-            )
 
             # Parse CPU frequency range with error handling
             try:
@@ -609,12 +605,16 @@ class SystemData:
             # Get ncpu
             ts_0 = cpufreq_report_lines[1][0]
             ts = ts_0
+            # Skip the header
             line_idx = 1
             while ts == ts_0:
-                line_idx += 1
-                ts = cpufreq_report_lines[line_idx][0]
-
                 self.ncpu_freq += 1
+
+                line_idx += 1
+                if (line_idx < len(cpufreq_report_lines)):
+                    ts = cpufreq_report_lines[line_idx][0]
+                else:
+                    break
 
             # Init cpu time series
             cpufreq_ts = {}
