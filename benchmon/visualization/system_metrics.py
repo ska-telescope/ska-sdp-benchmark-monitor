@@ -259,7 +259,7 @@ class SystemData:
         if (len(self.cpu_stamps) < 1):
             self.logger.warning("Empty cpu journal, skipping corresponding overall plot")
             return -1
-        
+
         cpu_usr = self.cpu_prof[core]["user"] + self.cpu_prof[core]["nice"]
         cpu_sys = (
             self.cpu_prof[core]["system"]
@@ -576,7 +576,8 @@ class SystemData:
 
             # Check if csv file is empty
             if not cpufreq_report_lines or len(cpufreq_report_lines) <= 1:
-                self.logger.warning("CPUFreq CSV report is empty (NB does not work on virtual machines), returning empty data")
+                self.logger.warning("CPUFreq CSV report is empty (NB does not work"
+                                    " on virtual machines), returning empty data")
                 return [], {}
 
             self.logger.debug("Create CPUFreq profile...")
@@ -593,13 +594,19 @@ class SystemData:
                         self.cpufreq_max = (cpu_freq_parsing[1] if len(cpu_freq_parsing) > 1
                                             and cpu_freq_parsing[1] else None)
                     else:
-                        self.logger.warning("CPU frequency range format not recognized (expecting \"frequency[min-max]\" in header), returning empty data")
+                        self.logger.warning("CPU frequency range format not recognized"
+                                            " (expecting \"frequency[min-max]\" in header),"
+                                            "returning empty data")
                         return [], {}
                 else:
-                    self.logger.warning("CPU frequency header format not recognized (expecting \"timestamp,cpu core,frequency[min-max]\" in header), returning empty data")
+                    self.logger.warning("CPU frequency header format not recognized"
+                                        "(expecting \"timestamp,cpu core,frequency[min-max]\""
+                                        " in header), returning empty data")
                     return [], {}
             except (IndexError, ValueError, AttributeError) as e:
-                self.logger.warning(f"Error parsing CPU frequency range {e} (expecting \"timestamp,cpu core,frequency[min-max]\" in header), returning empty data")
+                self.logger.warning(f"Error parsing CPU frequency range {e} (expecting"
+                                    " \"timestamp,cpu core,frequency[min-max]\" in header),"
+                                    " returning empty data")
                 return [], {}
 
             # Get ncpu

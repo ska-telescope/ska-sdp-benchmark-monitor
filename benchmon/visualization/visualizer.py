@@ -11,6 +11,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 from .call_profile import PerfCallData
 from .call_profile import PerfCallRawData
 from .power_metrics import G5KPowerData
