@@ -6,6 +6,27 @@
 
 namespace rt_monitor
 {
+/**
+ * @file pause_manager.h
+ * @brief Defines the pause_manager class for controlling pause and stop states in monitoring.
+ *
+ * The pause_manager class provides static methods to control and query the paused and stopped
+ * states of a monitoring process. It uses atomic flags for thread-safe state management,
+ * and provides access to a mutex and condition variable for synchronization between threads.
+ *
+ * Usage:
+ * - Call pause_manager::pause() to pause monitoring.
+ * - Call pause_manager::resume() to resume monitoring.
+ * - Call pause_manager::stop() to stop monitoring.
+ * - Use pause_manager::paused() and pause_manager::stopped() to query current states.
+ * - Use pause_manager::mutex() and pause_manager::condition_variable() for thread synchronization.
+ *
+ * Thread Safety:
+ * All state changes are thread-safe due to the use of atomic variables and synchronization primitives.
+ *
+ * Logging:
+ * Each state change logs a trace message using spdlog.
+ */
 class pause_manager
 {
   private:
