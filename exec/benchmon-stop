@@ -22,14 +22,11 @@ done
 benchmon_pid_file=./.benchmon-run_pid_${OAR_JOB_ID}${SLURM_JOB_ID}_$(hostname)
 if [[ -f ${benchmon_pid_file} ]]
 then
-    pid=$(cat ${benchmon_pid_file})
-    kill -15 ${pid}
-    while [ -e /proc/${pid} ]; do
-        sleep 0.1;
-    done
+    pids=$(tr ',' ' ' < ${benchmon_pid_file})
+    xargs -d',' -a ${benchmon_pid_file} kill -2
+    while kill -0 "${pids[@]}" 2>/dev/null; do sleep 1; done
     rm -v ${benchmon_pid_file}
 fi
-
 
 traces_repo=$save_dir/benchmon_traces_$(hostname)
 benchmon_visu=$(dirname $0)/benchmon-visu
@@ -43,10 +40,10 @@ elif [[ $level == 1 ]]; then
     $benchmon_visu --cpu --mem --net --disk --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
     $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
 
+
 elif [[ $level == 2 ]]; then
     $benchmon_visu --cpu --mem --net --disk --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo
-     # --pow
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
 fi
 
 $benchmon_report --software-report "$save_dir/swmon_merged.json" --hardware-report "$save_dir/hwmon_merged.json" \
