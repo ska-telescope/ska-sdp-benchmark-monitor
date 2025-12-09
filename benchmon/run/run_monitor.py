@@ -17,6 +17,7 @@ from .hp_processor import HighPerformanceDataProcessor
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
+JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
 
 
 class RunMonitor:
@@ -39,7 +40,9 @@ class RunMonitor:
         self.verbose = args.verbose
 
         # System monitoring
+        self.binary_sys_monitoring = args.binary
         self.sys_filename = lambda device: f"{device}_report.csv"  # @nc
+        self.bin_sys_filename = lambda device: f"{device}_report.bin"
         self.is_system = args.system
         self.sys_freq = args.sys_freq
 
@@ -121,7 +124,10 @@ class RunMonitor:
             self.logger.info("InfluxDB integration enabled - HP processor started")
 
         if self.is_system:
-            self.run_sys_monitoring()
+            if self.binary_sys_monitoring:
+                self.run_sys_monitoring_binary()
+            else:
+                self.run_sys_monitoring()
 
         if self.is_power:
             self.run_perf_pow()
@@ -198,6 +204,55 @@ class RunMonitor:
             # Skip if both CSV and Grafana are disabled
             if not self.is_csv and not self.is_grafana:
                 self.logger.debug(f"Skipping {device} monitoring (both CSV and Grafana disabled)")
+
+
+    def write_benchmon_pid(self, pids) -> None:
+        """
+        Get benchmon-run pid
+        """
+        filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
+        with open(filename, "w") as fn:
+            for id in pids:
+                fn.write(f"{id},")
+
+        self.logger.debug(f"PID file created: {filename}")
+
+
+    def run_sys_monitoring_binary(self):
+        """
+        Run system monitoring with the C++ backend
+        """
+        freq = self.sys_freq
+        self.logger.debug("Starting system monitoring")
+
+        try:
+            self.sys_process.append(subprocess.Popen(
+                args=[
+                    "rt-monitor",
+                    "--sampling-frequency",
+                    f"{freq}",
+                    "--cpu",
+                    f"{self.save_dir}/{self.bin_sys_filename('cpu')}",
+                    "--mem",
+                    f"{self.save_dir}/{self.bin_sys_filename('mem')}",
+                    "--disk",
+                    f"{self.save_dir}/{self.bin_sys_filename('disk')}",
+                    "--cpu-freq",
+                    f"{self.save_dir}/{self.bin_sys_filename('cpufreq')}",
+                    "--net",
+                    f"{self.save_dir}/{self.bin_sys_filename('net')}",
+                    "--log-level",
+                    "err",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True))
+        except FileNotFoundError:
+            self.logger.error("Unable to find the monitor executable file.")
+
+        pids = [process.pid for process in self.sys_process]
+        self.write_benchmon_pid(pids)
+
 
     def run_perf_pow(self):
         """

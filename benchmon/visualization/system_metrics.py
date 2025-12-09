@@ -42,7 +42,7 @@ class SystemData:
             self.cpus = []
             self.cpu_prof = {}
             self.cpu_stamps = np.array([])
-            self.get_cpu_profile(csv_cpu_report=csv_cpu_report)
+            self.cpu_profile_valid = self.get_cpu_profile(csv_cpu_report=csv_cpu_report) == 0
 
         if csv_cpufreq_report:
             self.ncpu_freq = 0
@@ -51,12 +51,12 @@ class SystemData:
             self.cpufreq_stamps = np.array([])
             self.cpufreq_min = None
             self.cpufreq_max = None
-            self.get_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report)
+            self.cpufreq_profile_valid = self.get_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report) == 0
 
         if csv_mem_report:
             self.mem_prof = {}
             self.mem_stamps = np.array([])
-            self.get_mem_profile(csv_mem_report=csv_mem_report)
+            self.mem_profile_valid = self.get_mem_profile(csv_mem_report=csv_mem_report) == 0
 
         if csv_net_report:
             self.net_prof = {}
@@ -68,7 +68,7 @@ class SystemData:
             self.net_tx_total = np.array([])
             self.net_rx_data = 0
             self.net_tx_data = 0
-            self.get_net_prof(csv_net_report=csv_net_report)
+            self.net_profile_valid = self.get_net_prof(csv_net_report=csv_net_report) == 0
 
         if csv_disk_report:
             self.disk_prof = {}
@@ -81,7 +81,7 @@ class SystemData:
             self.disk_wr_total = np.array([])
             self.disk_rd_data = 0
             self.disk_wr_data = 0
-            self.get_disk_prof(csv_disk_report=csv_disk_report)
+            self.disk_profile_valid = self.get_disk_prof(csv_disk_report=csv_disk_report) == 0
 
         if csv_ib_report:
             self.ib_prof = {}
