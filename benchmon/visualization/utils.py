@@ -1,79 +1,84 @@
-"""Visualization utils"""
-import glob
-from datetime import datetime
+"""Visualization utils (generic pipeline annotation)"""
 
+import csv
+from datetime import datetime
 import numpy as np
 import matplotlib.pyplot as plt
+import glob
+import os
 
 
-def read_ical_log_file(traces_repo: str) -> dict:
+def read_annotation_csv(traces_repo: str, filename: str = "annotations.csv") -> dict:
     """
-    Read ical log file
-
-    Args:
-        traces_repo (str)   Traces repository
+    Read a generic CSV annotation file.
+    
+    Expected columns:
+    timestamp,pipeline,stage,event,node,process,source,message,core
 
     Returns:
-        (dict)  Major stages with start time stamps
+        dict structured as:
+        {
+            "INST/Predict": {
+                "START": timestamp,
+                "STOP": timestamp
+            },
+            "INST/Calibrate": {...}
+        }
     """
-    ical_log_file = glob.glob(f"{traces_repo}/wflow-selfcal.*.log")[0]
-    with open(ical_log_file, "r") as _file:
-        ical_log_content = _file.readlines()
 
-    stage_lines = []
-    for line in ical_log_content:
-        if "run_pipeline::" in line:
-            stage_lines += [line]
-    major_stages = {}
-    other_stages = {}
-    fmt = "%Y-%m-%dT%H:%M:%S.%f"
-    for line in stage_lines:
-        entry = line.split(" ")[6].replace("\n", "")
-        ts_fmt = f"{line.split(' ')[0]}T{line.split(' ')[1]}"
-        ts = datetime.strptime(ts_fmt, fmt).timestamp()
-        entry_key = entry  # f"{entry[:4]}{entry[-1]}"
-        if any(stage in entry for stage in ("calibrate", "predict", "image")):
-            try:
-                major_stages[entry_key][line.split(" ")[5]] = ts
-            except KeyError:
-                major_stages[entry_key] = {}
-                major_stages[entry_key][line.split(" ")[5]] = ts
-        else:
-            # major_stages[" ".join(line.split(" ")[5:]).replace("\n", "")] = {}
-            # major_stages[" ".join(line.split(" ")[5:]).replace("\n", "")]["Start"] = ts
-            major_stages[""] = {}
-            major_stages[""]["Start"] = ts
-            other_stages[" ".join(line.split(" ")[5:]).replace("\n", "")] = ts
+    csv_path = os.path.join(traces_repo, filename)
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Annotation CSV not found: {csv_path}")
 
-    return major_stages
+    stages = {}
+
+    with open(csv_path, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            pipeline = row["pipeline"].strip()
+            stage = row["stage"].strip()
+            event = row["event"].strip().upper()
+            ts = float(row["timestamp"])
+
+            key = f"{pipeline}/{stage}"
+
+            if key not in stages:
+                stages[key] = {}
+
+            stages[key][event] = ts
+
+    return stages
 
 
-def plot_ical_stages(major_stages: dict, ymax=100.) -> None:
+
+def plot_annotation_stages(stages: dict, ymax=100.) -> None:
     """
-    Plot ical stages
+    Plot vertical annotation lines for stages.
 
-    Args:
-        major_stages    (dict)  ical major stages dictionary
-        ymax            (float) max value for y-axis
+    Supports START/STOP, but works with any event.
     """
-    def margin(stage):
-        if "cali" in stage: return 0    # noqa: E701 (@hc)
-        elif "pred" in stage: return 1  # noqa: E701 (@hc)
-        elif "imag" in stage: return 2  # noqa: E701 (@hc)
-        else: return 3                  # noqa: E701 (@hc)
 
-    for stage in major_stages:
-        ydash = np.linspace(- ymax * .1, ymax * 1.1)
+    def ypos(idx):
+        return 1.1 - 0.05 * idx
 
-        plt.plot(major_stages[stage]["Start"] * np.ones_like(ydash),
-                 ydash,
-                 "k--",
-                 linewidth=.75)
+    for idx, stage in enumerate(stages):
+        events = stages[stage]
 
-        plt.text(major_stages[stage]["Start"],
-                 ymax * (1.1 - .04 * margin(stage)),
-                 stage,
-                 va="baseline",
-                 ha="left",
-                 size="x-small",
-                 weight="semibold")
+        for event, ts in events.items():
+            ydash = np.linspace(-ymax * .1, ymax * 1.1)
+
+            # vertical dashed line
+            plt.plot(ts * np.ones_like(ydash),
+                     ydash,
+                     "--",
+                     linewidth=.7,
+                     color="black")
+
+            # text placed above
+            plt.text(ts,
+                     ymax * ypos(idx),
+                     f"{stage} [{event}]",
+                     va="baseline",
+                     ha="left",
+                     size="x-small",
+                     weight="semibold")
