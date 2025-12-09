@@ -16,7 +16,7 @@ from .call_profile import PerfCallRawData
 from .power_metrics import G5KPowerData
 from .power_metrics import PerfPowerData
 from .system_metrics import SystemData
-from .utils import read_ical_log_file, plot_ical_stages
+from .utils import read_annotation_csv, plot_annotation_stages
 
 
 class BenchmonVisualizer:
@@ -75,10 +75,13 @@ class BenchmonVisualizer:
         self.call_monotonic_to_real = 0
         self.inline_calls_prof = None
 
-        self.ical_stages = {}
-        if self.args.annotate_with_log == "ical":
-            self.ical_stages = read_ical_log_file(self.traces_repo)
-
+        self.annotation_stages = {}
+        if self.args.annotate_with_log:
+            # Expecting a CSV file passed with --annotate-with-log=name.csv 
+            # or defaulting to annotations.csv
+            filename = self.args.annotate_with_log
+            self.annotation_stages = read_annotation_csv(self.traces_repo, filename)
+        
         self.load_system_metrics()
         self.load_power_metrics()
         self.load_call_metrics()
@@ -437,8 +440,8 @@ class BenchmonVisualizer:
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
-                    if self.ical_stages:
-                        plot_ical_stages(self.ical_stages)
+                    if self.annotation_stages:
+                        plot_annotation_stages(self.annotation_stages)
                 else:
                     self.logger.warning("No system metrics available for CPU plot")
 
@@ -451,8 +454,8 @@ class BenchmonVisualizer:
                         sbp += 1
                         self.system_metrics.plot_cpu(number=core_number,
                                                      annotate_with_cmds=annotate_with_cmds)
-                    if self.ical_stages:
-                        plot_ical_stages(self.ical_stages)
+                    if self.annotation_stages:
+                        plot_annotation_stages(self.annotation_stages)
                 else:
                     self.logger.warning("No system metrics available for CPU cores plot")
 
@@ -465,8 +468,8 @@ class BenchmonVisualizer:
                     self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
                                                           cores_out=self.args.cpu_cores_out,
                                                           annotate_with_cmds=annotate_with_cmds)
-                    if self.ical_stages:
-                        plot_ical_stages(self.ical_stages)
+                    if self.annotation_stages:
+                        plot_annotation_stages(self.annotation_stages)
                 else:
                     self.logger.warning("No system metrics available for CPU per core plot")
 
@@ -479,7 +482,7 @@ class BenchmonVisualizer:
                     freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
                                                                cores_out=self.args.cpu_cores_out,
                                                                annotate_with_cmds=annotate_with_cmds)
-                    if self.ical_stages:
+                    if self.annotation_stages:
                         plot_ical_stages(self.ical_stages, ymax=freqmax)
                 else:
                     self.logger.warning("No system metrics available for CPU frequency plot")
@@ -491,7 +494,7 @@ class BenchmonVisualizer:
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     memmax = self.system_metrics.plot_memory_usage(annotate_with_cmds=annotate_with_cmds)
-                    if self.ical_stages:
+                    if self.annotation_stages:
                         plot_ical_stages(self.ical_stages, ymax=memmax)
                 else:
                     self.logger.warning("No system metrics available for memory plot")
@@ -507,7 +510,7 @@ class BenchmonVisualizer:
                                                               is_tx_only=self.args.net_tx_only,
                                                               is_netdata_label=self.args.net_data,
                                                               annotate_with_cmds=annotate_with_cmds)
-                    if self.ical_stages:
+                    if self.annotation_stages:
                         plot_ical_stages(self.ical_stages, ymax=netmax)
                 else:
                     self.logger.warning("No system metrics available for network plot")
@@ -519,7 +522,7 @@ class BenchmonVisualizer:
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
-                    if self.ical_stages:
+                    if self.annotation_stages:
                         plot_ical_stages(self.ical_stages, ymax=ibmax)
                 else:
                     self.logger.warning("No system metrics available for InfiniBand plot")
@@ -535,7 +538,7 @@ class BenchmonVisualizer:
                                                             is_wr_only=self.args.disk_wr_only,
                                                             is_diskdata_label=self.args.disk_data,
                                                             annotate_with_cmds=annotate_with_cmds)
-                    if self.ical_stages:
+                    if self.annotation_stages:
                         plot_ical_stages(self.ical_stages, ymax=diskmax)
                 else:
                     self.logger.warning("No system metrics available for disk plot")
@@ -561,7 +564,7 @@ class BenchmonVisualizer:
 
                 if annotate_with_cmds:
                     annotate_with_cmds(ymax=max(powmax))
-                if self.ical_stages:
+                if self.annotation_stages:
                     plot_ical_stages(self.ical_stages, ymax=max(powmax))
 
                 plt.xticks(*self.xticks)
