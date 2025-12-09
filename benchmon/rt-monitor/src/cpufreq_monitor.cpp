@@ -1,17 +1,51 @@
-#include <algorithm>
-#include <cstdint>
+#include <Point.h>
 #include <filesystem>
-#include <fstream>
-#include <mutex>
 #include <scn/scan.h>
-#include <spdlog/spdlog.h>
-#include <string>
-#include <thread>
-#include <vector>
 
 #include "cpufreq_monitor.h"
+#include "db_stream.hpp"
+#include "file_stream.hpp"
 #include "monitor_io.h"
 #include "pause_manager.h"
+
+namespace rt_monitor::cpufreq
+{
+struct data_sample
+{
+    std::chrono::time_point<std::chrono::system_clock> timestamp;
+    uint32_t cpuid;
+    uint32_t frequency;
+};
+} // namespace rt_monitor::cpufreq
+
+namespace rt_monitor
+{
+template <> db_stream &db_stream::operator<< <cpufreq::data_sample>(cpufreq::data_sample sample)
+{
+    auto point = influxdb::Point{"cpufreq"}
+                     .addTag("id", std::to_string(sample.cpuid))
+                     .addField("frequency", sample.frequency)
+                     .setTimestamp(sample.timestamp);
+    try
+    {
+        this->db_ptr_->write(std::move(point));
+    }
+    catch (const std::runtime_error &e)
+    {
+        spdlog::error(std::string{"Error while pushing a cpufreq sample: "} + e.what());
+    }
+
+    return *this;
+}
+
+template <> file_stream &file_stream::operator<< <cpufreq::data_sample>(cpufreq::data_sample sample)
+{
+    io::write_binary(this->file_, sample.timestamp.time_since_epoch().count());
+    io::write_binary(this->file_, sample.cpuid);
+    io::write_binary(this->file_, sample.frequency);
+    return *this;
+}
+} // namespace rt_monitor
 
 namespace rt_monitor::cpufreq
 {
@@ -94,16 +128,17 @@ void read_cpu_frequency_sample(const std::vector<std::string> &cpu_freq_paths, s
     for (uint32_t i = 0; i < cpu_freq_paths.size(); ++i)
     {
         const auto &path = cpu_freq_paths[i];
-	spdlog::trace(path);
+        spdlog::trace(path);
         std::ifstream freq_file(path);
 
         std::string line;
         std::getline(freq_file, line);
-	spdlog::trace(line);
+        spdlog::trace(line);
         const auto result = scn::scan<uint32_t>(line, "{}");
-        if(!result)
+        if (!result)
         {
             spdlog::debug("Invalid CPU frequency sample.");
+            continue;
         }
 
         const auto [frequency] = result->values();
@@ -113,23 +148,47 @@ void read_cpu_frequency_sample(const std::vector<std::string> &cpu_freq_paths, s
     }
 }
 
-void start(const double time_interval, const std::string &out_path)
+void read_cpu_frequency_samples(const std::vector<std::string> &cpu_freq_paths,
+                                std::vector<data_sample> &cpufreq_samples_map)
+{
+    spdlog::trace("reading a CPU frequency monitoring sample");
+    const auto now = std::chrono::system_clock::now();
+
+    for (uint32_t i = 0; i < cpu_freq_paths.size(); ++i)
+    {
+        const auto &path = cpu_freq_paths[i];
+        spdlog::trace(path);
+        std::ifstream freq_file(path);
+
+        std::string line;
+        std::getline(freq_file, line);
+        spdlog::trace(line);
+        const auto result = scn::scan<uint32_t>(line, "{}");
+        if (!result)
+        {
+            spdlog::debug("Invalid CPU frequency sample.");
+            continue;
+        }
+
+        const auto [frequency] = result->values();
+        data_sample sample{now, i, frequency};
+        cpufreq_samples_map[i] = sample;
+    }
+}
+
+template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream)
 {
     bool sampling_warning_provided = false;
 
-    auto file = io::make_buffer(out_path);
-
-    const auto [freq_min, freq_max] = get_freq_min_max();
-    io::write_binary(file, freq_min);
-    io::write_binary(file, freq_max);
-
     const auto cpu_freq_paths = get_online_cpu_scaling_freq_paths();
-    if(cpu_freq_paths.empty())
+    if (cpu_freq_paths.empty())
     {
         spdlog::error("No CPU frequency file available, stopping CPU frequency monitoring.");
         return;
     }
 
+    std::vector<data_sample> samples;
+    samples.resize(cpu_freq_paths.size());
     while (!pause_manager::stopped())
     {
         if (pause_manager::paused())
@@ -140,7 +199,11 @@ void start(const double time_interval, const std::string &out_path)
         }
 
         const auto begin = std::chrono::high_resolution_clock::now();
-        read_cpu_frequency_sample(cpu_freq_paths, file);
+        read_cpu_frequency_samples(cpu_freq_paths, samples);
+        for (const auto sample : samples)
+        {
+            stream << sample;
+        }
         const auto end = std::chrono::high_resolution_clock::now();
         const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
         auto time_to_wait = time_interval - sampling_time;
@@ -148,7 +211,8 @@ void start(const double time_interval, const std::string &out_path)
         {
             if (!sampling_warning_provided)
             {
-                spdlog::warn("The sampling period of {} ms might be too low for CPU frequency monitoring. The last sampling time "
+                spdlog::warn("The sampling period of {} ms might be too low for CPU frequency monitoring. The last "
+                             "sampling time "
                              "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
                              static_cast<int>(time_interval), sampling_time);
                 sampling_warning_provided = true;
@@ -160,5 +224,7 @@ void start(const double time_interval, const std::string &out_path)
     }
     spdlog::trace("CPU frequency monitoring stopped");
 }
-} // namespace rt_monitor::cpufreq
 
+template void start_sampling<db_stream>(double time_interval, db_stream &&stream);
+template void start_sampling<file_stream>(double time_interval, file_stream &&stream);
+} // namespace rt_monitor::cpufreq

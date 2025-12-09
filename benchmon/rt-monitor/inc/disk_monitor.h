@@ -1,8 +1,8 @@
 #pragma once
-#include <string>
 
 /**
  * @file disk_monitor.h
+ * @namespace rt_monitor::disk
  * @brief Namespace for disk usage monitoring functionality within the real-time monitor module.
  */
 namespace rt_monitor::disk
@@ -10,13 +10,11 @@ namespace rt_monitor::disk
 /**
  * @brief Starts the disk monitoring process.
  *
- * This function initiates the monitoring of disk usage at a specified time interval and writes the monitoring data to
- * the specified output path. The monitoring process continues as long as the provided running flag remains true.
+ * This function initiates the monitoring of disk usage at a specified time interval and writes the monitoring data to a
+ * specified stream that can either be a file stream or a Grafana DB stream.
  *
  * @param time_interval The time interval (in seconds) between each monitoring sample.
- * @param out_path The file path where the monitoring data will be written.
- * @param running A reference to a boolean flag that controls the monitoring process. Monitoring continues as long as
- * this flag is true.
+ * @param stream The stream to output monitoring data to. Can either be a file stream or a Grafana DB stream.
  */
-void start(const double time_interval, const std::string &out_path);
+template <typename stream_type> void start_sampling(const double time_interval, stream_type &&stream);
 } // namespace rt_monitor::disk
