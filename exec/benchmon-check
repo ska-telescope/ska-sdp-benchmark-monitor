@@ -14,7 +14,10 @@ _running_processes = []
 
 base_command_check_set = {
     "bc": "bc",
-    "perf": "perf"
+    "perf": "perf",
+    "hpctoolkit": "hpcrun",
+    "hpctoolkit": "hpcstruct",
+    "hpctoolkit": "hpcprof"
 }
 
 base_command_advice_set = {
@@ -30,7 +33,12 @@ base_command_advice_set = {
              "Linux distribution:\n"
             "  - For Ubuntu/Debian: `sudo apt-get install linux-tools-common linux-tools-generic`\n"
             "  - For CentOS/RHEL: `sudo yum install perf`\n"
-            "  - For Fedora: `sudo dnf install perf`"
+            "  - For Fedora: `sudo dnf install perf`",
+    "hpctoolkit": "One at least of hpcrun, hpcstruct or hpcprof is not available.\n'hpctoolkit' is "
+                  "an execution trace collection tool which provides insight on software execution "
+                  "at a low overhead (without it more expensive trace collection is still possible via "
+                  "perf).\nTo install it, use the Spack recipe described in "
+                  "https://hpctoolkit.org/software-instructions.html"
 }
 
 sys_monitor_check_set = {
