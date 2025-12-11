@@ -33,7 +33,8 @@ dependencies = [
   "ping3",
   "psutil",
   "requests",
-  "scipy"
+  "scipy",
+  "influxdb3-python"
 ]
 
 [project.optional-dependencies]
