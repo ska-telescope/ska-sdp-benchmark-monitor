@@ -17,6 +17,11 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   VENV_DIR: "$CI_PROJECT_DIR/.venv"
+  BOOST_VERSION: "1.83.0"
+
+cache:
+  paths:
+    - $PIP_CACHE_DIR
 
 .test_env:
   image: registry.gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor:ci
@@ -26,10 +31,11 @@ variables:
     - pip install virtualenv
     - virtualenv $VENV_DIR
     - source $VENV_DIR/bin/activate
+    - apt-get update && apt-get install -y cmake git build-essential meson catch2 libmbedtls-dev libboost-all-dev libspdlog-dev openssl libpsl-dev
 
 install:
   stage: setup
-  extends: [.test_env]
+  extends: .test_env
   script:
     - pip install -U pip setuptools wheel
     - pip install .[test]
@@ -40,78 +46,72 @@ install:
 
 lint:
   stage: lint
-  extends: [.test_env]
+  extends: .test_env
+  needs: ["install"]
   script:
+    - source $VENV_DIR/bin/activate
+    - pip install flake8
     - flake8 .
 
 test_flake8:
   stage: test
-  extends: [.test_env]
-  tags:
-    - ${SKA_DEFAULT_RUNNER}
+  extends: .test_env
+  needs: ["install"]
   script:
+    - source $VENV_DIR/bin/activate
     - pytest --no-cov tests/test_flake8.py
 
 test_run_monitor:
   stage: test
-  extends: [.test_env]
-  tags:
-    - ${SKA_DEFAULT_RUNNER}
+  extends: .test_env
+  needs: ["install"]
   script:
+    - source $VENV_DIR/bin/activate
     - pytest --no-cov tests/test_run_monitor.py::test_repo_log_pid
 
 test_benchmon_visu:
   stage: test
-  extends: [.test_env]
-  tags:
-    - ${SKA_DEFAULT_RUNNER}
+  extends: .test_env
+  needs: ["install"]
   script:
+    - source $VENV_DIR/bin/activate
     - pytest --no-cov tests/test_benchmon-visu_func.py
-    # - pytest --no-cov tests/test_benchmon-visu.py
 
 test_visualizer:
   stage: test
-  extends: [.test_env]
-  tags:
-    - ${SKA_DEFAULT_RUNNER}
+  extends: .test_env
+  needs: ["install"]
   script:
+    - source $VENV_DIR/bin/activate
     - pytest --no-cov tests/test_visualizer.py
 
 test_metrics:
   stage: test
-  extends: [.test_env]
-  tags:
-    - ${SKA_DEFAULT_RUNNER}
+  extends: .test_env
+  needs: ["install"]
   script:
+    - source $VENV_DIR/bin/activate
     - pytest --no-cov tests/test_metrics.py
 
 test_doc:
   stage: test
-  extends: [.test_env]
-  tags:
-    - ${SKA_DEFAULT_RUNNER}
+  extends: .test_env
+  needs: ["install"]
   script:
-    - python -m pip install --upgrade --no-cache-dir pip setuptools
-    - python -m pip install --upgrade --no-cache-dir sphinx
-    - python -m pip install --exists-action=w --no-cache-dir -r docs/requirements.txt
+    - source $VENV_DIR/bin/activate
+    - pip install --upgrade --no-cache-dir sphinx
+    - pip install --exists-action=w --no-cache-dir -r docs/requirements.txt
     - cd docs
     - python -m sphinx -T -b html -d build/doctrees -D language=en src/ build/html
-    - make html
   artifacts:
     paths:
-      - build/
+      - docs/build/
     expire_in: 1h
 
 include:
   # Docs pages
   - project: "ska-telescope/templates-repository"
     file: "gitlab-ci/includes/docs.gitlab-ci.yml"
-
-  # Python
-  - project: "ska-telescope/templates-repository"
-    file:
-      - "gitlab-ci/includes/python-publish.gitlab-ci.yml"
-      - "gitlab-ci/includes/python-build.gitlab-ci.yml"
 
   # Build and publish changelog
   - project: "ska-telescope/templates-repository"
@@ -120,4 +120,3 @@ include:
   # .post step finalisers e.g.: badges
   - project: "ska-telescope/templates-repository"
     file: "gitlab-ci/includes/finaliser.gitlab-ci.yml"
-

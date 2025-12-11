@@ -11,11 +11,13 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 from .call_profile import PerfCallData
 from .call_profile import PerfCallRawData
 from .power_metrics import G5KPowerData
 from .power_metrics import PerfPowerData
 from .system_metrics import SystemData
+from .system_metrics_binary import SystemDataBinary
 from .utils import read_ical_log_file, plot_ical_stages
 
 
@@ -79,7 +81,10 @@ class BenchmonVisualizer:
         if self.args.annotate_with_log == "ical":
             self.ical_stages = read_ical_log_file(self.traces_repo)
 
-        self.load_system_metrics()
+        if args.binary:
+            self.load_system_metrics_binary()
+        else:
+            self.load_system_metrics()
         self.load_power_metrics()
         self.load_call_metrics()
 
@@ -121,6 +126,53 @@ class BenchmonVisualizer:
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
             + self.args.mem + is_net + is_disk + self.args.ib
+
+
+    def load_system_metrics_binary(self) -> bool:
+        """
+        Load system metrics
+
+        Returns:
+            bool: True if loading was successful, False otherwise
+        """
+        try:
+            is_cores_full = bool(self.args.cpu_cores_full)
+            is_net = self.args.net or self.args.net_all or self.args.net_data
+            is_disk = self.args.disk or self.args.disk_iops or self.args.disk_iops
+
+            _n_cores_full = len(self.args.cpu_cores_full.split(",")) if is_cores_full else 0
+
+            self.is_any_sys = self.args.cpu or self.args.cpu_all or self.args.cpu_freq or \
+                is_cores_full or self.args.mem or is_net or is_disk or self.args.ib
+
+            conds = {
+                "mem": self.args.mem,
+                "cpu": self.args.cpu or self.args.cpu_all or is_cores_full,
+                "cpufreq": self.args.cpu_freq,
+                "net": is_net,
+                "disk": is_disk,
+                "ib": self.args.ib
+            }
+
+            bin_reports = {}
+            for key in conds.keys():
+                if key == "ib":
+                    continue
+                bin_reports[f"bin_{key}_report"] = f"{self.traces_repo}/{key}_report.bin" if conds[key] else None
+            if self.is_any_sys:
+                self.system_metrics = SystemDataBinary(logger=self.logger,
+                                                       traces_repo=self.traces_repo,
+                                                       **bin_reports)
+
+            self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
+                + self.args.mem + is_net + is_disk + self.args.ib
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to load system metrics: {e}")
+            self.system_metrics = None
+            return False
+
 
     def load_power_metrics(self) -> None:
         """
@@ -355,15 +407,7 @@ class BenchmonVisualizer:
                 # Try CPU frequency timestamps
                 t0, tf = safe_get_timestamps('cpufreq_stamps', 'CPU frequency')
 
-        # If we still don't have valid timestamps, use fallback or exit
-        if t0 is None or tf is None:
-            self.logger.error("No valid timestamps found in any system metrics")
-            # Use current time as fallback
-            current_time = time.time()
-            t0, tf = current_time, current_time + 60  # 1 minute default range
-            self.logger.warning("Using fallback time range")
-
-        # Apply user-specified time range if provided
+        # Override identified time range if a user-specified time range was provided
         fmt = "%Y-%m-%dT%H:%M:%S"
         try:
             if self.args.start_time:
@@ -373,12 +417,12 @@ class BenchmonVisualizer:
         except ValueError as e:
             self.logger.warning(f"Error parsing time format: {e}")
 
-        # Ensure tf > t0
-        if tf <= t0:
-            self.logger.warning("End time is not greater than start time, adjusting")
-            tf = t0 + 60  # Add 1 minute
-
         try:
+            # If we still don't have valid timestamps raise an exception
+            if t0 is None or tf is None or tf <= t0:
+                self.logger.error("No valid timestamps found in any system metrics")
+                raise ValueError
+
             xticks_val = np.linspace(t0, tf, self.args.fig_xrange)
 
             t0_fmt = time.strftime("%H:%M:%S\n%b-%d", time.localtime(t0))
@@ -400,9 +444,6 @@ class BenchmonVisualizer:
 
         except Exception as e:
             self.logger.error(f"Error setting up x-axis parameters: {e}")
-            # Set minimal fallback parameters
-            self.xticks = (np.array([t0, tf]), [str(t0), str(tf)])
-            self.xlim = [t0, tf]
 
     def apply_xaxis_params(self) -> None:
         """

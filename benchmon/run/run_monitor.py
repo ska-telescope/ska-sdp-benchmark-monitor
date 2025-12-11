@@ -17,6 +17,7 @@ from .hp_collector import HighPerformanceCollector
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
+JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
 
 
 class RunMonitor:
@@ -39,8 +40,9 @@ class RunMonitor:
         self.verbose = args.verbose
 
         # System monitoring
-        # Filename no longer needs hostname, as the parent directory is unique
+        self.binary_sys_monitoring = args.binary
         self.sys_filename = lambda device: f"{device}_report.csv"  # @nc
+        self.bin_sys_filename = lambda device: f"{device}_report.bin"
         self.is_system = args.system
         self.sys_freq = args.sys_freq
 
@@ -75,8 +77,14 @@ class RunMonitor:
         # Enable sudo-g5k (for Grid5000 clusters)
         self.sudo_g5k = "sudo-g5k" if "grid5000" in HOSTNAME else ""
 
-        # Defer node check to the run method
-        self.is_benchmon_control_node = False
+        # Mark the node 0 as main node responsible for collecting all the different reports
+        oar_check = subprocess.run(args=["oarprint", "host"],
+                                   capture_output=True,
+                                   shell=True,
+                                   text=True,
+                                   check=False).stdout.split("\n")[0] == HOSTNAME
+        slurm_check = os.environ.get("SLURM_NODEID") == "0" or os.environ.get("SLURM_NODEID") is None
+        self.is_benchmon_control_node = True if oar_check or slurm_check else False
 
         # Setup SIGTERM handler for graceful termination
         signal.signal(signal.SIGTERM, self.terminate)
@@ -141,7 +149,10 @@ class RunMonitor:
 
         # Start writer processes (Only for CSV now)
         if self.is_system:
-            self.run_sys_monitoring()
+            if self.binary_sys_monitoring:
+                self.run_sys_monitoring_binary()
+            else:
+                self.run_sys_monitoring()
 
         if self.is_power:
             self.run_perf_pow()
@@ -174,10 +185,12 @@ class RunMonitor:
 
         sh_repo = os.path.dirname(os.path.realpath(__file__))
 
-        # --- REFACTOR: This loop now only handles CSV monitoring ---
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):
+        # CPU + CPUfreq + Memory + Network + Disk monitoring processes
+        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib", "timing_mapping"):
+            # Determine which script to use
+            sh_repo = os.path.dirname(os.path.realpath(__file__))
 
-            # Start CSV monitoring if enabled
+            # Start CSV monitoring if enabled (default behavior)
             if self.is_csv:
                 script_path = f"{sh_repo}/{device}_mon.sh"
                 csv_file = f"{self.save_dir}/{self.sys_filename(device)}"
@@ -195,6 +208,55 @@ class RunMonitor:
                 ]
 
             # The 'if self.is_grafana:' block is no longer needed here.
+
+
+    def write_benchmon_pid(self, pids) -> None:
+        """
+        Get benchmon-run pid
+        """
+        filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
+        with open(filename, "w") as fn:
+            for id in pids:
+                fn.write(f"{id},")
+
+        self.logger.debug(f"PID file created: {filename}")
+
+
+    def run_sys_monitoring_binary(self):
+        """
+        Run system monitoring with the C++ backend
+        """
+        freq = self.sys_freq
+        self.logger.debug("Starting system monitoring")
+
+        try:
+            self.sys_process.append(subprocess.Popen(
+                args=[
+                    "rt-monitor",
+                    "--sampling-frequency",
+                    f"{freq}",
+                    "--cpu",
+                    f"{self.save_dir}/{self.bin_sys_filename('cpu')}",
+                    "--mem",
+                    f"{self.save_dir}/{self.bin_sys_filename('mem')}",
+                    "--disk",
+                    f"{self.save_dir}/{self.bin_sys_filename('disk')}",
+                    "--cpu-freq",
+                    f"{self.save_dir}/{self.bin_sys_filename('cpufreq')}",
+                    "--net",
+                    f"{self.save_dir}/{self.bin_sys_filename('net')}",
+                    "--log-level",
+                    "err",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True))
+        except FileNotFoundError:
+            self.logger.error("Unable to find the monitor executable file.")
+
+        pids = [process.pid for process in self.sys_process]
+        self.write_benchmon_pid(pids)
+
 
     def run_perf_pow(self):
         """

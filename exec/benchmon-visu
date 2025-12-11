@@ -21,10 +21,11 @@ def parsing() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     # Repositories
-    parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Traces repository path")
+    parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Top-level traces repository path")
     parser.add_argument("--recursive", action="store_true", default=False)
 
     # System metrics
+    parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
     parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
     parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
     parser.add_argument("--cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")
@@ -125,6 +126,11 @@ def main():
     traces_repo = args.traces_repo
     is_recursive = args.recursive
 
+    # Check traces directory exists or return
+    if (not os.path.exists(traces_repo)):
+        print(f"Input trace directory {traces_repo} not found. Exiting.")
+        return -1
+
     # Create logging
     logger = create_logger(traces_repo=traces_repo, verbose=args.verbose)
     logger.info(f"benchmon-visu processes traces on {traces_repo}")
@@ -137,12 +143,12 @@ def main():
     traces_repos = []
     if args.test:
         pass
-    elif is_recursive:
+    else:
         for name in os.listdir(traces_repo):
             if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
                 traces_repos += [f"{traces_repo}/{name}"]
-    else:
-        traces_repos += [traces_repo]
+    if not traces_repos:
+        logger.warning(f"No *bennchmon_traces* directory found in {traces_repo}")
 
     nodes_data = []
     for repo in traces_repos:

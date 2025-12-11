@@ -163,6 +163,20 @@ class RunUtils:
             help="Timeout for testing"
         )
 
+        parser.add_argument(
+            "--start-after",
+            type=int,
+            default=0,
+            help="Wait a certain time (in seconds) before starting monitoring. Default: 0"
+        )
+
+        parser.add_argument(
+            "--binary",
+            "-b",
+            action="store_true",
+            help="Use the C++ binary backend for sampling. Default: False"
+        )
+
         return parser.parse_args()
 
 

@@ -8,6 +8,7 @@ data-files = { bin = ["exec/*"] }
 
 [tool.setuptools.package-data]
 "benchmon.run" = ["*.sh"]
+"benchmon.report" = ["template.md"]
 
 [project.urls]
 repository = "https://gitlab.com/ska-telescope/sdp/ska-sdp-benchmark-monitor"
@@ -28,6 +29,7 @@ requires-python = ">=3.8"
 dependencies = [
   "numpy",
   "matplotlib",
+  "pandoc",
   "ping3",
   "psutil",
   "requests",
