@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+# filepath: /home/wangfeng/work/ska-sdp-benchmark-monitor/exec/benchmon-stop-grafana
+import argparse
+import json
+import os
+import signal
+import sys
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def main():
+    """
+    Finds and stops the InfluxDB and Grafana processes managed by benchmon.
+    """
+    parser = argparse.ArgumentParser(description="Stop Benchmon Grafana/InfluxDB Stack")
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        help="Base directory for traces. Defaults to current directory."
+    )
+    args = parser.parse_args()
+
+    # --- Align directory logic with benchmon-run-grafana ---
+    base_dir = args.save_dir if args.save_dir is not None else Path("./benchmon_traces_")
+    runtime_dir = base_dir / "grafana-data"
+    log_dir = runtime_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Configure logging to save to file
+    log_file = log_dir / "benchmon-stop-grafana.log"
+    file_handler = logging.FileHandler(log_file)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+    logger.setLevel(logging.INFO)
+
+    pid_file = runtime_dir / "pids.json"
+
+    if not pid_file.is_file():
+        logger.error(f"PID file not found at {pid_file}")
+        logger.error("Hint: Ensure you are in the correct directory or provide the correct --save-dir.")
+        sys.exit(1)
+
+    logger.info(f"Reading PID file from: {pid_file}")
+    with open(pid_file, "r") as f:
+        try:
+            pids = json.load(f)
+        except json.JSONDecodeError:
+            logger.error(f"Could not decode PID file {pid_file}")
+            sys.exit(1)
+
+    for service, pid in pids.items():
+        logger.info(f"Stopping {service} (PID: {pid})...")
+        try:
+            os.kill(pid, signal.SIGTERM)
+            logger.info(f"{service.capitalize()} stopped.")
+        except ProcessLookupError:
+            logger.warning(f"Process for {service} (PID: {pid}) not found. It might have already stopped.")
+        except Exception as e:
+            logger.error(f"Error stopping {service} (PID: {pid}): {e}")
+
+    # Clean up pid file
+    try:
+        os.remove(pid_file)
+        logger.info(f"Removed PID file: {pid_file}")
+    except OSError as e:
+        logger.warning(f"Could not remove PID file: {e}")
+
+    logger.info("\nMonitoring stack stopped.")
+
+
+if __name__ == "__main__":
+    main()

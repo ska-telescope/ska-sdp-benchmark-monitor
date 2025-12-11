@@ -4,3 +4,4 @@ ping3
 psutil
 requests
 scipy
+influxdb3-python
