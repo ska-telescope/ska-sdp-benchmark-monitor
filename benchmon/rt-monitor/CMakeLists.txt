@@ -16,7 +16,7 @@ set(header_files
     "inc/mem_monitor.h"
     "inc/monitor_io.h"
     "inc/net_monitor.h"
-    "inc/net_monitor.h")
+    "inc/thread_safe_queue.hpp")
 
 set(source_files
     "src/cpu_monitor.cpp"
@@ -33,17 +33,10 @@ target_include_directories(rt-monitor PUBLIC inc)
 target_link_libraries(rt-monitor PRIVATE scn::scn)
 target_link_libraries(rt-monitor PRIVATE spdlog::spdlog)
 target_link_libraries(rt-monitor PRIVATE InfluxData::InfluxDB)
+if(ICU_FOUND)
+  target_link_libraries(rt-monitor PRIVATE ICU::uc ICU::data ICU::i18n)
+endif()
 
 install(TARGETS rt-monitor DESTINATION .)
 
-install(IMPORTED_RUNTIME_ARTIFACTS rt-monitor RUNTIME_DEPENDENCY_SET
-        rt-monitor_dependency_set)
 
-install(
-  RUNTIME_DEPENDENCY_SET
-  rt-monitor_dependency_set
-  POST_EXCLUDE_REGEXES
-  "${CMAKE_INSTALL_PREFIX}/lib"
-  RUNTIME
-  DESTINATION
-  .)

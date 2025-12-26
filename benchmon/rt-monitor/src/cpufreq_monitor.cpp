@@ -1,12 +1,14 @@
 #include <Point.h>
 #include <filesystem>
 #include <scn/scan.h>
+#include <thread>
 
 #include "cpufreq_monitor.h"
 #include "db_stream.hpp"
 #include "file_stream.hpp"
 #include "monitor_io.h"
 #include "pause_manager.h"
+#include "thread_safe_queue.hpp"
 
 namespace rt_monitor::cpufreq
 {
@@ -22,7 +24,9 @@ namespace rt_monitor
 {
 template <> db_stream &db_stream::operator<< <cpufreq::data_sample>(cpufreq::data_sample sample)
 {
+    static const std::string hostname = rt_monitor::io::get_hostname();
     auto point = influxdb::Point{"cpufreq"}
+                     .addTag("hostname", hostname)
                      .addTag("id", std::to_string(sample.cpuid))
                      .addField("frequency", sample.frequency)
                      .setTimestamp(sample.timestamp);
@@ -176,19 +180,11 @@ void read_cpu_frequency_samples(const std::vector<std::string> &cpu_freq_paths,
     }
 }
 
-template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream)
+void cpufreq_producer(double time_interval, 
+                      const std::vector<std::string>& cpu_freq_paths,
+                      ThreadSafeQueue<std::vector<data_sample>>& queue)
 {
     bool sampling_warning_provided = false;
-
-    const auto cpu_freq_paths = get_online_cpu_scaling_freq_paths();
-    if (cpu_freq_paths.empty())
-    {
-        spdlog::error("No CPU frequency file available, stopping CPU frequency monitoring.");
-        return;
-    }
-
-    std::vector<data_sample> samples;
-    samples.resize(cpu_freq_paths.size());
     while (!pause_manager::stopped())
     {
         if (pause_manager::paused())
@@ -199,11 +195,12 @@ template <typename stream_type> void start_sampling(double time_interval, stream
         }
 
         const auto begin = std::chrono::high_resolution_clock::now();
+        
+        std::vector<data_sample> samples;
+        samples.resize(cpu_freq_paths.size());
         read_cpu_frequency_samples(cpu_freq_paths, samples);
-        for (const auto sample : samples)
-        {
-            stream << sample;
-        }
+        queue.push(std::move(samples));
+
         const auto end = std::chrono::high_resolution_clock::now();
         const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
         auto time_to_wait = time_interval - sampling_time;
@@ -222,6 +219,31 @@ template <typename stream_type> void start_sampling(double time_interval, stream
 
         std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    queue.stop();
+    spdlog::trace("cpufreq producer stopped");
+}
+
+template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream)
+{
+    const auto cpu_freq_paths = get_online_cpu_scaling_freq_paths();
+    if (cpu_freq_paths.empty())
+    {
+        spdlog::error("No CPU frequency file available, stopping CPU frequency monitoring.");
+        return;
+    }
+
+    ThreadSafeQueue<std::vector<data_sample>> queue;
+    std::thread producer_thread(cpufreq_producer, time_interval, std::cref(cpu_freq_paths), std::ref(queue));
+
+    std::vector<data_sample> samples;
+    while (queue.pop(samples))
+    {
+        for (const auto sample : samples)
+        {
+            stream << sample;
+        }
+    }
+    producer_thread.join();
     spdlog::trace("CPU frequency monitoring stopped");
 }
 

@@ -3,49 +3,86 @@ set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps")
 include(FetchContent)
 include(find_external)
 
-FetchContent_Declare(
-  openssl
-  GIT_REPOSITORY https://github.com/openssl/openssl.git
-  GIT_TAG 7b371d80d959ec9ab4139d09d78e83c090de9779
-  FIND_PACKAGE_ARGS NAMES openssl)
-
-FetchContent_MakeAvailable(openssl)
 find_package(OpenSSL REQUIRED)
+find_package(ICU COMPONENTS uc data i18n io)
 
-FetchContent_Declare(
-  Boost
-  GIT_REPOSITORY "https://github.com/boostorg/boost.git"
-  GIT_TAG "boost-1.85.0"
-  GIT_PROGRESS ON
-  GIT_SHALLOW ON
-  OVERRIDE_FIND_PACKAGE TRUE EXCLUDE_FROM_ALL)
 
-add_library(Boost::boost INTERFACE IMPORTED)
+# Try to find system Boost first
+find_package(Boost)
+if(Boost_FOUND)
+  message(STATUS "Found system Boost: ${Boost_INCLUDE_DIRS}")
+  if(NOT TARGET Boost::boost)
+    add_library(Boost::boost INTERFACE IMPORTED)
+    set_target_properties(Boost::boost PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${Boost_INCLUDE_DIRS}")
+  endif()
+else()
+  message(STATUS "System Boost not found, downloading...")
+  FetchContent_Declare(
+    Boost
+    GIT_REPOSITORY "https://github.com/boostorg/boost.git"
+    GIT_TAG "boost-1.85.0"
+    GIT_PROGRESS ON
+    GIT_SHALLOW ON
+    OVERRIDE_FIND_PACKAGE TRUE EXCLUDE_FROM_ALL)
+  FetchContent_MakeAvailable(Boost)
+  
+  if(NOT TARGET Boost::boost)
+    add_library(Boost::boost INTERFACE IMPORTED)
+    set_target_properties(Boost::boost PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${boost_SOURCE_DIR}")
+  endif()
+endif()
 
-set_target_properties(Boost::boost PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
-                                              "${boost_SOURCE_DIR}")
 
-FetchContent_Declare(
-  cpr
-  GIT_REPOSITORY https://github.com/libcpr/cpr.git
-  GIT_TAG da40186618909b1a7363d4e4495aa899c6e0eb75
-  FIND_PACKAGE_ARGS NAMES cpr)
 
-FetchContent_Declare(
-  spdlog
-  GIT_REPOSITORY https://github.com/gabime/spdlog.git
-  GIT_TAG 486b55554f11c9cccc913e11a87085b2a91f706f
-  FIND_PACKAGE_ARGS NAMES spdlog)
+# Try to find system cpr first
+find_package(cpr QUIET)
+if(cpr_FOUND AND TARGET cpr::cpr)
+  message(STATUS "Found system cpr")
+else()
+  message(STATUS "System cpr not found, downloading...")
+  
+  # Declare curl explicitly to use git instead of URL download which is timing out
+  FetchContent_Declare(
+    curl
+    GIT_REPOSITORY https://github.com/curl/curl.git
+    GIT_TAG curl-8_13_0
+  )
 
-FetchContent_MakeAvailable(Boost cpr spdlog)
+  FetchContent_Declare(
+    cpr
+    GIT_REPOSITORY https://github.com/libcpr/cpr.git
+    GIT_TAG da40186618909b1a7363d4e4495aa899c6e0eb75
+    SOURCE_DIR ${CMAKE_BINARY_DIR}/_deps/cpr-src
+  )
+  FetchContent_MakeAvailable(cpr)
+endif()
+
+# Try to find system spdlog first
+find_package(spdlog QUIET)
+if(spdlog_FOUND)
+  message(STATUS "Found system spdlog")
+else()
+  message(STATUS "System spdlog not found, downloading...")
+  FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG 486b55554f11c9cccc913e11a87085b2a91f706f)
+  FetchContent_MakeAvailable(spdlog)
+endif()
 
 FetchContent_Declare(
   scn
   GIT_REPOSITORY https://github.com/eliaskosunen/scnlib.git
-  GIT_TAG e937be1a52588621b406d58ce8614f96bb5de747
-  FIND_PACKAGE_ARGS NAMES scn)
+  GIT_TAG e937be1a52588621b406d58ce8614f96bb5de747)
 
-FetchContent_MakeAvailable(scn)
+# Try to find system scn first
+find_package(scn QUIET)
+if(scn_FOUND)
+  message(STATUS "Found system scn")
+else()
+  message(STATUS "System scn not found, downloading...")
+  FetchContent_MakeAvailable(scn)
+endif()
 
 find_external(
   influxdb-cxx

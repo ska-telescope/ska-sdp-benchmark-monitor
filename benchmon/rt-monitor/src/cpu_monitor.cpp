@@ -7,6 +7,8 @@
 #include "file_stream.hpp"
 #include "monitor_io.h"
 #include "pause_manager.h"
+#include "thread_safe_queue.hpp"
+#include <thread>
 
 namespace rt_monitor
 {
@@ -80,7 +82,10 @@ template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample
     const int usr_ratio = ratio_factor * (usr / total);
     const int wai_ratio = ratio_factor * (wai / total);
 
+    static const std::string hostname = rt_monitor::io::get_hostname();
+
     auto point = influxdb::Point{"cpu"}
+                     .addTag("hostname", hostname)
                      .addTag("id", std::to_string(sample_diff.cpuid))
                      .addField("stl", stl_ratio)
                      .addField("sys", sys_ratio)
@@ -146,16 +151,9 @@ void read_cpu_samples(std::unordered_map<uint32_t, data_sample> &cpu_samples_map
     }
 }
 
-template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream);
-
-template <> void start_sampling(const double time_interval, db_stream &&stream)
+void cpu_producer(double time_interval, ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>>& queue)
 {
     bool sampling_warning_provided = false;
-    std::array<std::unordered_map<uint32_t, data_sample>, 2> samples_sets;
-    size_t last_index = 0;
-    read_cpu_samples(samples_sets[last_index]);
-    std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_interval)));
-
     while (!pause_manager::stopped())
     {
         if (pause_manager::paused())
@@ -166,12 +164,50 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
         }
 
         const auto begin = std::chrono::high_resolution_clock::now();
+        
+        std::unordered_map<uint32_t, data_sample> samples;
+        read_cpu_samples(samples);
+        queue.push(std::move(samples));
 
-        auto &last_sample_set = samples_sets[last_index];
-        auto &current_sample_set = samples_sets[1 - last_index];
+        const auto end = std::chrono::high_resolution_clock::now();
+        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+        auto time_to_wait = time_interval - sampling_time;
+        if (time_to_wait < 0.)
+        {
+            if (!sampling_warning_provided)
+            {
+                spdlog::warn("The sampling period of {} ms might be too low for CPU monitoring. The last sampling time "
+                             "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
+                             static_cast<int>(time_interval), sampling_time);
+                sampling_warning_provided = true;
+            }
+            time_to_wait = 0.;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+    }
+    queue.stop();
+    spdlog::trace("CPU producer stopped");
+}
 
-        read_cpu_samples(current_sample_set);
+template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream);
 
+template <> void start_sampling(const double time_interval, db_stream &&stream)
+{
+    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
+    std::thread producer_thread(cpu_producer, time_interval, std::ref(queue));
+
+    std::unordered_map<uint32_t, data_sample> last_sample_set;
+    
+    // Wait for the first sample to use as baseline
+    if (!queue.pop(last_sample_set))
+    {
+        producer_thread.join();
+        return;
+    }
+
+    std::unordered_map<uint32_t, data_sample> current_sample_set;
+    while (queue.pop(current_sample_set))
+    {
         for (const auto [index, current_sample] : current_sample_set)
         {
             const auto last_sample_it = last_sample_set.find(index);
@@ -182,68 +218,27 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
                 stream << sample_diff;
             }
         }
-
-        const auto end = std::chrono::high_resolution_clock::now();
-        last_index = 1 - last_index;
-
-        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        auto time_to_wait = time_interval - sampling_time;
-        if (time_to_wait < 0.)
-        {
-            if (!sampling_warning_provided)
-            {
-                spdlog::warn("The sampling period of {} ms might be too low for CPU monitoring. The last sampling time "
-                             "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
-                             static_cast<int>(time_interval), sampling_time);
-                sampling_warning_provided = true;
-            }
-            time_to_wait = 0.;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        last_sample_set = std::move(current_sample_set);
     }
+    
+    producer_thread.join();
     spdlog::trace("CPU monitoring stopped");
 }
 
 template <> void start_sampling(const double time_interval, file_stream &&stream)
 {
-    bool sampling_warning_provided = false;
+    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
+    std::thread producer_thread(cpu_producer, time_interval, std::ref(queue));
+
     std::unordered_map<uint32_t, data_sample> samples_set;
-    size_t last_index = 0;
-    read_cpu_samples(samples_set);
-
-    while (!pause_manager::stopped())
+    while (queue.pop(samples_set))
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("CPU monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
-
-        const auto begin = std::chrono::high_resolution_clock::now();
-        read_cpu_samples(samples_set);
         for (const auto [index, current_sample] : samples_set)
         {
             stream << current_sample;
         }
-        const auto end = std::chrono::high_resolution_clock::now();
-
-        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        auto time_to_wait = time_interval - sampling_time;
-        if (time_to_wait < 0.)
-        {
-            if (!sampling_warning_provided)
-            {
-                spdlog::warn("The sampling period of {} ms might be too low for CPU monitoring. The last sampling time "
-                             "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
-                             static_cast<int>(time_interval), sampling_time);
-                sampling_warning_provided = true;
-            }
-            time_to_wait = 0.;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    producer_thread.join();
     spdlog::trace("CPU monitoring stopped");
 }
 } // namespace cpu

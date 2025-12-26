@@ -22,6 +22,7 @@ struct monitor_config
     bool enable_net = false;
     double sampling_frequency = 0.0;
     std::string grafana_address = "";
+    int batch_size = 1;
     spdlog::level::level_enum log_level = spdlog::level::err;
     std::unordered_map<std::string, std::string> output_files;
 };
@@ -149,6 +150,18 @@ monitor_config parse_arguments(int argc, char **argv)
             }
             config.grafana_address = argv[++i];
         }
+        else if (arg == "--batch-size")
+        {
+            if (i + 1 >= argc)
+            {
+                throw std::invalid_argument("Missing value for --batch-size");
+            }
+            config.batch_size = std::stoi(argv[++i]);
+            if (config.batch_size <= 0)
+            {
+                throw std::invalid_argument("Batch size must be greater than 0");
+            }
+        }
         else
         {
             throw std::invalid_argument("Unknown argument: " + arg);
@@ -208,6 +221,7 @@ int main(int argc, char **argv)
             {
                 tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
                     db_stream stream(config.grafana_address);
+                    stream.set_buffer_size(config.batch_size);
                     rt_monitor::cpu::start_sampling(time_interval, std::move(stream));
                 }));
             }
@@ -225,6 +239,7 @@ int main(int argc, char **argv)
             {
                 tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
                     db_stream stream(config.grafana_address);
+                    stream.set_buffer_size(config.batch_size);
                     rt_monitor::cpufreq::start_sampling(time_interval, std::move(stream));
                 }));
             }
@@ -242,6 +257,7 @@ int main(int argc, char **argv)
             {
                 tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
                     db_stream stream(config.grafana_address);
+                    stream.set_buffer_size(config.batch_size);
                     rt_monitor::disk::start_sampling(time_interval, std::move(stream));
                 }));
             }
@@ -259,6 +275,7 @@ int main(int argc, char **argv)
             {
                 tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
                     db_stream stream(config.grafana_address);
+                    stream.set_buffer_size(config.batch_size);
                     rt_monitor::mem::start_sampling(time_interval, std::move(stream));
                 }));
             }
@@ -276,6 +293,7 @@ int main(int argc, char **argv)
             {
                 tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
                     db_stream stream(config.grafana_address);
+                    stream.set_buffer_size(config.batch_size);
                     rt_monitor::net::start_sampling(time_interval, std::move(stream));
                 }));
             }

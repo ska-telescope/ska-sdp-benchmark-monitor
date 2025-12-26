@@ -3,6 +3,8 @@
 #include "mem_monitor.h"
 #include "monitor_io.h"
 #include "pause_manager.h"
+#include "thread_safe_queue.hpp"
+#include <thread>
 
 namespace rt_monitor::mem
 {
@@ -17,7 +19,9 @@ namespace rt_monitor
 {
 template <> db_stream &db_stream::operator<< <mem::data_sample>(mem::data_sample sample)
 {
+    static const std::string hostname = rt_monitor::io::get_hostname();
     influxdb::Point point{"mem"};
+    point.addTag("hostname", hostname);
 
     for (const auto [label, value] : sample.values_map)
     {
@@ -115,43 +119,9 @@ data_sample read_mem_sample()
     return sample;
 }
 
-/*void read_mem_sample(std::ostream &file)
-{
-    spdlog::trace("reading a memory monitoring sample");
-    const auto now = std::chrono::system_clock::now();
-    const auto duration = now.time_since_epoch();
-    const auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
-    io::write_binary(file, timestamp);
-
-    std::ifstream input("/proc/meminfo");
-
-    int i = 0;
-    while (!input.eof() && i < 55)
-    {
-        std::string line;
-        std::getline(input, line);
-        if (enabled[i])
-        {
-            auto value_start = line.find_first_of("0123456789");
-            auto value_end = line.find_last_of("0123456789") + 1;
-            uint64_t value = 0;
-            if (value_start != std::string::npos)
-            {
-                for (auto it = line.begin() + value_start; it != line.begin() + value_end; ++it)
-                {
-                    value = value * 10 + static_cast<uint64_t>(*it - '0');
-                }
-            }
-            io::write_binary(file, value);
-        }
-        ++i;
-    }
-}*/
-
-template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream)
+void mem_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
 {
     bool sampling_warning_provided = false;
-
     while (!pause_manager::stopped())
     {
         if (pause_manager::paused())
@@ -162,9 +132,10 @@ template <typename stream_type> void start_sampling(double time_interval, stream
         }
 
         const auto begin = std::chrono::high_resolution_clock::now();
-        const auto sample = read_mem_sample();
-        stream << sample;
+        auto sample = read_mem_sample();
+        queue.push(std::move(sample));
         const auto end = std::chrono::high_resolution_clock::now();
+        
         const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
         auto time_to_wait = time_interval - sampling_time;
         if (time_to_wait < 0.)
@@ -182,6 +153,21 @@ template <typename stream_type> void start_sampling(double time_interval, stream
 
         std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    queue.stop();
+    spdlog::trace("memory producer stopped");
+}
+
+template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream)
+{
+    ThreadSafeQueue<data_sample> queue;
+    std::thread producer_thread(mem_producer, time_interval, std::ref(queue));
+
+    data_sample sample;
+    while (queue.pop(sample))
+    {
+        stream << sample;
+    }
+    producer_thread.join();
     spdlog::trace("memory monitoring stopped");
 }
 

@@ -1,11 +1,13 @@
 #include <filesystem>
 #include <scn/scan.h>
+#include <thread>
 
 #include "db_stream.hpp"
 #include "file_stream.hpp"
 #include "monitor_io.h"
 #include "pause_manager.h"
 #include "spdlog/common.h"
+#include "thread_safe_queue.hpp"
 
 namespace rt_monitor::disk
 {
@@ -144,7 +146,9 @@ namespace rt_monitor
 {
 template <> db_stream &db_stream::operator<< <disk::data_sample>(disk::data_sample sample)
 {
+    static const std::string hostname = rt_monitor::io::get_hostname();
     auto point = influxdb::Point{"disk"}
+                     .addTag("hostname", hostname)
                      .addTag("device", sample.device)
                      .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
                      .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
@@ -165,7 +169,9 @@ template <> db_stream &db_stream::operator<< <disk::data_sample>(disk::data_samp
 
 template <> db_stream &db_stream::operator<< <disk::data_sample_diff>(disk::data_sample_diff sample)
 {
+    static const std::string hostname = rt_monitor::io::get_hostname();
     auto point = influxdb::Point{"disk"}
+                     .addTag("hostname", hostname)
                      .addTag("device", sample.device)
                      .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
                      .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
@@ -186,7 +192,9 @@ template <> db_stream &db_stream::operator<< <disk::data_sample_diff>(disk::data
 
 template <> db_stream &db_stream::operator<< <disk::data_sample_cumulated>(disk::data_sample_cumulated sample)
 {
+    static const std::string hostname = rt_monitor::io::get_hostname();
     auto point = influxdb::Point{"disk"}
+                     .addTag("hostname", hostname)
                      .addTag("device", "total")
                      .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
                      .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
@@ -349,6 +357,47 @@ void read_disk_samples(const std::unordered_map<std::string, size_t> &name_to_in
                       disc_merged, sectors_discarded, time_discard, flush_requests, time_flush);
     }
 }
+
+void disk_producer(double time_interval, 
+                   const std::unordered_map<std::string, size_t>& name_to_index,
+                   ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>>& queue)
+{
+    bool sampling_warning_provided = false;
+    while (!pause_manager::stopped())
+    {
+        if (pause_manager::paused())
+        {
+            spdlog::trace("Disk monitoring paused");
+            std::unique_lock<std::mutex> lock(pause_manager::mutex());
+            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
+        }
+
+        const auto begin = std::chrono::high_resolution_clock::now();
+        
+        std::unordered_map<uint32_t, data_sample> samples;
+        read_disk_samples(name_to_index, samples);
+        queue.push(std::move(samples));
+
+        const auto end = std::chrono::high_resolution_clock::now();
+        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+        auto time_to_wait = time_interval - sampling_time;
+        if (time_to_wait < 0.)
+        {
+            if (!sampling_warning_provided)
+            {
+                spdlog::warn("The sampling period of {} ms might be too low for disk monitoring. The last sampling "
+                             "time was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
+                             static_cast<int>(time_interval), sampling_time);
+                sampling_warning_provided = true;
+            }
+            time_to_wait = 0.;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+    }
+    queue.stop();
+    spdlog::trace("disk producer stopped");
+}
+
 template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream);
 
 template <> void start_sampling(const double time_interval, db_stream &&stream)
@@ -363,29 +412,25 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
         name_to_index[partition_info[i].name] = i;
     }
 
-    bool sampling_warning_provided = false;
-    std::array<std::unordered_map<uint32_t, data_sample>, 2> samples_sets;
-    size_t last_index = 0;
-    read_disk_samples(name_to_index, samples_sets[last_index]);
-    std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_interval)));
+    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
+    std::thread producer_thread(disk_producer, time_interval, std::cref(name_to_index), std::ref(queue));
 
-    while (!pause_manager::stopped())
+    std::unordered_map<uint32_t, data_sample> last_sample_set;
+    if (!queue.pop(last_sample_set))
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("Disk monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
+        producer_thread.join();
+        return;
+    }
 
-        const auto begin = std::chrono::high_resolution_clock::now();
-
-        auto &last_sample_set = samples_sets[last_index];
-        auto &current_sample_set = samples_sets[1 - last_index];
-
+    std::unordered_map<uint32_t, data_sample> current_sample_set;
+    while (queue.pop(current_sample_set))
+    {
         data_sample_cumulated cumulated_sample_diff;
-        cumulated_sample_diff.timestamp = begin;
-        read_disk_samples(name_to_index, current_sample_set);
+        if (!current_sample_set.empty()) {
+             cumulated_sample_diff.timestamp = current_sample_set.begin()->second.timestamp;
+        } else {
+             cumulated_sample_diff.timestamp = std::chrono::system_clock::now();
+        }
 
         for (const auto [index, current_sample] : current_sample_set)
         {
@@ -402,25 +447,11 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
         }
 
         stream << cumulated_sample_diff;
-        const auto end = std::chrono::high_resolution_clock::now();
-        last_index = 1 - last_index;
-
-        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        auto time_to_wait = time_interval - sampling_time;
-        if (time_to_wait < 0.)
-        {
-            if (!sampling_warning_provided)
-            {
-                spdlog::warn("The sampling period of {} ms might be too low for disk monitoring. The last sampling "
-                             "time was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
-                             static_cast<int>(time_interval), sampling_time);
-                sampling_warning_provided = true;
-            }
-            time_to_wait = 0.;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        last_sample_set = std::move(current_sample_set);
     }
-    spdlog::trace("CPU monitoring stopped");
+    
+    producer_thread.join();
+    spdlog::trace("disk monitoring stopped");
 }
 
 template <> void start_sampling(const double time_interval, file_stream &&stream)
@@ -435,8 +466,6 @@ template <> void start_sampling(const double time_interval, file_stream &&stream
         name_to_index[partition_info[i].name] = i;
     }
 
-    bool sampling_warning_provided = false;
-
     io::write_binary(stream.get_file(), static_cast<uint32_t>(partition_info.size()));
     for (const auto info : partition_info)
     {
@@ -446,38 +475,18 @@ template <> void start_sampling(const double time_interval, file_stream &&stream
         spdlog::debug("partition: {}, block size: {}", info.name, info.block_size);
     }
 
+    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
+    std::thread producer_thread(disk_producer, time_interval, std::cref(name_to_index), std::ref(queue));
+
     std::unordered_map<uint32_t, data_sample> samples_set;
-    while (!pause_manager::stopped())
+    while (queue.pop(samples_set))
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("disk monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
-        const auto begin = std::chrono::high_resolution_clock::now();
-        read_disk_samples(name_to_index, samples_set);
         for (const auto &[index, sample] : samples_set)
         {
             stream << sample;
         }
-        const auto end = std::chrono::high_resolution_clock::now();
-        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        auto time_to_wait = time_interval - sampling_time;
-        if (time_to_wait < 0.)
-        {
-            if (!sampling_warning_provided)
-            {
-                spdlog::warn(
-                    "The sampling period of {} ms might be too low for disk monitoring. The last sampling time "
-                    "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
-                    static_cast<int>(time_interval), sampling_time);
-                sampling_warning_provided = true;
-            }
-            time_to_wait = 0.;
-        }
-        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(time_interval * 1000)));
     }
+    producer_thread.join();
     spdlog::trace("disk monitoring stopped");
 }
 } // namespace rt_monitor::disk
