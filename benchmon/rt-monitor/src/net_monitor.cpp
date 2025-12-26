@@ -233,12 +233,7 @@ template <> void start_sampling(const double time_interval, file_stream &&stream
     {
         io::write_binary(file, sample.timestamp.time_since_epoch().count());
         for (const auto& iface : sample.interfaces) {
-             // Write interface name (fixed size or length prefixed)
-             // Original code wrote name then value.
-             // Let's write length, name, received, transferred
-             uint32_t name_len = iface.name.size();
-             io::write_binary(file, name_len);
-             file.write(iface.name.c_str(), name_len);
+             io::write_binary(file, iface.name);
              io::write_binary(file, iface.received);
              io::write_binary(file, iface.transferred);
         }
