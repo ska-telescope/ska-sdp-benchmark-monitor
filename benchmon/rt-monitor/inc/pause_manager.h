@@ -61,16 +61,28 @@ class pause_manager
     {
         spdlog::trace("stopping monitoring");
         singleton_.stopped = true;
+        condition_variable().notify_all();
     }
 
-    static const auto &stopped()
+    static const std::atomic<bool> &stopped()
     {
         return singleton_.stopped;
     }
 
-    static const auto &paused()
+    static const std::atomic<bool> &paused()
     {
         return singleton_.paused;
+    }
+
+    static void wait_if_paused()
+    {
+        if (paused())
+        {
+            spdlog::trace("monitoring paused, waiting...");
+            std::unique_lock<std::mutex> lock(mutex());
+            condition_variable().wait(lock, [] { return !paused().load() || stopped().load(); });
+            spdlog::trace("monitoring resumed or stopped");
+        }
     }
 
     static std::mutex &mutex()

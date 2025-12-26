@@ -16,6 +16,7 @@ set(header_files
     "inc/mem_monitor.h"
     "inc/monitor_io.h"
     "inc/net_monitor.h"
+    "inc/ib_monitor.h"
     "inc/thread_safe_queue.hpp")
 
 set(source_files
@@ -26,6 +27,7 @@ set(source_files
     "src/main.cpp"
     "src/monitor_io.cpp"
     "src/net_monitor.cpp"
+    "src/ib_monitor.cpp"
     "src/pause_manager.cpp")
 
 add_executable(rt-monitor ${header_files} ${source_files})

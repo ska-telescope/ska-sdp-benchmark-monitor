@@ -187,12 +187,7 @@ void cpufreq_producer(double time_interval,
     bool sampling_warning_provided = false;
     while (!pause_manager::stopped())
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("CPU frequency monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
+        pause_manager::wait_if_paused();
 
         const auto begin = std::chrono::high_resolution_clock::now();
         
