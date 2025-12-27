@@ -39,7 +39,7 @@ struct monitor_config
     bool enable_ib = false;
     double sampling_frequency = 0.0;
     std::string grafana_address = "";
-    int batch_size = 50;
+    int batch_size = 1;
     spdlog::level::level_enum log_level = spdlog::level::err;
     std::unordered_map<std::string, std::string> output_files;
 };
@@ -140,9 +140,9 @@ monitor_config parse_arguments(int argc, char **argv)
             if (i + 1 >= argc) throw std::invalid_argument("Missing value for --grafana");
             config.grafana_address = argv[++i];
         }
-        else if (arg == "--grafana-batch-size")
+        else if (arg == "--batch-size")
         {
-            if (i + 1 >= argc) throw std::invalid_argument("Missing value for --grafana-batch-size");
+            if (i + 1 >= argc) throw std::invalid_argument("Missing value for --batch-size");
             config.batch_size = std::stoi(argv[++i]);
             if (config.batch_size <= 0) throw std::invalid_argument("Batch size must be greater than 0");
         }
@@ -163,18 +163,12 @@ monitor_config parse_arguments(int argc, char **argv)
 int get_batch_size(const std::string& metric, int base_batch_size) {
     if (metric == "cpu") return base_batch_size;
     if (metric == "mem" || metric == "cpufreq" || metric == "disk" || metric == "ib") {
-        if (base_batch_size >= 100) {
-            return base_batch_size / 100;
-        } else {
-            return 100;
-        }
+        int size = base_batch_size / 100;
+        return size < 100 ? 100 : size;
     }
     if (metric == "net") {
-        if (base_batch_size >= 10) {
-            return base_batch_size / 10;
-        } else {
-            return 10;
-        }
+        int size = base_batch_size / 10;
+        return size < 10 ? 10 : size;
     }
     return base_batch_size;
 }
