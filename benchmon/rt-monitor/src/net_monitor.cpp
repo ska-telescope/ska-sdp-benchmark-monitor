@@ -46,6 +46,8 @@ template <> db_stream &db_stream::operator<< <std::vector<net::rate_sample>>(std
             .addField("rx_bytes", sample.received)
             .setTimestamp(sample.timestamp);
 
+        spdlog::debug("Sending network sample for interface {} to InfluxDB", sample.name);
+
         try
         {
             this->db_ptr_->write(std::move(point));
@@ -146,6 +148,7 @@ void net_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
         const auto begin = std::chrono::high_resolution_clock::now();
         
         auto sample = read_cumulated_sample();
+        spdlog::debug("Collected network sample with {} interfaces", sample.interfaces.size());
         queue.push(std::move(sample));
 
         const auto end = std::chrono::high_resolution_clock::now();
@@ -164,7 +167,7 @@ void net_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
             time_to_wait = 0.;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
     queue.stop();
     spdlog::trace("network producer stopped");
@@ -185,6 +188,7 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
     data_sample current_sample;
     while (queue.pop(current_sample))
     {
+        if (pause_manager::stopped()) break;
         std::vector<rate_sample> rates;
         const double dt = std::chrono::duration_cast<std::chrono::nanoseconds>(
                               current_sample.timestamp - last_sample.timestamp).count() / 1e9;
@@ -226,6 +230,7 @@ template <> void start_sampling(const double time_interval, file_stream &&stream
     data_sample sample;
     while (queue.pop(sample))
     {
+        if (pause_manager::stopped()) break;
         io::write_binary(file, sample.timestamp.time_since_epoch().count());
         for (const auto& iface : sample.interfaces) {
              io::write_binary(file, iface.name);

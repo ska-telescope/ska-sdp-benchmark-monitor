@@ -92,6 +92,9 @@ template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample
                      .addField("usr", usr_ratio)
                      .addField("wai", wai_ratio)
                      .setTimestamp(sample_diff.timestamp);
+    
+    spdlog::debug("Sending CPU sample for core {} to InfluxDB", sample_diff.cpuid);
+
     try
     {
         this->db_ptr_->write(std::move(point));
@@ -162,6 +165,7 @@ void cpu_producer(double time_interval, ThreadSafeQueue<std::unordered_map<uint3
         
         std::unordered_map<uint32_t, data_sample> samples;
         read_cpu_samples(samples);
+        spdlog::debug("Collected {} CPU samples", samples.size());
         queue.push(std::move(samples));
 
         const auto end = std::chrono::high_resolution_clock::now();
@@ -178,7 +182,7 @@ void cpu_producer(double time_interval, ThreadSafeQueue<std::unordered_map<uint3
             }
             time_to_wait = 0.;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
     queue.stop();
     spdlog::trace("CPU producer stopped");
@@ -203,6 +207,7 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
     std::unordered_map<uint32_t, data_sample> current_sample_set;
     while (queue.pop(current_sample_set))
     {
+        if (pause_manager::stopped()) break;
         for (const auto [index, current_sample] : current_sample_set)
         {
             const auto last_sample_it = last_sample_set.find(index);
@@ -228,6 +233,7 @@ template <> void start_sampling(const double time_interval, file_stream &&stream
     std::unordered_map<uint32_t, data_sample> samples_set;
     while (queue.pop(samples_set))
     {
+        if (pause_manager::stopped()) break;
         for (const auto [index, current_sample] : samples_set)
         {
             stream << current_sample;

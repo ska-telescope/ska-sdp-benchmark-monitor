@@ -85,6 +85,13 @@ class pause_manager
         }
     }
 
+    template <typename Rep, typename Period>
+    static void sleep_for(const std::chrono::duration<Rep, Period>& duration)
+    {
+        std::unique_lock<std::mutex> lock(mutex());
+        condition_variable().wait_for(lock, duration, [] { return stopped().load(); });
+    }
+
     static std::mutex &mutex()
     {
         return singleton_.pause_mutex;

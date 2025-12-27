@@ -28,6 +28,9 @@ template <> db_stream &db_stream::operator<< <mem::data_sample>(mem::data_sample
         point.addField(label + std::string("(kiB)"), static_cast<long long int>(value));
     }
     point.setTimestamp(sample.timestamp);
+    
+    spdlog::debug("Sending memory sample to InfluxDB");
+
     try
     {
         this->db_ptr_->write(std::move(point));
@@ -128,6 +131,7 @@ void mem_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
 
         const auto begin = std::chrono::high_resolution_clock::now();
         auto sample = read_mem_sample();
+        spdlog::debug("Collected memory sample");
         queue.push(std::move(sample));
         const auto end = std::chrono::high_resolution_clock::now();
         
@@ -146,7 +150,7 @@ void mem_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
             time_to_wait = 0.;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
     queue.stop();
     spdlog::trace("memory producer stopped");
@@ -160,6 +164,7 @@ template <typename stream_type> void start_sampling(double time_interval, stream
     data_sample sample;
     while (queue.pop(sample))
     {
+        if (pause_manager::stopped()) break;
         stream << sample;
     }
     producer_thread.join();

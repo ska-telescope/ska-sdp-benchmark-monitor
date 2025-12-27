@@ -11,9 +11,26 @@
 #include "ib_monitor.h"
 #include "pause_manager.h"
 #include "spdlog/common.h"
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/select.h>
+#include <signal.h>
 
 namespace rt_monitor
 {
+int signal_pipe[2];
+
+void signal_handler(const int signal)
+{
+    if (signal == SIGINT || signal == SIGUSR1 || signal == SIGUSR2)
+    {
+        const char msg[] = "Signal caught\n";
+        [[maybe_unused]] auto w = write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+        uint8_t sig_byte = static_cast<uint8_t>(signal);
+        [[maybe_unused]] auto ignored = write(signal_pipe[1], &sig_byte, sizeof(sig_byte));
+    }
+}
+
 struct monitor_config
 {
     bool enable_cpu = false;
@@ -28,22 +45,6 @@ struct monitor_config
     spdlog::level::level_enum log_level = spdlog::level::err;
     std::unordered_map<std::string, std::string> output_files;
 };
-
-void signal_handler(const int signal)
-{
-    if (signal == SIGUSR1)
-    {
-        pause_manager::pause();
-    }
-    else if (signal == SIGUSR2)
-    {
-        pause_manager::resume();
-    }
-    else if (signal == SIGINT)
-    {
-        pause_manager::stop();
-    }
-}
 
 spdlog::level::level_enum parse_log_level(const std::string &level_str)
 {
@@ -201,12 +202,54 @@ int main(int argc, char **argv)
         spdlog::set_level(config.log_level);
         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [benchmon::rt-monitor] %v");
 
+        if (pipe(signal_pipe) == -1)
+        {
+            spdlog::error("Failed to create signal pipe");
+            return -1;
+        }
+        fcntl(signal_pipe[0], F_SETFL, O_NONBLOCK);
+        fcntl(signal_pipe[1], F_SETFL, O_NONBLOCK);
+
+        signal(SIGINT, signal_handler);
         signal(SIGUSR1, signal_handler);
         signal(SIGUSR2, signal_handler);
-        signal(SIGINT, signal_handler);
 
         std::string db_address = config.grafana_address;
         bool use_db = !db_address.empty();
+
+        if (!use_db)
+        {
+            if (config.enable_cpu && config.output_files["cpu"].empty())
+            {
+                spdlog::error("CPU output file path is required when not using Grafana");
+                return -1;
+            }
+            if (config.enable_cpufreq && config.output_files["cpu-freq"].empty())
+            {
+                spdlog::error("CPU frequency output file path is required when not using Grafana");
+                return -1;
+            }
+            if (config.enable_disk && config.output_files["disk"].empty())
+            {
+                spdlog::error("Disk output file path is required when not using Grafana");
+                return -1;
+            }
+            if (config.enable_mem && config.output_files["mem"].empty())
+            {
+                spdlog::error("Memory output file path is required when not using Grafana");
+                return -1;
+            }
+            if (config.enable_net && config.output_files["net"].empty())
+            {
+                spdlog::error("Network output file path is required when not using Grafana");
+                return -1;
+            }
+            if (config.enable_ib && config.output_files["ib"].empty())
+            {
+                spdlog::error("InfiniBand output file path is required when not using Grafana");
+                return -1;
+            }
+        }
 
         std::vector<std::future<void>> tasks;
         if (config.enable_cpu)
@@ -320,9 +363,57 @@ int main(int argc, char **argv)
 
         pause_manager::resume();
 
+        fd_set readfds;
+        int max_fd = signal_pipe[0] + 1;
+        bool running = true;
+
+        while (running)
+        {
+            FD_ZERO(&readfds);
+            FD_SET(signal_pipe[0], &readfds);
+
+            int activity = select(max_fd, &readfds, nullptr, nullptr, nullptr);
+
+            if (activity < 0 && errno != EINTR)
+            {
+                spdlog::error("Select error");
+                break;
+            }
+
+            if (activity > 0 && FD_ISSET(signal_pipe[0], &readfds))
+            {
+                uint8_t sig_byte;
+                while (read(signal_pipe[0], &sig_byte, sizeof(sig_byte)) > 0)
+                {
+                    int sig = static_cast<int>(sig_byte);
+                    if (sig == SIGINT)
+                    {
+                        spdlog::info("Received SIGINT, stopping...");
+                        pause_manager::stop();
+                        running = false;
+                    }
+                    else if (sig == SIGUSR1)
+                    {
+                        spdlog::info("Received SIGUSR1, pausing...");
+                        pause_manager::pause();
+                    }
+                    else if (sig == SIGUSR2)
+                    {
+                        spdlog::info("Received SIGUSR2, resuming...");
+                        pause_manager::resume();
+                    }
+                }
+            }
+        }
+
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
         for (auto &task : tasks)
         {
-            task.wait();
+            if (task.wait_until(deadline) == std::future_status::timeout)
+            {
+                spdlog::warn("Timeout reached while waiting for tasks to stop. Forcing exit.");
+                exit(0);
+            }
         }
     }
     catch (const std::exception &e)

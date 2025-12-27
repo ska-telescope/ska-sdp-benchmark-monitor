@@ -201,6 +201,9 @@ template <> db_stream &db_stream::operator<< <disk::data_sample_cumulated>(disk:
                      .addField("Read_operations/s", static_cast<long long int>(sample.rd_completed))
                      .addField("Write_operations/s", static_cast<long long int>(sample.wr_completed))
                      .setTimestamp(sample.timestamp);
+    
+    spdlog::debug("Sending cumulated disk sample to InfluxDB");
+
     try
     {
         this->db_ptr_->write(std::move(point));
@@ -387,7 +390,7 @@ void disk_producer(double time_interval,
             }
             time_to_wait = 0.;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
     queue.stop();
     spdlog::trace("disk producer stopped");
@@ -420,6 +423,8 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
     std::unordered_map<uint32_t, data_sample> current_sample_set;
     while (queue.pop(current_sample_set))
     {
+        if (pause_manager::stopped()) break;
+        spdlog::debug("Collected disk samples for {} partitions", current_sample_set.size());
         data_sample_cumulated cumulated_sample_diff;
         if (!current_sample_set.empty()) {
              cumulated_sample_diff.timestamp = current_sample_set.begin()->second.timestamp;
@@ -476,6 +481,7 @@ template <> void start_sampling(const double time_interval, file_stream &&stream
     std::unordered_map<uint32_t, data_sample> samples_set;
     while (queue.pop(samples_set))
     {
+        if (pause_manager::stopped()) break;
         for (const auto &[index, sample] : samples_set)
         {
             stream << sample;

@@ -212,7 +212,7 @@ void cpufreq_producer(double time_interval,
             time_to_wait = 0.;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
     queue.stop();
     spdlog::trace("cpufreq producer stopped");
@@ -233,6 +233,7 @@ template <typename stream_type> void start_sampling(double time_interval, stream
     std::vector<data_sample> samples;
     while (queue.pop(samples))
     {
+        if (pause_manager::stopped()) break;
         for (const auto sample : samples)
         {
             stream << sample;

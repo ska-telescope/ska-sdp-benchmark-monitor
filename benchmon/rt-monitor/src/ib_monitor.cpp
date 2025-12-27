@@ -78,7 +78,7 @@ namespace rt_monitor::ib
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
             if (elapsed < sleep_duration)
             {
-                std::this_thread::sleep_for(sleep_duration - elapsed);
+                pause_manager::sleep_for(sleep_duration - elapsed);
             }
         }
         queue.stop();
@@ -128,6 +128,7 @@ namespace rt_monitor::ib {
         data_sample sample;
         while (queue.pop(sample))
         {
+            if (pause_manager::stopped()) break;
             stream << sample;
         }
         producer_thread.join();
