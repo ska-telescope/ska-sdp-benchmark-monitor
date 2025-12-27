@@ -30,6 +30,9 @@ template <> db_stream &db_stream::operator<< <cpufreq::data_sample>(cpufreq::dat
                      .addTag("cpu", "cpu" + std::to_string(sample.cpuid))
                      .addField("value", static_cast<long long int>(sample.frequency))
                      .setTimestamp(sample.timestamp);
+    
+    spdlog::trace("Buffering cpufreq sample for core {} to InfluxDB", sample.cpuid);
+
     try
     {
         this->db_ptr_->write(std::move(point));
@@ -238,6 +241,7 @@ template <typename stream_type> void start_sampling(double time_interval, stream
         {
             stream << sample;
         }
+        spdlog::debug("Buffered {} cpufreq samples for InfluxDB", samples.size());
     }
     producer_thread.join();
     spdlog::trace("CPU frequency monitoring stopped");

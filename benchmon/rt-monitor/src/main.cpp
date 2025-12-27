@@ -39,7 +39,7 @@ struct monitor_config
     bool enable_ib = false;
     double sampling_frequency = 0.0;
     std::string grafana_address = "";
-    int batch_size = 1;
+    int batch_size = 2000;
     spdlog::level::level_enum log_level = spdlog::level::err;
     std::unordered_map<std::string, std::string> output_files;
 };

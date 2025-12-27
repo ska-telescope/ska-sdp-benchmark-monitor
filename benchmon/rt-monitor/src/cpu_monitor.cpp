@@ -83,7 +83,7 @@ template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample
          .addField("guest_nice", static_cast<long long int>(sample.guestnice_value))
          .setTimestamp(sample.timestamp);
     
-    spdlog::debug("Sending CPU sample for core {} to InfluxDB", sample.cpuid);
+    spdlog::trace("Buffering CPU sample for core {} to InfluxDB", sample.cpuid);
 
     try
     {
@@ -193,6 +193,7 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
         {
             stream << current_sample;
         }
+        spdlog::debug("Buffered {} CPU samples for InfluxDB", current_sample_set.size());
     }
     
     producer_thread.join();
