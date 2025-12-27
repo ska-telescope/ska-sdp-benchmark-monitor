@@ -24,8 +24,6 @@ void signal_handler(const int signal)
 {
     if (signal == SIGINT || signal == SIGUSR1 || signal == SIGUSR2)
     {
-        const char msg[] = "Signal caught\n";
-        [[maybe_unused]] auto w = write(STDOUT_FILENO, msg, sizeof(msg) - 1);
         uint8_t sig_byte = static_cast<uint8_t>(signal);
         [[maybe_unused]] auto ignored = write(signal_pipe[1], &sig_byte, sizeof(sig_byte));
     }
@@ -406,7 +404,8 @@ int main(int argc, char **argv)
             }
         }
 
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        spdlog::info("Waiting for worker threads to finish...");
         for (auto &task : tasks)
         {
             if (task.wait_until(deadline) == std::future_status::timeout)
@@ -415,6 +414,7 @@ int main(int argc, char **argv)
                 exit(0);
             }
         }
+        spdlog::info("All tasks finished. Exiting.");
     }
     catch (const std::exception &e)
     {
