@@ -54,46 +54,36 @@ struct data_sample
 };
 } // namespace cpu
 
-template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample sample_diff)
+template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample sample)
 {
-    const float user_value = sample_diff.user_value;
-    const float nice_value = sample_diff.nice_value;
-    const float system_value = sample_diff.system_value;
-    const float idle_value = sample_diff.idle_value;
-    const float iowait_value = sample_diff.iowait_value;
-    const float irq_value = sample_diff.irq_value;
-    const float softirq_value = sample_diff.softirq_value;
-    const float steal_value = sample_diff.steal_value;
-    const float guest_value = sample_diff.guest_value;
-    const float guestnice_value = sample_diff.guestnice_value;
-
-    const float stl = steal_value + guest_value + guestnice_value;
-    const float sys = system_value + irq_value + softirq_value;
-    const float usr = user_value + nice_value;
-    const float wai = iowait_value;
-    const float idle = idle_value;
-    float total = stl + sys + usr + wai + idle;
-    total = (total == 0.) ? 1. : total;
-
-    constexpr int ratio_factor = 100000;
-
-    const int stl_ratio = ratio_factor * (stl / total);
-    const int sys_ratio = ratio_factor * (sys / total);
-    const int usr_ratio = ratio_factor * (usr / total);
-    const int wai_ratio = ratio_factor * (wai / total);
-
     static const std::string hostname = rt_monitor::io::get_hostname();
 
-    auto point = influxdb::Point{"cpu"}
-                     .addTag("hostname", hostname)
-                     .addTag("id", std::to_string(sample_diff.cpuid))
-                     .addField("stl", stl_ratio)
-                     .addField("sys", sys_ratio)
-                     .addField("usr", usr_ratio)
-                     .addField("wai", wai_ratio)
-                     .setTimestamp(sample_diff.timestamp);
+    std::string measurement;
+    influxdb::Point point{""};
+
+    if (sample.cpuid == std::numeric_limits<uint32_t>::max()) {
+        measurement = "cpu_total";
+        point = influxdb::Point{measurement};
+    } else {
+        measurement = "cpu_core";
+        point = influxdb::Point{measurement};
+        point.addTag("cpu", "cpu" + std::to_string(sample.cpuid));
+    }
+
+    point.addTag("hostname", hostname)
+         .addField("user", static_cast<long long int>(sample.user_value))
+         .addField("nice", static_cast<long long int>(sample.nice_value))
+         .addField("system", static_cast<long long int>(sample.system_value))
+         .addField("idle", static_cast<long long int>(sample.idle_value))
+         .addField("iowait", static_cast<long long int>(sample.iowait_value))
+         .addField("irq", static_cast<long long int>(sample.irq_value))
+         .addField("softirq", static_cast<long long int>(sample.softirq_value))
+         .addField("steal", static_cast<long long int>(sample.steal_value))
+         .addField("guest", static_cast<long long int>(sample.guest_value))
+         .addField("guest_nice", static_cast<long long int>(sample.guestnice_value))
+         .setTimestamp(sample.timestamp);
     
-    spdlog::debug("Sending CPU sample for core {} to InfluxDB", sample_diff.cpuid);
+    spdlog::debug("Sending CPU sample for core {} to InfluxDB", sample.cpuid);
 
     try
     {
@@ -195,30 +185,14 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
     ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
     std::thread producer_thread(cpu_producer, time_interval, std::ref(queue));
 
-    std::unordered_map<uint32_t, data_sample> last_sample_set;
-    
-    // Wait for the first sample to use as baseline
-    if (!queue.pop(last_sample_set))
-    {
-        producer_thread.join();
-        return;
-    }
-
     std::unordered_map<uint32_t, data_sample> current_sample_set;
     while (queue.pop(current_sample_set))
     {
         if (pause_manager::stopped()) break;
         for (const auto [index, current_sample] : current_sample_set)
         {
-            const auto last_sample_it = last_sample_set.find(index);
-            if (last_sample_it != last_sample_set.end())
-            {
-                const auto &last_sample = last_sample_it->second;
-                data_sample sample_diff = current_sample - last_sample;
-                stream << sample_diff;
-            }
+            stream << current_sample;
         }
-        last_sample_set = std::move(current_sample_set);
     }
     
     producer_thread.join();

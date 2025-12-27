@@ -25,10 +25,10 @@ namespace rt_monitor
 template <> db_stream &db_stream::operator<< <cpufreq::data_sample>(cpufreq::data_sample sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    auto point = influxdb::Point{"cpufreq"}
+    auto point = influxdb::Point{"cpu_freq"}
                      .addTag("hostname", hostname)
-                     .addTag("id", std::to_string(sample.cpuid))
-                     .addField("frequency", sample.frequency)
+                     .addTag("cpu", "cpu" + std::to_string(sample.cpuid))
+                     .addField("value", static_cast<long long int>(sample.frequency))
                      .setTimestamp(sample.timestamp);
     try
     {

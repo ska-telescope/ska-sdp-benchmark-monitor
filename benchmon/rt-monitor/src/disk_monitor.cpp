@@ -147,13 +147,11 @@ namespace rt_monitor
 template <> db_stream &db_stream::operator<< <disk::data_sample>(disk::data_sample sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    auto point = influxdb::Point{"disk"}
+    auto point = influxdb::Point{"disk_stats"}
                      .addTag("hostname", hostname)
                      .addTag("device", sample.device)
-                     .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
-                     .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
-                     .addField("Read_operations/s", static_cast<long long int>(sample.rd_completed))
-                     .addField("Write_operations/s", static_cast<long long int>(sample.wr_completed))
+                     .addField("sectors_read", static_cast<long long int>(sample.sectors_read))
+                     .addField("sectors_written", static_cast<long long int>(sample.sectors_written))
                      .setTimestamp(sample.timestamp);
     try
     {
@@ -413,41 +411,16 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
     ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
     std::thread producer_thread(disk_producer, time_interval, std::cref(name_to_index), std::ref(queue));
 
-    std::unordered_map<uint32_t, data_sample> last_sample_set;
-    if (!queue.pop(last_sample_set))
-    {
-        producer_thread.join();
-        return;
-    }
-
     std::unordered_map<uint32_t, data_sample> current_sample_set;
     while (queue.pop(current_sample_set))
     {
         if (pause_manager::stopped()) break;
         spdlog::debug("Collected disk samples for {} partitions", current_sample_set.size());
-        data_sample_cumulated cumulated_sample_diff;
-        if (!current_sample_set.empty()) {
-             cumulated_sample_diff.timestamp = current_sample_set.begin()->second.timestamp;
-        } else {
-             cumulated_sample_diff.timestamp = std::chrono::system_clock::now();
-        }
-
+        
         for (const auto [index, current_sample] : current_sample_set)
         {
-            const auto last_sample_it = last_sample_set.find(index);
-            if (last_sample_it != last_sample_set.end())
-            {
-                const auto &last_sample = last_sample_it->second;
-                data_sample_diff sample_diff{partition_info[index].block_size, current_sample - last_sample};
-                cumulated_sample_diff.rd_completed += sample_diff.rd_completed;
-                cumulated_sample_diff.wr_completed += sample_diff.wr_completed;
-                cumulated_sample_diff.sectors_read += sample_diff.sectors_read;
-                cumulated_sample_diff.sectors_written += sample_diff.sectors_written;
-            }
+            stream << current_sample;
         }
-
-        stream << cumulated_sample_diff;
-        last_sample_set = std::move(current_sample_set);
     }
     
     producer_thread.join();

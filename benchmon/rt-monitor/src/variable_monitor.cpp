@@ -18,8 +18,9 @@ namespace rt_monitor {
     {
         static const std::string hostname = rt_monitor::io::get_hostname();
         influxdb::Point point{"variable"};
+        auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
         point.addTag("hostname", hostname)
-             .addField("stamp", static_cast<long long>(sample.timestamp.time_since_epoch().count()))
+             .addField("stamp", static_cast<long long>(stamp))
              .setTimestamp(sample.timestamp);
         try {
             this->db_ptr_->write(std::move(point));

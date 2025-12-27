@@ -35,18 +35,18 @@ struct rate_sample
 
 namespace rt_monitor
 {
-template <> db_stream &db_stream::operator<< <std::vector<net::rate_sample>>(std::vector<net::rate_sample> samples)
+template <> db_stream &db_stream::operator<< <net::data_sample>(net::data_sample sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    for (const auto& sample : samples) {
+    for (const auto& iface : sample.interfaces) {
         influxdb::Point point{"network_stats"};
         point.addTag("hostname", hostname)
-            .addTag("interface", sample.name)
-            .addField("tx_bytes", sample.transferred)
-            .addField("rx_bytes", sample.received)
+            .addTag("interface", iface.name)
+            .addField("tx_bytes", static_cast<long long int>(iface.transferred))
+            .addField("rx_bytes", static_cast<long long int>(iface.received))
             .setTimestamp(sample.timestamp);
 
-        spdlog::debug("Sending network sample for interface {} to InfluxDB", sample.name);
+        spdlog::debug("Sending network sample for interface {} to InfluxDB", iface.name);
 
         try
         {
@@ -178,43 +178,11 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
     ThreadSafeQueue<data_sample> queue;
     std::thread producer_thread(net_producer, time_interval, std::ref(queue));
 
-    data_sample last_sample;
-    if (!queue.pop(last_sample))
-    {
-        producer_thread.join();
-        return;
-    }
-    
-    data_sample current_sample;
-    while (queue.pop(current_sample))
+    data_sample sample;
+    while (queue.pop(sample))
     {
         if (pause_manager::stopped()) break;
-        std::vector<rate_sample> rates;
-        const double dt = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                              current_sample.timestamp - last_sample.timestamp).count() / 1e9;
-        
-        if (dt > 0.0) {
-            for (const auto& curr_iface : current_sample.interfaces) {
-                for (const auto& last_iface : last_sample.interfaces) {
-                    if (curr_iface.name == last_iface.name) {
-                        rate_sample rate;
-                        rate.timestamp = current_sample.timestamp;
-                        rate.name = curr_iface.name;
-                        rate.transferred = static_cast<long long int>(
-                                 static_cast<double>(curr_iface.transferred - last_iface.transferred)
-                                 / (1024.0 * dt));
-                        rate.received = static_cast<long long int>(
-                                 static_cast<double>(curr_iface.received - last_iface.received)
-                                 / (1024.0 * dt));
-                        rates.push_back(rate);
-                        break;
-                    }
-                }
-            }
-        }
-        
-        stream << rates;
-        last_sample = current_sample;
+        stream << sample;
     }
     
     producer_thread.join();

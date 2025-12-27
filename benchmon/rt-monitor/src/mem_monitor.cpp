@@ -20,12 +20,15 @@ namespace rt_monitor
 template <> db_stream &db_stream::operator<< <mem::data_sample>(mem::data_sample sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    influxdb::Point point{"mem"};
+    influxdb::Point point{"memory"};
     point.addTag("hostname", hostname);
 
     for (const auto [label, value] : sample.values_map)
     {
-        point.addField(label + std::string("(kiB)"), static_cast<long long int>(value));
+        std::string lower_label = label;
+        std::transform(lower_label.begin(), lower_label.end(), lower_label.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+        point.addField(lower_label, static_cast<long long int>(value));
     }
     point.setTimestamp(sample.timestamp);
     
