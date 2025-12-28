@@ -90,17 +90,12 @@ namespace rt_monitor {
     {
         static const std::string hostname = rt_monitor::io::get_hostname();
         for (const auto& port : sample.ports) {
-            influxdb::Point point{"infiniband"};
-            point.addTag("hostname", hostname)
-                 .addTag("device", port.device)
-                 .addField("port_rcv_data", static_cast<long long>(port.port_rcv_data))
-                 .addField("port_xmit_data", static_cast<long long>(port.port_xmit_data))
-                 .setTimestamp(sample.timestamp);
-            try {
-                this->db_ptr_->write(std::move(point));
-            } catch (const std::runtime_error &e) {
-                spdlog::error(std::string{"Error while pushing an IB sample: "} + e.what());
-            }
+            std::stringstream ss;
+            ss << "infiniband,hostname=" << hostname << ",device=" << port.device << " ";
+            ss << "port_rcv_data=" << port.port_rcv_data << "i,"
+               << "port_xmit_data=" << port.port_xmit_data << "i";
+            ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+            this->write_line(ss.str());
         }
         return *this;
     }

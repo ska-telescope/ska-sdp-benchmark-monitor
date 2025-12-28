@@ -34,28 +34,8 @@ endif()
 
 
 
-# Try to find system cpr first
-find_package(cpr QUIET)
-if(cpr_FOUND AND TARGET cpr::cpr)
-  message(STATUS "Found system cpr")
-else()
-  message(STATUS "System cpr not found, downloading...")
-  
-  # Declare curl explicitly to use git instead of URL download which is timing out
-  FetchContent_Declare(
-    curl
-    GIT_REPOSITORY https://github.com/curl/curl.git
-    GIT_TAG curl-8_13_0
-  )
+# cpr removed
 
-  FetchContent_Declare(
-    cpr
-    GIT_REPOSITORY https://github.com/libcpr/cpr.git
-    GIT_TAG da40186618909b1a7363d4e4495aa899c6e0eb75
-    SOURCE_DIR ${CMAKE_BINARY_DIR}/_deps/cpr-src
-  )
-  FetchContent_MakeAvailable(cpr)
-endif()
 
 # Try to find system spdlog first
 find_package(spdlog QUIET)
@@ -70,26 +50,15 @@ else()
   FetchContent_MakeAvailable(spdlog)
 endif()
 
-FetchContent_Declare(
-  scn
-  GIT_REPOSITORY https://github.com/eliaskosunen/scnlib.git
-  GIT_TAG e937be1a52588621b406d58ce8614f96bb5de747)
+# scn removed
 
 # Try to find system scn first
-find_package(scn QUIET)
-if(scn_FOUND)
-  message(STATUS "Found system scn")
-else()
-  message(STATUS "System scn not found, downloading...")
-  FetchContent_MakeAvailable(scn)
-endif()
+# find_package(scn QUIET)
+# if(scn_FOUND)
+#   message(STATUS "Found system scn")
+# else()
+#   message(STATUS "System scn not found, downloading...")
+#   FetchContent_MakeAvailable(scn)
+# endif()
 
-find_external(
-  influxdb-cxx
-  GIT_REPOSITORY
-  https://github.com/offa/influxdb-cxx.git
-  GIT_TAG
-  7582c5071b36ce1daf46a33869c3962616c82325
-  DEPENDENCIES
-  Boost
-  cpr)
+# influxdb-cxx removed

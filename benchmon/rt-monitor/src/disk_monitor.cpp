@@ -1,5 +1,4 @@
 #include <filesystem>
-#include <scn/scan.h>
 #include <thread>
 
 #include "db_stream.hpp"
@@ -147,69 +146,42 @@ namespace rt_monitor
 template <> db_stream &db_stream::operator<< <disk::data_sample>(disk::data_sample sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    auto point = influxdb::Point{"disk_stats"}
-                     .addTag("hostname", hostname)
-                     .addTag("device", sample.device)
-                     .addField("sectors_read", static_cast<long long int>(sample.sectors_read))
-                     .addField("sectors_written", static_cast<long long int>(sample.sectors_written))
-                     .setTimestamp(sample.timestamp);
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (std::runtime_error e)
-    {
-        spdlog::error(std::string{"Error while pushing a disk sample: "} + e.what());
-    }
-
+    std::stringstream ss;
+    ss << "disk_stats,hostname=" << hostname << ",device=" << sample.device << " ";
+    ss << "sectors_read=" << sample.sectors_read << "i,"
+       << "sectors_written=" << sample.sectors_written << "i";
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+    this->write_line(ss.str());
     return *this;
 }
 
 template <> db_stream &db_stream::operator<< <disk::data_sample_diff>(disk::data_sample_diff sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    auto point = influxdb::Point{"disk"}
-                     .addTag("hostname", hostname)
-                     .addTag("device", sample.device)
-                     .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
-                     .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
-                     .addField("Read_operations/s", static_cast<long long int>(sample.rd_completed))
-                     .addField("Write_operations/s", static_cast<long long int>(sample.wr_completed))
-                     .setTimestamp(sample.timestamp);
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (std::runtime_error e)
-    {
-        spdlog::error(std::string{"Error while pushing a disk sample: "} + e.what());
-    }
-
+    std::stringstream ss;
+    ss << "disk,hostname=" << hostname << ",device=" << sample.device << " ";
+    ss << "Sectors_reads/s=" << sample.sectors_read << "i,"
+       << "Sectors_writes/s=" << sample.sectors_written << "i,"
+       << "Read_operations/s=" << sample.rd_completed << "i,"
+       << "Write_operations/s=" << sample.wr_completed << "i";
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+    this->write_line(ss.str());
     return *this;
 }
 
 template <> db_stream &db_stream::operator<< <disk::data_sample_cumulated>(disk::data_sample_cumulated sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    auto point = influxdb::Point{"disk"}
-                     .addTag("hostname", hostname)
-                     .addTag("device", "total")
-                     .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
-                     .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
-                     .addField("Read_operations/s", static_cast<long long int>(sample.rd_completed))
-                     .addField("Write_operations/s", static_cast<long long int>(sample.wr_completed))
-                     .setTimestamp(sample.timestamp);
+    std::stringstream ss;
+    ss << "disk,hostname=" << hostname << ",device=total ";
+    ss << "Sectors_reads/s=" << sample.sectors_read << "i,"
+       << "Sectors_writes/s=" << sample.sectors_written << "i,"
+       << "Read_operations/s=" << sample.rd_completed << "i,"
+       << "Write_operations/s=" << sample.wr_completed << "i";
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+    this->write_line(ss.str());
     
     spdlog::debug("Sending cumulated disk sample to InfluxDB");
-
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (std::runtime_error e)
-    {
-        spdlog::error(std::string{"Error while pushing a disk sample: "} + e.what());
-    }
 
     return *this;
 }
@@ -304,14 +276,24 @@ void read_disk_samples(const std::unordered_map<std::string, size_t> &name_to_in
     std::string line;
     while (std::getline(input, line))
     {
-        std::istringstream line_stream(line);
-        auto [major, minor, device, rd_completed, rd_merged, sectors_read, time_read, wr_completed, wr_merged,
+        uint32_t major, minor;
+        char device_buf[256];
+        uint64_t rd_completed, rd_merged, sectors_read, time_read, wr_completed, wr_merged,
               sectors_written, time_write, io_in_progress, time_io, time_weighted_io, disc_completed, disc_merged,
-              sectors_discarded, time_discard, flush_requests, time_flush] =
-            scn::scan<uint32_t, uint32_t, std::string, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
-                      uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
-                      uint64_t, uint64_t>(line, "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}")
-                ->values();
+              sectors_discarded, time_discard, flush_requests, time_flush;
+
+        // Initialize optional fields to 0 just in case
+        disc_completed = disc_merged = sectors_discarded = time_discard = flush_requests = time_flush = 0;
+
+        int ret = sscanf(line.c_str(), "%u %u %s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",
+            &major, &minor, device_buf, &rd_completed, &rd_merged, &sectors_read, &time_read, &wr_completed, &wr_merged,
+            &sectors_written, &time_write, &io_in_progress, &time_io, &time_weighted_io, &disc_completed, &disc_merged,
+            &sectors_discarded, &time_discard, &flush_requests, &time_flush);
+
+        if (ret < 3) continue; // Failed to parse device name
+
+        std::string device(device_buf);
+
         if (device.starts_with("loop") || device.starts_with("dm"))
         {
             continue;

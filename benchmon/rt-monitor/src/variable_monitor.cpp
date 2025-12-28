@@ -17,16 +17,12 @@ namespace rt_monitor {
     template <> db_stream &db_stream::operator<< <variable::data_sample>(variable::data_sample sample)
     {
         static const std::string hostname = rt_monitor::io::get_hostname();
-        influxdb::Point point{"variable"};
+        std::stringstream ss;
         auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
-        point.addTag("hostname", hostname)
-             .addField("stamp", static_cast<long long>(stamp))
-             .setTimestamp(sample.timestamp);
-        try {
-            this->db_ptr_->write(std::move(point));
-        } catch (const std::runtime_error &e) {
-            spdlog::error(std::string{"Error while pushing a variable sample: "} + e.what());
-        }
+        ss << "variable,hostname=" << hostname << " ";
+        ss << "stamp=" << stamp << "i";
+        ss << " " << stamp;
+        this->write_line(ss.str());
         return *this;
     }
 

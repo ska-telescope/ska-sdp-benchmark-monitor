@@ -1,4 +1,3 @@
-#include <InfluxDBFactory.h>
 #include <future>
 
 #include "cpu_monitor.h"
@@ -9,6 +8,7 @@
 #include "mem_monitor.h"
 #include "net_monitor.h"
 #include "ib_monitor.h"
+#include "variable_monitor.h"
 #include "pause_manager.h"
 #include "spdlog/common.h"
 #include <unistd.h>
@@ -250,6 +250,15 @@ int main(int argc, char **argv)
         }
 
         std::vector<std::future<void>> tasks;
+
+        if (use_db)
+        {
+            tasks.emplace_back(std::async(std::launch::async, [db_address]() {
+                db_stream stream(db_address);
+                rt_monitor::variable::start_sampling(std::move(stream));
+            }));
+        }
+
         if (config.enable_cpu)
         {
             if (!use_db)

@@ -1,6 +1,4 @@
-#include <Point.h>
 #include <filesystem>
-#include <scn/scan.h>
 #include <thread>
 
 #include "cpufreq_monitor.h"
@@ -25,22 +23,15 @@ namespace rt_monitor
 template <> db_stream &db_stream::operator<< <cpufreq::data_sample>(cpufreq::data_sample sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    auto point = influxdb::Point{"cpu_freq"}
-                     .addTag("hostname", hostname)
-                     .addTag("cpu", "cpu" + std::to_string(sample.cpuid))
-                     .addField("value", static_cast<long long int>(sample.frequency))
-                     .setTimestamp(sample.timestamp);
+    
+    std::stringstream ss;
+    ss << "cpu_freq,hostname=" << hostname << ",cpu=cpu" << sample.cpuid << " ";
+    ss << "value=" << sample.frequency << "i";
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+
+    this->write_line(ss.str());
     
     spdlog::trace("Buffering cpufreq sample for core {} to InfluxDB", sample.cpuid);
-
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (const std::runtime_error &e)
-    {
-        spdlog::error(std::string{"Error while pushing a cpufreq sample: "} + e.what());
-    }
 
     return *this;
 }
@@ -141,14 +132,15 @@ void read_cpu_frequency_sample(const std::vector<std::string> &cpu_freq_paths, s
         std::string line;
         std::getline(freq_file, line);
         spdlog::trace(line);
-        const auto result = scn::scan<uint32_t>(line, "{}");
-        if (!result)
-        {
+        
+        uint32_t frequency;
+        try {
+            frequency = std::stoul(line);
+        } catch (...) {
             spdlog::debug("Invalid CPU frequency sample.");
             continue;
         }
 
-        const auto [frequency] = result->values();
         io::write_binary(file, timestamp);
         io::write_binary(file, i);
         io::write_binary(file, frequency);
@@ -170,14 +162,15 @@ void read_cpu_frequency_samples(const std::vector<std::string> &cpu_freq_paths,
         std::string line;
         std::getline(freq_file, line);
         spdlog::trace(line);
-        const auto result = scn::scan<uint32_t>(line, "{}");
-        if (!result)
-        {
+        
+        uint32_t frequency;
+        try {
+            frequency = std::stoul(line);
+        } catch (...) {
             spdlog::debug("Invalid CPU frequency sample.");
             continue;
         }
 
-        const auto [frequency] = result->values();
         data_sample sample{now, i, frequency};
         cpufreq_samples_map[i] = sample;
     }

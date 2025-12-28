@@ -1,7 +1,3 @@
-#include <InfluxDBFactory.h>
-#include <scn/scan.h>
-
-#include "Point.h"
 #include "cpu_monitor.h"
 #include "db_stream.hpp"
 #include "file_stream.hpp"
@@ -58,41 +54,30 @@ template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
 
-    std::string measurement;
-    influxdb::Point point{""};
-
+    std::stringstream ss;
     if (sample.cpuid == std::numeric_limits<uint32_t>::max()) {
-        measurement = "cpu_total";
-        point = influxdb::Point{measurement};
+        ss << "cpu_total";
     } else {
-        measurement = "cpu_core";
-        point = influxdb::Point{measurement};
-        point.addTag("cpu", "cpu" + std::to_string(sample.cpuid));
+        ss << "cpu_core,cpu=cpu" << sample.cpuid;
     }
 
-    point.addTag("hostname", hostname)
-         .addField("user", static_cast<long long int>(sample.user_value))
-         .addField("nice", static_cast<long long int>(sample.nice_value))
-         .addField("system", static_cast<long long int>(sample.system_value))
-         .addField("idle", static_cast<long long int>(sample.idle_value))
-         .addField("iowait", static_cast<long long int>(sample.iowait_value))
-         .addField("irq", static_cast<long long int>(sample.irq_value))
-         .addField("softirq", static_cast<long long int>(sample.softirq_value))
-         .addField("steal", static_cast<long long int>(sample.steal_value))
-         .addField("guest", static_cast<long long int>(sample.guest_value))
-         .addField("guest_nice", static_cast<long long int>(sample.guestnice_value))
-         .setTimestamp(sample.timestamp);
+    ss << ",hostname=" << hostname << " ";
+    ss << "user=" << sample.user_value << "i,"
+       << "nice=" << sample.nice_value << "i,"
+       << "system=" << sample.system_value << "i,"
+       << "idle=" << sample.idle_value << "i,"
+       << "iowait=" << sample.iowait_value << "i,"
+       << "irq=" << sample.irq_value << "i,"
+       << "softirq=" << sample.softirq_value << "i,"
+       << "steal=" << sample.steal_value << "i,"
+       << "guest=" << sample.guest_value << "i,"
+       << "guest_nice=" << sample.guestnice_value << "i";
+    
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+
+    this->write_line(ss.str());
     
     spdlog::trace("Buffering CPU sample for core {} to InfluxDB", sample.cpuid);
-
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (const std::runtime_error &e)
-    {
-        spdlog::error(std::string{"Error while pushing a CPU sample: "} + e.what());
-    }
 
     return *this;
 }
@@ -130,12 +115,16 @@ void read_cpu_samples(std::unordered_map<uint32_t, data_sample> &cpu_samples_map
         if (!line.starts_with("cpu"))
             break;
 
-        const auto result = scn::scan<std::string, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
-                                      uint64_t, uint64_t, uint64_t>(line, "{} {} {} {} {} {} {} {} {} {} {}");
-        if (!result)
+        char cpuid_str[32];
+        uint64_t user_value, nice_value, system_value, idle_value, iowait_value, irq_value, softirq_value, steal_value, guest_value, guestnice_value;
+        
+        int ret = sscanf(line.c_str(), "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", 
+            cpuid_str, &user_value, &nice_value, &system_value, &idle_value, &iowait_value, &irq_value, &softirq_value, &steal_value, &guest_value, &guestnice_value);
+
+        if (ret < 11)
             continue;
-        const auto [cpuid_value, user_value, nice_value, system_value, idle_value, iowait_value, irq_value,
-                    softirq_value, steal_value, guest_value, guestnice_value] = result->values();
+
+        std::string cpuid_value(cpuid_str);
         const auto cpuid = io::cpuid_str_to_uint(cpuid_value);
 
         data_sample sample{now,          cpuid,     user_value,    nice_value,  system_value, idle_value,

@@ -39,23 +39,28 @@ template <> db_stream &db_stream::operator<< <net::data_sample>(net::data_sample
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
     for (const auto& iface : sample.interfaces) {
-        influxdb::Point point{"network_stats"};
-        point.addTag("hostname", hostname)
-            .addTag("interface", iface.name)
-            .addField("tx_bytes", static_cast<long long int>(iface.transferred))
-            .addField("rx_bytes", static_cast<long long int>(iface.received))
-            .setTimestamp(sample.timestamp);
-
+        std::stringstream ss;
+        ss << "network_stats,hostname=" << hostname << ",interface=" << iface.name << " ";
+        ss << "tx_bytes=" << iface.transferred << "i,"
+           << "rx_bytes=" << iface.received << "i";
+        ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+        this->write_line(ss.str());
+        
         spdlog::debug("Sending network sample for interface {} to InfluxDB", iface.name);
+    }
+    return *this;
+}
 
-        try
-        {
-            this->db_ptr_->write(std::move(point));
-        }
-        catch (const std::runtime_error &e)
-        {
-            spdlog::error(std::string{"Error while pushing a network sample: "} + e.what());
-        }
+template <> db_stream &db_stream::operator<< <std::vector<net::rate_sample>>(std::vector<net::rate_sample> samples)
+{
+    static const std::string hostname = rt_monitor::io::get_hostname();
+    for (const auto& sample : samples) {
+        std::stringstream ss;
+        ss << "network,hostname=" << hostname << ",interface=" << sample.name << " ";
+        ss << "tx_bytes=" << sample.transferred << "i,"
+           << "rx_bytes=" << sample.received << "i";
+        ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+        this->write_line(ss.str());
     }
     return *this;
 }

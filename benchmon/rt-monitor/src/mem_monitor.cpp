@@ -20,28 +20,24 @@ namespace rt_monitor
 template <> db_stream &db_stream::operator<< <mem::data_sample>(mem::data_sample sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    influxdb::Point point{"memory"};
-    point.addTag("hostname", hostname);
-
+    std::stringstream ss;
+    ss << "memory,hostname=" << hostname << " ";
+    
+    bool first = true;
     for (const auto [label, value] : sample.values_map)
     {
+        if (!first) ss << ",";
         std::string lower_label = label;
         std::transform(lower_label.begin(), lower_label.end(), lower_label.begin(),
                        [](unsigned char c){ return std::tolower(c); });
-        point.addField(lower_label, static_cast<long long int>(value));
+        ss << lower_label << "=" << value << "i";
+        first = false;
     }
-    point.setTimestamp(sample.timestamp);
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+    
+    this->write_line(ss.str());
     
     spdlog::debug("Sending memory sample to InfluxDB");
-
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (const std::runtime_error& e)
-    {
-        spdlog::error(std::string{"Error while pushing a memory sample: "} + e.what());
-    }
 
     return *this;
 }
