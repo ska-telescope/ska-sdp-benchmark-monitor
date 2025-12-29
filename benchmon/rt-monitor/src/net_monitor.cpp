@@ -7,6 +7,10 @@
 #include <chrono>
 #include <sstream>
 #include <thread>
+#include <fcntl.h>
+#include <unistd.h>
+#include <vector>
+#include <cstring>
 
 namespace rt_monitor::net
 {
@@ -68,22 +72,25 @@ template <> db_stream &db_stream::operator<< <std::vector<net::rate_sample>>(std
 
 namespace rt_monitor::net
 {
-data_sample read_cumulated_sample()
+data_sample read_cumulated_sample(int fd)
 {
     net::data_sample sample;
-    std::ifstream input("/proc/net/dev");
-    if (!input.is_open())
-    {
-        spdlog::error("Failed to open /proc/net/dev");
-        return sample;
-    }
-
-    std::string line;
-    int line_number = 0;
     const auto now = std::chrono::system_clock::now();
     sample.timestamp = now;
 
-    while (std::getline(input, line))
+    if (lseek(fd, 0, SEEK_SET) == -1) return sample;
+
+    char buffer[16384]; // 16KB should be enough for /proc/net/dev
+    ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    if (bytes_read <= 0) return sample;
+    buffer[bytes_read] = '\0';
+
+    std::string content(buffer);
+    std::istringstream iss(content);
+    std::string line;
+    int line_number = 0;
+
+    while (std::getline(iss, line))
     {
         ++line_number;
         if (line_number <= 2)
@@ -145,6 +152,13 @@ data_sample read_cumulated_sample()
 
 void net_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
 {
+    int fd = open("/proc/net/dev", O_RDONLY);
+    if (fd < 0) {
+        spdlog::error("Failed to open /proc/net/dev");
+        queue.stop();
+        return;
+    }
+
     bool sampling_warning_provided = false;
     while (!pause_manager::stopped())
     {
@@ -152,7 +166,7 @@ void net_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
 
         const auto begin = std::chrono::high_resolution_clock::now();
         
-        auto sample = read_cumulated_sample();
+        auto sample = read_cumulated_sample(fd);
         spdlog::debug("Collected network sample with {} interfaces", sample.interfaces.size());
         queue.push(std::move(sample));
 
@@ -174,6 +188,7 @@ void net_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
 
         pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    close(fd);
     queue.stop();
     spdlog::trace("network producer stopped");
 }

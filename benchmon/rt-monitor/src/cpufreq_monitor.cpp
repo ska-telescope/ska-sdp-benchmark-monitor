@@ -1,5 +1,9 @@
 #include <filesystem>
 #include <thread>
+#include <fcntl.h>
+#include <unistd.h>
+#include <charconv>
+#include <vector>
 
 #include "cpufreq_monitor.h"
 #include "db_stream.hpp"
@@ -16,6 +20,12 @@ struct data_sample
     uint32_t cpuid;
     uint32_t frequency;
 };
+
+struct CpuSource {
+    uint32_t cpuid;
+    int fd;
+};
+
 } // namespace rt_monitor::cpufreq
 
 namespace rt_monitor
@@ -36,6 +46,33 @@ template <> db_stream &db_stream::operator<< <cpufreq::data_sample>(cpufreq::dat
     return *this;
 }
 
+template <> db_stream &db_stream::operator<< <std::vector<cpufreq::data_sample>>(std::vector<cpufreq::data_sample> samples)
+{
+    if (samples.empty()) return *this;
+    static const std::string hostname = rt_monitor::io::get_hostname();
+    
+    // Pre-calculate timestamp string once for the whole batch
+    auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(samples[0].timestamp.time_since_epoch()).count();
+    std::string timestamp_str = std::to_string(timestamp_ns);
+
+    for (const auto& sample : samples) {
+        // Use string concatenation instead of stringstream for performance
+        std::string line = "cpu_freq,hostname=";
+        line += hostname;
+        line += ",cpu=cpu";
+        line += std::to_string(sample.cpuid);
+        line += " value=";
+        line += std::to_string(sample.frequency);
+        line += "i ";
+        line += timestamp_str;
+        
+        this->write_line(line);
+    }
+    
+    spdlog::trace("Buffered {} cpufreq samples for InfluxDB", samples.size());
+    return *this;
+}
+
 template <> file_stream &file_stream::operator<< <cpufreq::data_sample>(cpufreq::data_sample sample)
 {
     io::write_binary(this->file_, sample.timestamp.time_since_epoch().count());
@@ -43,12 +80,21 @@ template <> file_stream &file_stream::operator<< <cpufreq::data_sample>(cpufreq:
     io::write_binary(this->file_, sample.frequency);
     return *this;
 }
+
+template <> file_stream &file_stream::operator<< <std::vector<cpufreq::data_sample>>(std::vector<cpufreq::data_sample> samples)
+{
+    for (const auto& sample : samples) {
+        *this << sample;
+    }
+    return *this;
+}
 } // namespace rt_monitor
 
 namespace rt_monitor::cpufreq
 {
-std::vector<std::string> get_online_cpu_scaling_freq_paths()
+std::vector<CpuSource> get_cpu_freq_sources()
 {
+    std::vector<CpuSource> sources;
     std::vector<std::pair<int, std::string>> indexed_paths;
 
     auto cpu_path_iterator = std::filesystem::directory_iterator("/sys/devices/system/cpu");
@@ -57,32 +103,48 @@ std::vector<std::string> get_online_cpu_scaling_freq_paths()
         if (entry.is_directory() && entry.path().filename().string().starts_with("cpu"))
         {
             std::string online_path = entry.path().string() + "/online";
+            bool is_online = true; // cpu0 often doesn't have 'online' file and is always online
+            
             if (std::filesystem::exists(online_path))
             {
                 std::ifstream online_file(online_path);
                 int online_status;
                 online_file >> online_status;
-                if (online_status == 1)
+                if (online_status != 1) {
+                    is_online = false;
+                }
+            }
+
+            if (is_online)
+            {
+                std::string scaling_freq_path = entry.path().string() + "/cpufreq/scaling_cur_freq";
+                if (std::filesystem::exists(scaling_freq_path))
                 {
-                    std::string scaling_freq_path = entry.path().string() + "/cpufreq/scaling_cur_freq";
-                    if (std::filesystem::exists(scaling_freq_path))
-                    {
-                        int cpu_index = std::stoi(entry.path().filename().string().substr(3));
+                    std::string cpu_dir_name = entry.path().filename().string();
+                    // Handle "cpu0", "cpu1" etc.
+                    try {
+                        int cpu_index = std::stoi(cpu_dir_name.substr(3));
                         indexed_paths.emplace_back(cpu_index, scaling_freq_path);
+                    } catch (...) {
+                        continue;
                     }
                 }
             }
         }
     }
 
-    std::vector<std::string> paths;
-    paths.reserve(indexed_paths.size());
     std::sort(indexed_paths.begin(), indexed_paths.end());
+    
     for (const auto &[index, path] : indexed_paths)
     {
-        paths.push_back(path);
+        int fd = open(path.c_str(), O_RDONLY);
+        if (fd >= 0) {
+            sources.push_back({static_cast<uint32_t>(index), fd});
+        } else {
+            spdlog::warn("Failed to open CPU frequency file: {}", path);
+        }
     }
-    return paths;
+    return sources;
 }
 
 std::pair<uint64_t, uint64_t> get_freq_min_max()
@@ -116,68 +178,34 @@ std::pair<uint64_t, uint64_t> get_freq_min_max()
     return {min_freq, max_freq};
 }
 
-void read_cpu_frequency_sample(const std::vector<std::string> &cpu_freq_paths, std::ostream &file)
+void read_cpu_frequency_samples(const std::vector<CpuSource> &sources,
+                                std::vector<data_sample> &samples)
 {
     spdlog::trace("reading a CPU frequency monitoring sample");
     const auto now = std::chrono::system_clock::now();
-    const auto duration = now.time_since_epoch();
-    const auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    char buffer[32];
 
-    for (uint32_t i = 0; i < cpu_freq_paths.size(); ++i)
+    samples.clear();
+    samples.reserve(sources.size());
+
+    for (const auto &source : sources)
     {
-        const auto &path = cpu_freq_paths[i];
-        spdlog::trace(path);
-        std::ifstream freq_file(path);
-
-        std::string line;
-        std::getline(freq_file, line);
-        spdlog::trace(line);
-        
-        uint32_t frequency;
-        try {
-            frequency = std::stoul(line);
-        } catch (...) {
-            spdlog::debug("Invalid CPU frequency sample.");
-            continue;
+        // Use pread to read from offset 0 without changing the file offset
+        // This avoids a separate lseek syscall for each file
+        ssize_t bytes_read = pread(source.fd, buffer, sizeof(buffer) - 1, 0);
+        if (bytes_read > 0) {
+            buffer[bytes_read] = '\0';
+            uint32_t frequency = 0;
+            auto [ptr, ec] = std::from_chars(buffer, buffer + bytes_read, frequency);
+            if (ec == std::errc()) {
+                samples.push_back({now, source.cpuid, frequency});
+            }
         }
-
-        io::write_binary(file, timestamp);
-        io::write_binary(file, i);
-        io::write_binary(file, frequency);
-    }
-}
-
-void read_cpu_frequency_samples(const std::vector<std::string> &cpu_freq_paths,
-                                std::vector<data_sample> &cpufreq_samples_map)
-{
-    spdlog::trace("reading a CPU frequency monitoring sample");
-    const auto now = std::chrono::system_clock::now();
-
-    for (uint32_t i = 0; i < cpu_freq_paths.size(); ++i)
-    {
-        const auto &path = cpu_freq_paths[i];
-        spdlog::trace(path);
-        std::ifstream freq_file(path);
-
-        std::string line;
-        std::getline(freq_file, line);
-        spdlog::trace(line);
-        
-        uint32_t frequency;
-        try {
-            frequency = std::stoul(line);
-        } catch (...) {
-            spdlog::debug("Invalid CPU frequency sample.");
-            continue;
-        }
-
-        data_sample sample{now, i, frequency};
-        cpufreq_samples_map[i] = sample;
     }
 }
 
 void cpufreq_producer(double time_interval, 
-                      const std::vector<std::string>& cpu_freq_paths,
+                      const std::vector<CpuSource>& sources,
                       ThreadSafeQueue<std::vector<data_sample>>& queue)
 {
     bool sampling_warning_provided = false;
@@ -188,8 +216,7 @@ void cpufreq_producer(double time_interval,
         const auto begin = std::chrono::high_resolution_clock::now();
         
         std::vector<data_sample> samples;
-        samples.resize(cpu_freq_paths.size());
-        read_cpu_frequency_samples(cpu_freq_paths, samples);
+        read_cpu_frequency_samples(sources, samples);
         queue.push(std::move(samples));
 
         const auto end = std::chrono::high_resolution_clock::now();
@@ -216,27 +243,29 @@ void cpufreq_producer(double time_interval,
 
 template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream)
 {
-    const auto cpu_freq_paths = get_online_cpu_scaling_freq_paths();
-    if (cpu_freq_paths.empty())
+    const auto sources = get_cpu_freq_sources();
+    if (sources.empty())
     {
         spdlog::error("No CPU frequency file available, stopping CPU frequency monitoring.");
         return;
     }
 
     ThreadSafeQueue<std::vector<data_sample>> queue;
-    std::thread producer_thread(cpufreq_producer, time_interval, std::cref(cpu_freq_paths), std::ref(queue));
+    std::thread producer_thread(cpufreq_producer, time_interval, std::cref(sources), std::ref(queue));
 
     std::vector<data_sample> samples;
     while (queue.pop(samples))
     {
         if (pause_manager::stopped()) break;
-        for (const auto sample : samples)
-        {
-            stream << sample;
-        }
-        spdlog::debug("Buffered {} cpufreq samples for InfluxDB", samples.size());
+        stream << samples;
     }
     producer_thread.join();
+    
+    // Cleanup FDs
+    for(const auto& source : sources) {
+        close(source.fd);
+    }
+    
     spdlog::trace("CPU frequency monitoring stopped");
 }
 

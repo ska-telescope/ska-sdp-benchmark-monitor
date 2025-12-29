@@ -9,6 +9,9 @@
 #include <thread>
 #include <chrono>
 #include <spdlog/spdlog.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <charconv>
 
 namespace rt_monitor::ib
 {
@@ -25,15 +28,52 @@ namespace rt_monitor::ib
         std::vector<ib_port_data> ports;
     };
 
-    void ib_producer(double interval_ms, ThreadSafeQueue<data_sample>& queue) {
-        std::vector<std::string> ib_devices;
+    struct IbSource {
+        std::string device;
+        int xmit_fd;
+        int rcv_fd;
+    };
+
+    std::vector<IbSource> get_ib_sources() {
+        std::vector<IbSource> sources;
         if (fs::exists("/sys/class/infiniband")) {
             for (const auto &entry : fs::directory_iterator("/sys/class/infiniband")) {
-                ib_devices.push_back(entry.path().filename().string());
+                std::string device = entry.path().filename().string();
+                std::string xmit_path = "/sys/class/infiniband/" + device + "/ports/1/counters/port_xmit_data";
+                std::string rcv_path = "/sys/class/infiniband/" + device + "/ports/1/counters/port_rcv_data";
+                
+                int xmit_fd = open(xmit_path.c_str(), O_RDONLY);
+                int rcv_fd = open(rcv_path.c_str(), O_RDONLY);
+
+                if (xmit_fd >= 0 && rcv_fd >= 0) {
+                    sources.push_back({device, xmit_fd, rcv_fd});
+                } else {
+                    if (xmit_fd >= 0) close(xmit_fd);
+                    if (rcv_fd >= 0) close(rcv_fd);
+                    spdlog::warn("Failed to open IB counters for device {}", device);
+                }
             }
         }
+        return sources;
+    }
 
-        if (ib_devices.empty()) {
+    uint64_t read_value(int fd) {
+        char buffer[32];
+        if (lseek(fd, 0, SEEK_SET) == -1) return 0;
+        ssize_t bytes = read(fd, buffer, sizeof(buffer) - 1);
+        if (bytes > 0) {
+            buffer[bytes] = '\0';
+            uint64_t val = 0;
+            std::from_chars(buffer, buffer + bytes, val);
+            return val;
+        }
+        return 0;
+    }
+
+    void ib_producer(double interval_ms, ThreadSafeQueue<data_sample>& queue) {
+        auto sources = get_ib_sources();
+
+        if (sources.empty()) {
             spdlog::warn("No InfiniBand devices found.");
             queue.stop();
             return;
@@ -53,23 +93,10 @@ namespace rt_monitor::ib
             data_sample sample;
             sample.timestamp = std::chrono::system_clock::now();
 
-            for (const auto &device : ib_devices) {
-                std::string xmit_path = "/sys/class/infiniband/" + device + "/ports/1/counters/port_xmit_data";
-                std::string rcv_path = "/sys/class/infiniband/" + device + "/ports/1/counters/port_rcv_data";
-
-                try {
-                    std::ifstream xmit_file(xmit_path);
-                    std::ifstream rcv_file(rcv_path);
-                    
-                    if (xmit_file.is_open() && rcv_file.is_open()) {
-                        uint64_t xmit_val, rcv_val;
-                        xmit_file >> xmit_val;
-                        rcv_file >> rcv_val;
-                        sample.ports.push_back({device, xmit_val, rcv_val});
-                    }
-                } catch (...) {
-                    // Ignore errors
-                }
+            for (const auto &source : sources) {
+                uint64_t xmit_val = read_value(source.xmit_fd);
+                uint64_t rcv_val = read_value(source.rcv_fd);
+                sample.ports.push_back({source.device, xmit_val, rcv_val});
             }
             
             queue.push(std::move(sample));
@@ -80,6 +107,11 @@ namespace rt_monitor::ib
             {
                 pause_manager::sleep_for(sleep_duration - elapsed);
             }
+        }
+        
+        for (const auto& source : sources) {
+            close(source.xmit_fd);
+            close(source.rcv_fd);
         }
         queue.stop();
     }

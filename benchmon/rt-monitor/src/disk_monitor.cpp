@@ -1,5 +1,8 @@
 #include <filesystem>
 #include <thread>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstring>
 
 #include "db_stream.hpp"
 #include "file_stream.hpp"
@@ -267,14 +270,23 @@ std::vector<block_device_info> get_partition_block_sizes_binary()
     return entries;
 }
 
-void read_disk_samples(const std::unordered_map<std::string, size_t> &name_to_index,
+void read_disk_samples(int fd, const std::unordered_map<std::string, size_t> &name_to_index,
                        std::unordered_map<uint32_t, data_sample> &samples_set)
 {
     const auto now = std::chrono::system_clock::now();
 
-    std::ifstream input("/proc/diskstats");
+    if (lseek(fd, 0, SEEK_SET) == -1) return;
+
+    char buffer[65536]; // 64KB
+    ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    if (bytes_read <= 0) return;
+    buffer[bytes_read] = '\0';
+
+    std::string content(buffer);
+    std::istringstream iss(content);
     std::string line;
-    while (std::getline(input, line))
+
+    while (std::getline(iss, line))
     {
         uint32_t major, minor;
         char device_buf[256];
@@ -345,6 +357,13 @@ void disk_producer(double time_interval,
                    const std::unordered_map<std::string, size_t>& name_to_index,
                    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>>& queue)
 {
+    int fd = open("/proc/diskstats", O_RDONLY);
+    if (fd < 0) {
+        spdlog::error("Failed to open /proc/diskstats");
+        queue.stop();
+        return;
+    }
+
     bool sampling_warning_provided = false;
     while (!pause_manager::stopped())
     {
@@ -353,7 +372,7 @@ void disk_producer(double time_interval,
         const auto begin = std::chrono::high_resolution_clock::now();
         
         std::unordered_map<uint32_t, data_sample> samples;
-        read_disk_samples(name_to_index, samples);
+        read_disk_samples(fd, name_to_index, samples);
         queue.push(std::move(samples));
 
         const auto end = std::chrono::high_resolution_clock::now();
@@ -372,6 +391,7 @@ void disk_producer(double time_interval,
         }
         pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    close(fd);
     queue.stop();
     spdlog::trace("disk producer stopped");
 }

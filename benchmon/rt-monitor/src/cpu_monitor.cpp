@@ -5,6 +5,8 @@
 #include "pause_manager.h"
 #include "thread_safe_queue.hpp"
 #include <thread>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace rt_monitor
 {
@@ -82,6 +84,50 @@ template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample
     return *this;
 }
 
+template <> db_stream &db_stream::operator<< <std::unordered_map<uint32_t, cpu::data_sample>>(std::unordered_map<uint32_t, cpu::data_sample> samples)
+{
+    if (samples.empty()) return *this;
+    static const std::string hostname = rt_monitor::io::get_hostname();
+    
+    // Use the timestamp from the first sample for all samples in this batch
+    auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(samples.begin()->second.timestamp.time_since_epoch()).count();
+    std::string timestamp_str = std::to_string(timestamp_ns);
+
+    for (const auto& [cpuid, sample] : samples) {
+        std::string line;
+        line.reserve(256); // Pre-allocate to avoid reallocations
+
+        if (cpuid == std::numeric_limits<uint32_t>::max()) {
+            line += "cpu_total";
+        } else {
+            line += "cpu_core,cpu=cpu";
+            line += std::to_string(cpuid);
+        }
+
+        line += ",hostname=";
+        line += hostname;
+        line += " ";
+        
+        line += "user="; line += std::to_string(sample.user_value); line += "i,";
+        line += "nice="; line += std::to_string(sample.nice_value); line += "i,";
+        line += "system="; line += std::to_string(sample.system_value); line += "i,";
+        line += "idle="; line += std::to_string(sample.idle_value); line += "i,";
+        line += "iowait="; line += std::to_string(sample.iowait_value); line += "i,";
+        line += "irq="; line += std::to_string(sample.irq_value); line += "i,";
+        line += "softirq="; line += std::to_string(sample.softirq_value); line += "i,";
+        line += "steal="; line += std::to_string(sample.steal_value); line += "i,";
+        line += "guest="; line += std::to_string(sample.guest_value); line += "i,";
+        line += "guest_nice="; line += std::to_string(sample.guestnice_value); line += "i ";
+        
+        line += timestamp_str;
+
+        this->write_line(line);
+    }
+    
+    spdlog::debug("Buffered {} CPU samples for InfluxDB", samples.size());
+    return *this;
+}
+
 template <> file_stream &file_stream::operator<< <cpu::data_sample>(cpu::data_sample sample)
 {
     io::write_binary(this->file_, sample.timestamp);
@@ -99,18 +145,32 @@ template <> file_stream &file_stream::operator<< <cpu::data_sample>(cpu::data_sa
     return *this;
 }
 
+template <> file_stream &file_stream::operator<< <std::unordered_map<uint32_t, cpu::data_sample>>(std::unordered_map<uint32_t, cpu::data_sample> samples)
+{
+    for (const auto& [cpuid, sample] : samples) {
+        *this << sample;
+    }
+    return *this;
+}
+
 namespace cpu
 {
-void read_cpu_samples(std::unordered_map<uint32_t, data_sample> &cpu_samples_map)
+void read_cpu_samples(int fd, std::unordered_map<uint32_t, data_sample> &cpu_samples_map)
 {
     spdlog::trace("reading a CPU monitoring sample");
     const auto now = std::chrono::system_clock::now();
-    const auto duration = now.time_since_epoch();
-    const uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    
+    char buffer[65536]; // 64KB should be enough for /proc/stat
+    // Use pread to read from offset 0 without changing the file offset
+    ssize_t bytes_read = pread(fd, buffer, sizeof(buffer) - 1, 0);
+    if (bytes_read <= 0) return;
+    buffer[bytes_read] = '\0';
 
-    std::ifstream file("/proc/stat");
+    std::string content(buffer);
+    std::istringstream iss(content);
     std::string line;
-    while (std::getline(file, line))
+
+    while (std::getline(iss, line))
     {
         if (!line.starts_with("cpu"))
             break;
@@ -135,6 +195,13 @@ void read_cpu_samples(std::unordered_map<uint32_t, data_sample> &cpu_samples_map
 
 void cpu_producer(double time_interval, ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>>& queue)
 {
+    int fd = open("/proc/stat", O_RDONLY);
+    if (fd < 0) {
+        spdlog::error("Failed to open /proc/stat");
+        queue.stop();
+        return;
+    }
+
     bool sampling_warning_provided = false;
     while (!pause_manager::stopped())
     {
@@ -143,7 +210,7 @@ void cpu_producer(double time_interval, ThreadSafeQueue<std::unordered_map<uint3
         const auto begin = std::chrono::high_resolution_clock::now();
         
         std::unordered_map<uint32_t, data_sample> samples;
-        read_cpu_samples(samples);
+        read_cpu_samples(fd, samples);
         spdlog::debug("Collected {} CPU samples", samples.size());
         queue.push(std::move(samples));
 
@@ -163,6 +230,7 @@ void cpu_producer(double time_interval, ThreadSafeQueue<std::unordered_map<uint3
         }
         pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    close(fd);
     queue.stop();
     spdlog::trace("CPU producer stopped");
 }
@@ -178,11 +246,7 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
     while (queue.pop(current_sample_set))
     {
         if (pause_manager::stopped()) break;
-        for (const auto [index, current_sample] : current_sample_set)
-        {
-            stream << current_sample;
-        }
-        spdlog::debug("Buffered {} CPU samples for InfluxDB", current_sample_set.size());
+        stream << current_sample_set;
     }
     
     producer_thread.join();

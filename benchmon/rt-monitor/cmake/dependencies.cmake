@@ -1,4 +1,6 @@
 set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps")
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+set(CPR_USE_SYSTEM_CURL ON)
 
 include(FetchContent)
 include(find_external)
@@ -34,7 +36,11 @@ endif()
 
 
 
-# cpr removed
+# Try to find system CURL
+find_package(CURL REQUIRED)
+if(CURL_FOUND)
+  message(STATUS "Found system CURL: ${CURL_INCLUDE_DIRS}")
+endif()
 
 
 # Try to find system spdlog first

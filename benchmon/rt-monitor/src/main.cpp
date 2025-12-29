@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <sys/select.h>
 #include <signal.h>
+#include <curl/curl.h>
 
 namespace rt_monitor
 {
@@ -161,15 +162,26 @@ monitor_config parse_arguments(int argc, char **argv)
 }
 
 int get_batch_size(const std::string& metric, int base_batch_size) {
-    if (metric == "cpu") return base_batch_size;
-    if (metric == "mem" || metric == "cpufreq" || metric == "disk" || metric == "ib") {
-        int size = base_batch_size / 100;
-        return size < 100 ? 100 : size;
+    // High cardinality metrics (per core)
+    if (metric == "cpu" || metric == "cpufreq") {
+        return base_batch_size;
     }
+    
+    // Low cardinality metrics (per system or per few devices)
+    // We scale down the batch size for these metrics so they flush at a reasonable frequency
+    // relative to the high-cardinality metrics.
+    // Assuming ~100 cores, a factor of 100 keeps the flush interval roughly similar in time.
+    
+    if (metric == "mem" || metric == "disk" || metric == "ib") {
+        int size = base_batch_size / 100;
+        return size < 10 ? 10 : size;
+    }
+    
     if (metric == "net") {
         int size = base_batch_size / 10;
         return size < 10 ? 10 : size;
     }
+    
     return base_batch_size;
 }
 } // namespace rt_monitor
@@ -199,6 +211,8 @@ int main(int argc, char **argv)
 
         spdlog::set_level(config.log_level);
         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [benchmon::rt-monitor] %v");
+
+        curl_global_init(CURL_GLOBAL_ALL);
 
         if (pipe(signal_pipe) == -1)
         {
@@ -428,8 +442,10 @@ int main(int argc, char **argv)
     catch (const std::exception &e)
     {
         spdlog::error(e.what());
+        curl_global_cleanup();
         return 1;
     }
 
+    curl_global_cleanup();
     return 0;
 }

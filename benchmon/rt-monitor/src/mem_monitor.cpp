@@ -5,6 +5,10 @@
 #include "pause_manager.h"
 #include "thread_safe_queue.hpp"
 #include <thread>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 namespace rt_monitor::mem
 {
@@ -75,61 +79,64 @@ constexpr std::array<std::string_view, n_fields> field_names{
     "Unaccepted",    "HugePages_Total", "HugePages_Free", "HugePages_Rsvd", "HugePages_Surp",
     "Hugepagesize",  "Hugetlb",         "DirectMap4k",    "DirectMap2M",    "DirectMap1G"};
 
-data_sample read_mem_sample()
+data_sample read_mem_sample(int fd)
 {
     spdlog::trace("reading a memory monitoring sample");
     const auto now = std::chrono::system_clock::now();
 
-    std::ifstream input("/proc/meminfo");
-    if (!input.is_open()) {
-        spdlog::error("Failed to open /proc/meminfo");
-        return {};
-    }
+    if (lseek(fd, 0, SEEK_SET) == -1) return {};
+
+    char buffer[8192]; // 8KB should be enough for /proc/meminfo
+    ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    if (bytes_read <= 0) return {};
+    buffer[bytes_read] = '\0';
+
     data_sample sample;
     sample.timestamp = now;
 
+    std::string content(buffer);
+    std::istringstream iss(content);
+    std::string line;
+
     int i = 0;
-    while (!input.eof() && i < 55)
+    while (std::getline(iss, line) && i < 55)
     {
-        std::string line;
-        std::getline(input, line);
         if (enabled[i])
         {
             const auto value_start = line.find_first_of("0123456789");
             const auto value_end = line.find_last_of("0123456789") + 1;
             uint64_t value = 0;
-            if (value_start == std::string::npos)
+            if (value_start != std::string::npos && value_end != std::string::npos)
             {
-                continue;
+                try {
+                    value = std::stoull(line.substr(value_start, value_end - value_start));
+                } catch (...) {
+                    value = 0;
+                }
             }
-            for (auto it = line.begin() + value_start; it != line.begin() + value_end; ++it)
-            {
-                value = value * 10 + static_cast<uint64_t>(*it - '0');
-            }
-
-            const auto label_end = line.find_first_of(':');
-            if (label_end == std::string::npos)
-            {
-                continue;
-            }
-            const std::string label = line.substr(0, label_end);
-            sample.values_map[label] = value;
+            sample.values_map[std::string(field_names[i])] = value;
         }
         ++i;
     }
-
     return sample;
 }
 
 void mem_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
 {
+    int fd = open("/proc/meminfo", O_RDONLY);
+    if (fd < 0) {
+        spdlog::error("Failed to open /proc/meminfo");
+        queue.stop();
+        return;
+    }
+
     bool sampling_warning_provided = false;
     while (!pause_manager::stopped())
     {
         pause_manager::wait_if_paused();
 
         const auto begin = std::chrono::high_resolution_clock::now();
-        auto sample = read_mem_sample();
+        auto sample = read_mem_sample(fd);
         spdlog::debug("Collected memory sample");
         queue.push(std::move(sample));
         const auto end = std::chrono::high_resolution_clock::now();
@@ -151,6 +158,7 @@ void mem_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
 
         pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    close(fd);
     queue.stop();
     spdlog::trace("memory producer stopped");
 }

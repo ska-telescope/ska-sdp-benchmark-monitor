@@ -2,10 +2,6 @@
 #include <string>
 #include <vector>
 #include <sstream>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
 #include <spdlog/spdlog.h>
 #include <cstring>
 #include <iostream>
@@ -15,6 +11,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <memory>
+#include <curl/curl.h>
 
 namespace rt_monitor
 {
@@ -52,7 +49,6 @@ private:
     std::string host_;
     int port_;
     std::string db_name_;
-    int sock_ = -1;
     std::thread worker_;
     std::queue<std::string> queue_;
     std::mutex mutex_;
@@ -60,6 +56,22 @@ private:
     bool running_;
 
     void worker_loop() {
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            spdlog::error("Failed to initialize CURL");
+            return;
+        }
+
+        std::string url = "http://" + host_ + ":" + std::to_string(port_) + "/write?db=" + db_name_;
+        
+        // Set constant options once
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2L); // 2 seconds timeout
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 1L); // 1 second connect timeout
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L); // Enable TCP Keep-Alive
+
         while (true) {
             std::string payload;
             {
@@ -77,86 +89,31 @@ private:
             }
 
             if (!payload.empty()) {
-                send_request(payload);
-            }
-        }
-        if (sock_ != -1) close(sock_);
-    }
+                // Only update the payload for each request
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
+                curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)payload.length());
 
-    void connect_to_server() {
-        struct hostent *server = gethostbyname(host_.c_str());
-        if (server == nullptr) {
-            spdlog::error("No such host: {}", host_);
-            return;
-        }
-
-        sock_ = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock_ < 0) {
-            spdlog::error("Error opening socket");
-            return;
-        }
-
-        struct sockaddr_in serv_addr;
-        std::memset(&serv_addr, 0, sizeof(serv_addr));
-        serv_addr.sin_family = AF_INET;
-        std::memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-        serv_addr.sin_port = htons(port_);
-
-        if (connect(sock_, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-            spdlog::error("Error connecting to InfluxDB");
-            close(sock_);
-            sock_ = -1;
-        }
-    }
-
-    void send_request(const std::string& data) {
-        if (sock_ < 0) {
-            connect_to_server();
-            if (sock_ < 0) return;
-        }
-
-        std::stringstream request;
-        request << "POST /write?db=" << db_name_ << " HTTP/1.1\r\n";
-        request << "Host: " << host_ << ":" << port_ << "\r\n";
-        request << "Content-Length: " << data.length() << "\r\n";
-        request << "Content-Type: text/plain\r\n";
-        request << "Connection: Keep-Alive\r\n";
-        request << "\r\n";
-        request << data;
-
-        std::string req_str = request.str();
-        ssize_t total_sent = 0;
-        while (total_sent < req_str.length()) {
-            ssize_t sent = send(sock_, req_str.c_str() + total_sent, req_str.length() - total_sent, MSG_NOSIGNAL);
-            if (sent < 0) {
-                spdlog::error("Error sending data to InfluxDB, reconnecting...");
-                close(sock_);
-                sock_ = -1;
-                // Retry once
-                connect_to_server();
-                if (sock_ >= 0) {
-                    total_sent = 0; // Restart sending
-                    continue;
+                CURLcode res = curl_easy_perform(curl);
+                if (res != CURLE_OK) {
+                    spdlog::error("InfluxDB connection failed: {}", curl_easy_strerror(res));
                 } else {
-                    return; // Give up
+                    long response_code;
+                    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
+                    if (response_code != 204) {
+                        spdlog::warn("InfluxDB returned error code: {}", response_code);
+                    }
                 }
             }
-            total_sent += sent;
         }
-        
-        char resp_buffer[4096];
-        ssize_t valread = read(sock_, resp_buffer, sizeof(resp_buffer) - 1);
-        if (valread <= 0) {
-             close(sock_);
-             sock_ = -1;
-        } else {
-             resp_buffer[valread] = '\0';
-             std::string resp(resp_buffer);
-             if (resp.find("204 No Content") == std::string::npos) {
-                 spdlog::warn("InfluxDB returned unexpected response: {}", resp.substr(0, std::min(resp.length(), (size_t)100)));
-             }
-        }
+        curl_easy_cleanup(curl);
     }
+
+    static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+        return size * nmemb;
+    }
+
+    // send_request is no longer needed as logic is moved to worker_loop
+
 };
 
 /**
