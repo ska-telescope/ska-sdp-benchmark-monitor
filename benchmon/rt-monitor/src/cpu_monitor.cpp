@@ -7,6 +7,9 @@
 #include <thread>
 #include <fcntl.h>
 #include <unistd.h>
+#include <charconv>
+#include <cstring>
+#include <cctype>
 
 namespace rt_monitor
 {
@@ -166,30 +169,58 @@ void read_cpu_samples(int fd, std::unordered_map<uint32_t, data_sample> &cpu_sam
     if (bytes_read <= 0) return;
     buffer[bytes_read] = '\0';
 
-    std::string content(buffer);
-    std::istringstream iss(content);
-    std::string line;
+    const char* ptr = buffer;
+    const char* end = buffer + bytes_read;
 
-    while (std::getline(iss, line))
+    while (ptr < end)
     {
-        if (!line.starts_with("cpu"))
-            break;
+        const char* eol = static_cast<const char*>(std::memchr(ptr, '\n', end - ptr));
+        const char* line_end = eol ? eol : end;
 
-        char cpuid_str[32];
-        uint64_t user_value, nice_value, system_value, idle_value, iowait_value, irq_value, softirq_value, steal_value, guest_value, guestnice_value;
-        
-        int ret = sscanf(line.c_str(), "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", 
-            cpuid_str, &user_value, &nice_value, &system_value, &idle_value, &iowait_value, &irq_value, &softirq_value, &steal_value, &guest_value, &guestnice_value);
+        // Check if line starts with "cpu"
+        if (line_end - ptr >= 3 && std::strncmp(ptr, "cpu", 3) == 0)
+        {
+            const char* curr = ptr + 3;
+            uint32_t cpuid = std::numeric_limits<uint32_t>::max();
 
-        if (ret < 11)
-            continue;
+            if (curr < line_end && std::isdigit(*curr))
+            {
+                 auto res = std::from_chars(curr, line_end, cpuid);
+                 if (res.ec == std::errc()) curr = res.ptr;
+            }
 
-        std::string cpuid_value(cpuid_str);
-        const auto cpuid = io::cpuid_str_to_uint(cpuid_value);
+            uint64_t v[10] = {0};
+            int count = 0;
 
-        data_sample sample{now,          cpuid,     user_value,    nice_value,  system_value, idle_value,
-                           iowait_value, irq_value, softirq_value, steal_value, guest_value,  guestnice_value};
-        cpu_samples_map[cpuid] = sample;
+            while (curr < line_end && count < 10)
+            {
+                 while (curr < line_end && std::isspace(*curr)) curr++;
+                 if (curr >= line_end) break;
+                 
+                 auto res = std::from_chars(curr, line_end, v[count]);
+                 if (res.ec == std::errc()) 
+                 {
+                     count++;
+                     curr = res.ptr;
+                 }
+                 else
+                 {
+                     break; 
+                 }
+            }
+
+            if (count >= 10)
+            {
+                data_sample sample{now, cpuid, v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]};
+                cpu_samples_map[cpuid] = sample;
+            }
+        }
+        else if (ptr != buffer) 
+        {
+             break;
+        }
+
+        ptr = eol ? eol + 1 : end;
     }
 }
 

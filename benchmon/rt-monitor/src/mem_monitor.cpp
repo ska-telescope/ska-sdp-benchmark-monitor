@@ -9,6 +9,9 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <charconv>
+#include <cstring>
+#include <cctype>
 
 namespace rt_monitor::mem
 {
@@ -84,38 +87,51 @@ data_sample read_mem_sample(int fd)
     spdlog::trace("reading a memory monitoring sample");
     const auto now = std::chrono::system_clock::now();
 
-    if (lseek(fd, 0, SEEK_SET) == -1) return {};
-
     char buffer[8192]; // 8KB should be enough for /proc/meminfo
-    ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    ssize_t bytes_read = pread(fd, buffer, sizeof(buffer) - 1, 0);
     if (bytes_read <= 0) return {};
     buffer[bytes_read] = '\0';
 
     data_sample sample;
     sample.timestamp = now;
 
-    std::string content(buffer);
-    std::istringstream iss(content);
-    std::string line;
-
+    const char* ptr = buffer;
+    const char* end = buffer + bytes_read;
     int i = 0;
-    while (std::getline(iss, line) && i < 55)
+
+    while (ptr < end && i < 55)
     {
+        const char* eol = static_cast<const char*>(std::memchr(ptr, '\n', end - ptr));
+        const char* line_end = eol ? eol : end;
+
         if (enabled[i])
         {
-            const auto value_start = line.find_first_of("0123456789");
-            const auto value_end = line.find_last_of("0123456789") + 1;
-            uint64_t value = 0;
-            if (value_start != std::string::npos && value_end != std::string::npos)
+            // Format: "MemTotal:       32847252 kB"
+            // Find colon
+            const char* colon = static_cast<const char*>(std::memchr(ptr, ':', line_end - ptr));
+            if (colon)
             {
-                try {
-                    value = std::stoull(line.substr(value_start, value_end - value_start));
-                } catch (...) {
-                    value = 0;
+                const char* curr = colon + 1;
+                // Skip spaces
+                while (curr < line_end && std::isspace(*curr)) curr++;
+                
+                if (curr < line_end && std::isdigit(*curr))
+                {
+                    uint64_t value = 0;
+                    auto res = std::from_chars(curr, line_end, value);
+                    if (res.ec == std::errc())
+                    {
+                         sample.values_map[std::string(field_names[i])] = value;
+                    } 
+                    else 
+                    {
+                         sample.values_map[std::string(field_names[i])] = 0;
+                    }
                 }
             }
-            sample.values_map[std::string(field_names[i])] = value;
         }
+        
+        ptr = eol ? eol + 1 : end;
         ++i;
     }
     return sample;

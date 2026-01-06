@@ -59,8 +59,7 @@ namespace rt_monitor::ib
 
     uint64_t read_value(int fd) {
         char buffer[32];
-        if (lseek(fd, 0, SEEK_SET) == -1) return 0;
-        ssize_t bytes = read(fd, buffer, sizeof(buffer) - 1);
+        ssize_t bytes = pread(fd, buffer, sizeof(buffer) - 1, 0);
         if (bytes > 0) {
             buffer[bytes] = '\0';
             uint64_t val = 0;

@@ -9,6 +9,9 @@
 #include <thread>
 #include <fcntl.h>
 #include <unistd.h>
+#include <charconv>
+#include <cstring>
+#include <cctype>
 #include <vector>
 #include <cstring>
 
@@ -78,73 +81,85 @@ data_sample read_cumulated_sample(int fd)
     const auto now = std::chrono::system_clock::now();
     sample.timestamp = now;
 
-    if (lseek(fd, 0, SEEK_SET) == -1) return sample;
-
     char buffer[16384]; // 16KB should be enough for /proc/net/dev
-    ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    ssize_t bytes_read = pread(fd, buffer, sizeof(buffer) - 1, 0);
     if (bytes_read <= 0) return sample;
     buffer[bytes_read] = '\0';
 
-    std::string content(buffer);
-    std::istringstream iss(content);
-    std::string line;
+    const char* ptr = buffer;
+    const char* end = buffer + bytes_read;
     int line_number = 0;
 
-    while (std::getline(iss, line))
+    while (ptr < end)
     {
-        ++line_number;
+        const char* eol = static_cast<const char*>(std::memchr(ptr, '\n', end - ptr));
+        const char* line_end = eol ? eol : end;
+        
+        line_number++;
         if (line_number <= 2)
         {
+            ptr = eol ? eol + 1 : end;
             continue; // Skip headers
         }
 
-        std::istringstream line_stream(line);
-        std::string iface_token;
-        if (!(line_stream >> iface_token))
-            continue;
+        const char* curr = ptr;
+        while (curr < line_end && std::isspace(*curr)) curr++;
+        if (curr >= line_end) { ptr = eol ? eol + 1 : end; continue; }
 
-        // Remove trailing ':' from interface name
-        if (iface_token.back() == ':')
-            iface_token.pop_back();
+        const char* name_start = curr;
+        const char* colon = static_cast<const char*>(std::memchr(curr, ':', line_end - curr));
+        
+        if (!colon) { ptr = eol ? eol + 1 : end; continue; }
+        
+        std::string iface(name_start, colon - name_start);
+        
+        curr = colon + 1;
+        while (curr < line_end && std::isspace(*curr)) curr++;
 
-        // Read receive bytes (first value after interface name)
-        std::string value_token;
-        if (!(line_stream >> value_token))
-            continue;
-
-        long long int received = 0;
-        try
+        uint64_t received = 0;
+        auto res1 = std::from_chars(curr, line_end, received);
+        if (res1.ec != std::errc())
         {
-            received = std::stoll(value_token);
-        }
-        catch (const std::exception &)
-        {
-            spdlog::error("Failed to parse received bytes for interface {}", iface_token);
+            spdlog::error("Failed to parse received bytes for interface {}", iface);
+            ptr = eol ? eol + 1 : end;
             continue;
         }
+        curr = res1.ptr;
 
-        // Skip next 7 tokens to get to the transmit bytes (9th column)
+        // Skip next 7 tokens
+        bool skip_ok = true;
         for (int i = 0; i < 7; ++i)
         {
-            if (!(line_stream >> value_token))
-                break;
+            while (curr < line_end && std::isspace(*curr)) curr++;
+            if (curr >= line_end) { skip_ok = false; break; }
+            
+            uint64_t dummy;
+            auto res = std::from_chars(curr, line_end, dummy);
+            if (res.ec == std::errc()) curr = res.ptr;
+            else { skip_ok = false; break; }
         }
 
-        long long int transferred = 0;
-        if (line_stream >> value_token)
+        if (!skip_ok) {
+             ptr = eol ? eol + 1 : end;
+             continue;
+        }
+
+        uint64_t transferred = 0;
+        while (curr < line_end && std::isspace(*curr)) curr++;
+        if (curr < line_end)
         {
-            try
-            {
-                transferred = std::stoll(value_token);
-            }
-            catch (const std::exception &)
-            {
-                spdlog::error("Failed to parse transferred bytes for interface {}", iface_token);
+             auto res2 = std::from_chars(curr, line_end, transferred);
+             if (res2.ec != std::errc())
+             {
+                spdlog::error("Failed to parse transferred bytes for interface {}", iface);
+                ptr = eol ? eol + 1 : end;
                 continue;
-            }
+             }
         }
 
-        sample.interfaces.push_back({iface_token, transferred, received});
+        sample.interfaces.push_back({iface, static_cast<long long>(transferred), static_cast<long long>(received)});
+
+        ptr = eol ? eol + 1 : end;
     }
 
     return sample;

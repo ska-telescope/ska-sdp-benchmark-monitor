@@ -2,6 +2,9 @@
 #include <thread>
 #include <fcntl.h>
 #include <unistd.h>
+#include <charconv>
+#include <cstring>
+#include <cctype>
 #include <cstring>
 
 #include "db_stream.hpp"
@@ -278,47 +281,96 @@ void read_disk_samples(int fd, const std::unordered_map<std::string, size_t> &na
     if (lseek(fd, 0, SEEK_SET) == -1) return;
 
     char buffer[65536]; // 64KB
-    ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    ssize_t bytes_read = pread(fd, buffer, sizeof(buffer) - 1, 0);
     if (bytes_read <= 0) return;
     buffer[bytes_read] = '\0';
 
-    std::string content(buffer);
-    std::istringstream iss(content);
-    std::string line;
+    const char* ptr = buffer;
+    const char* end = buffer + bytes_read;
 
-    while (std::getline(iss, line))
+    while (ptr < end)
     {
-        uint32_t major, minor;
-        char device_buf[256];
-        uint64_t rd_completed, rd_merged, sectors_read, time_read, wr_completed, wr_merged,
-              sectors_written, time_write, io_in_progress, time_io, time_weighted_io, disc_completed, disc_merged,
-              sectors_discarded, time_discard, flush_requests, time_flush;
+        const char* eol = static_cast<const char*>(std::memchr(ptr, '\n', end - ptr));
+        const char* line_end = eol ? eol : end;
+        
+        const char* curr = ptr;
+        
+        // Skip leading spaces
+        while (curr < line_end && std::isspace(*curr)) curr++;
+        if (curr >= line_end) { ptr = eol ? eol + 1 : end; continue; }
 
-        // Initialize optional fields to 0 just in case
-        disc_completed = disc_merged = sectors_discarded = time_discard = flush_requests = time_flush = 0;
-
-        int ret = sscanf(line.c_str(), "%u %u %s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",
-            &major, &minor, device_buf, &rd_completed, &rd_merged, &sectors_read, &time_read, &wr_completed, &wr_merged,
-            &sectors_written, &time_write, &io_in_progress, &time_io, &time_weighted_io, &disc_completed, &disc_merged,
-            &sectors_discarded, &time_discard, &flush_requests, &time_flush);
-
-        if (ret < 3) continue; // Failed to parse device name
-
-        std::string device(device_buf);
+        uint32_t major = 0, minor = 0;
+        
+        // 1. Major
+        auto res1 = std::from_chars(curr, line_end, major);
+        if (res1.ec != std::errc()) { ptr = eol ? eol + 1 : end; continue; }
+        curr = res1.ptr;
+        while (curr < line_end && std::isspace(*curr)) curr++;
+        
+        // 2. Minor
+        auto res2 = std::from_chars(curr, line_end, minor);
+        if (res2.ec != std::errc()) { ptr = eol ? eol + 1 : end; continue; }
+        curr = res2.ptr;
+        while (curr < line_end && std::isspace(*curr)) curr++;
+        
+        // 3. Device Name
+        const char* name_start = curr;
+        while (curr < line_end && !std::isspace(*curr)) curr++;
+        std::string device(name_start, curr - name_start);
 
         if (device.starts_with("loop") || device.starts_with("dm"))
         {
+            ptr = eol ? eol + 1 : end;
             continue;
         }
 
         const auto index_it = name_to_index.find(device);
         const uint32_t index =
             (index_it != name_to_index.cend()) ? index_it->second : std::numeric_limits<uint32_t>::max();
-        if (index == -1)
+        if (index == std::numeric_limits<uint32_t>::max()) // Fixed comparison to match type
         {
             spdlog::error("disk sample partition name not indexed {}", device);
+            ptr = eol ? eol + 1 : end;
             continue;
         }
+
+        // 4. Parse metrics
+        uint64_t v[17] = {0}; // rd_compl, rd_merged, s_read, t_read, wr_compl, wr_merged, s_written, t_write, io_prog, t_io, t_weighted, disc_compl, disc_merged, s_disc, t_disc, flush, t_flush
+        int count = 0;
+        
+        while (curr < line_end && count < 17) {
+             while (curr < line_end && std::isspace(*curr)) curr++;
+             if (curr >= line_end) break;
+             auto res = std::from_chars(curr, line_end, v[count]);
+             if (res.ec == std::errc()) {
+                 curr = res.ptr;
+                 count++;
+             } else {
+                 break;
+             }
+        }
+        
+        // Assign values
+        uint64_t rd_completed = v[0];
+        uint64_t rd_merged = v[1];
+        uint64_t sectors_read = v[2];
+        uint64_t time_read = v[3];
+        uint64_t wr_completed = v[4];
+        uint64_t wr_merged = v[5];
+        uint64_t sectors_written = v[6];
+        uint64_t time_write = v[7];
+        uint64_t io_in_progress = v[8];
+        uint64_t time_io = v[9];
+        uint64_t time_weighted_io = v[10];
+        uint64_t disc_completed = v[11];
+        uint64_t disc_merged = v[12];
+        uint64_t sectors_discarded = v[13];
+        uint64_t time_discard = v[14];
+        uint64_t flush_requests = v[15];
+        uint64_t time_flush = v[16];
+
+        // Continue with existing logic...
+
 
         data_sample sample{now,
                            major,
@@ -350,8 +402,11 @@ void read_disk_samples(int fd, const std::unordered_map<std::string, size_t> &na
                       minor, device, rd_completed, rd_merged, sectors_read, time_read, wr_completed, wr_merged,
                       sectors_written, time_write, io_in_progress, time_io, time_weighted_io, disc_completed,
                       disc_merged, sectors_discarded, time_discard, flush_requests, time_flush);
+
+        ptr = eol ? eol + 1 : end;
     }
 }
+
 
 void disk_producer(double time_interval, 
                    const std::unordered_map<std::string, size_t>& name_to_index,
