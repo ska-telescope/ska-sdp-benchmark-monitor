@@ -185,11 +185,11 @@ class db_stream
     size_t current_batch_count_ = 0;
 
     void parse_url(const std::string& url, std::string& host, int& port, std::string& db_name) {
-        size_t protocol_pos = url.find("://");
-        std::string rest = (protocol_pos == std::string::npos) ? url : url.substr(protocol_pos + 3);
+        const size_t protocol_pos = url.find("://");
+        const std::string rest = (protocol_pos == std::string::npos) ? url : url.substr(protocol_pos + 3);
         
-        size_t port_pos = rest.find(":");
-        size_t query_pos = rest.find("?");
+        const size_t port_pos = rest.find(":");
+        const size_t query_pos = rest.find("?");
         
         if (port_pos != std::string::npos) {
             host = rest.substr(0, port_pos);
