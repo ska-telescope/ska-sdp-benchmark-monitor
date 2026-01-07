@@ -34,10 +34,8 @@ set(source_files
 
 add_executable(rt-monitor ${header_files} ${source_files})
 target_include_directories(rt-monitor PUBLIC inc)
-# target_link_libraries(rt-monitor PRIVATE scn::scn)
 target_link_libraries(rt-monitor PRIVATE spdlog::spdlog)
 target_link_libraries(rt-monitor PRIVATE CURL::libcurl)
-# target_link_libraries(rt-monitor PRIVATE InfluxData::InfluxDB)
 if(ICU_FOUND)
   target_link_libraries(rt-monitor PRIVATE ICU::uc ICU::data ICU::i18n)
 endif()
