@@ -170,7 +170,6 @@ int get_batch_size(const std::string& metric, int base_batch_size) {
     // Low cardinality metrics (per system or per few devices)
     // We scale down the batch size for these metrics so they flush at a reasonable frequency
     // relative to the high-cardinality metrics.
-    // Assuming ~100 cores, a factor of 100 keeps the flush interval roughly similar in time.
     
     if (metric == "mem" || metric == "disk" || metric == "ib") {
         int size = base_batch_size / 100;

@@ -55,16 +55,3 @@ else()
     GIT_TAG 486b55554f11c9cccc913e11a87085b2a91f706f)
   FetchContent_MakeAvailable(spdlog)
 endif()
-
-# scn removed
-
-# Try to find system scn first
-# find_package(scn QUIET)
-# if(scn_FOUND)
-#   message(STATUS "Found system scn")
-# else()
-#   message(STATUS "System scn not found, downloading...")
-#   FetchContent_MakeAvailable(scn)
-# endif()
-
-# influxdb-cxx removed

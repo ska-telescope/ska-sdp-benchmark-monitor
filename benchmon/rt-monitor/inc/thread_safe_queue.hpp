@@ -47,11 +47,6 @@ public:
         {
             return false;
         }
-
-        if (queue_.empty() && stop_)
-        {
-            return false;
-        }
         
         if (queue_.empty())
         {

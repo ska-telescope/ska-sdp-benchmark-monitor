@@ -111,9 +111,6 @@ private:
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
         return size * nmemb;
     }
-
-    // send_request is no longer needed as logic is moved to worker_loop
-
 };
 
 /**
@@ -143,23 +140,8 @@ class db_stream
     db_stream(const db_stream &) = delete;
     db_stream &operator=(const db_stream &) = delete;
     
-    db_stream(db_stream &&other) noexcept
-        : writer_(std::move(other.writer_)), buffer_(std::move(other.buffer_)), 
-          batch_size_(other.batch_size_), current_batch_count_(other.current_batch_count_)
-    {
-    }
-
-    db_stream &operator=(db_stream &&other) noexcept
-    {
-        if (this != &other)
-        {
-            writer_ = std::move(other.writer_);
-            buffer_ = std::move(other.buffer_);
-            batch_size_ = other.batch_size_;
-            current_batch_count_ = other.current_batch_count_;
-        }
-        return *this;
-    }
+    db_stream(db_stream &&) = default;
+    db_stream &operator=(db_stream &&) = default;
 
     void set_buffer_size(const size_t size)
     {
