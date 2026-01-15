@@ -45,6 +45,8 @@ Persist them in your shell profile if desired.
 
 ## Start Grafana and InfluxDB
 
+> **Note:** If you installed the monitoring stack to a custom directory (using `--install-dir`), you need to define the `BENCHMON_GRAFANA_PATH` and `BENCHMON_INFLUXDB_PATH` environment variables pointing to the respective installation directories. You may also need to explicitly provide the `--dashboard-dir` argument if the automatic detection fails.
+
 ```bash
 $ benchmon-start-grafana \
   --save-dir /tmp/benchmon-demo \
@@ -88,6 +90,47 @@ benchmon-run --system --grafana \
 ```
 
 Metrics appear in InfluxDB immediately and dashboards refresh in real time.
+
+## End-to-End Example: Monitoring a Compute Workload
+
+This walkthrough demonstrates the full lifecycle of monitoring a computationally intensive task.
+
+**1. Prepare the Environment**
+
+First, ensure the monitoring stack is running.
+
+```bash
+# Start InfluxDB and Grafana in the background
+benchmon-start-grafana --save-dir /tmp/benchmon-demo
+```
+
+**2. Generate Load & Monitor**
+
+We will use `benchmon-run` to wrap a workload. In this example, we'll simulate a CPU-intensive task using `stress-ng` (or a simple shell loop if `stress-ng` isn't available). We enabled both system monitoring (`--system`) and Grafana streaming (`--grafana`).
+
+```bash
+# Example: Monitor a 60-second CPU load
+benchmon-run --system --grafana \
+             --save-dir /tmp/benchmon-demo/run-stress-test \
+             --stress-ng --cpu 4 --timeout 60s
+# Note: If you don't have stress-ng, any command works:
+# benchmon-run --system --grafana --save-dir ... -- sleep 60
+```
+
+**3. Visualise in Real-time**
+
+While the command above is running:
+1.  Open your browser to `http://<hostname>:3000`.
+2.  Navigate to **Dashboards** > **System Monitoring**.
+3.  You will see the **CPU Usage** graph spike corresponding to the load generated in step 2. High-frequency metrics like CPU frequency will also reflect the processor's boost behavior.
+
+**4. Cleanup**
+
+Once the run is complete, stop the background services to free up resources.
+
+```bash
+benchmon-stop-grafana --save-dir /tmp/benchmon-demo
+```
 
 ## Stop the Stack
 
