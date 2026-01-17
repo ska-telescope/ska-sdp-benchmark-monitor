@@ -25,20 +25,36 @@ benchmon-run ──▶ InfluxDB 3 ──▶ Grafana ──▶ Dashboards
 
 ## Install the Monitoring Stack
 
+After cloning the repository, **you must run the installer from inside the cloned repository** so it can locate the packaged dashboards via a relative path. A safe sequence is:
+
 ```bash
-$ benchmon-install-grafana --install-dir ~/benchmon-stack
+$ git clone <repo-url>
+$ cd ska-sdp-benchmark-monitor
+$ ./exec/benchmon-install-grafana            # run from repository root
 ```
 
-Resulting layout:
+Installation directory selection (what the script actually does):
 
-- `~/benchmon-stack/grafana` – Grafana binaries, dashboards, `conf/custom.ini`.
-- `~/benchmon-stack/influxdb3` – InfluxDB3 binaries, `admin_token.json`, data directory.
+- No argument provided → defaults to `${HOME}/benchmon-stack`.
+- Provide a path argument without a flag → uses that path, e.g. `./exec/benchmon-install-grafana /opt/benchmon-stack`.
+- Provide `--install-dir <path>` → uses the supplied path, e.g. `./exec/benchmon-install-grafana --install-dir ~/bm-stack`.
+- Any other `-`-prefixed option is rejected with an error.
 
-Optional environment helpers:
+Resulting layout when no `--install-dir` is given (default `${HOME}/benchmon-stack`):
+
+- `${HOME}/benchmon-stack/grafana` – Grafana binaries, dashboards copied from `grafana/dashboards`, `conf/custom.ini`, plus created `data/` and `logs/` folders.
+- `${HOME}/benchmon-stack/influxdb3` – InfluxDB3 binaries (ports configured at runtime by `benchmon-start-grafana`).
+
+Resulting layout when `--install-dir /custom/path` (or positional `/custom/path`) is given:
+
+- `/custom/path/grafana` – Same content as above, but rooted in your chosen directory.
+- `/custom/path/influxdb3` – Same content as above.
+
+Optional environment helpers (set if you pick a custom install dir and want to avoid retyping paths):
 
 ```bash
-export BENCHMON_GRAFANA_PATH=~/benchmon-stack/grafana
-export BENCHMON_INFLUXDB_PATH=~/benchmon-stack/influxdb3
+export BENCHMON_GRAFANA_PATH=/custom/path/grafana
+export BENCHMON_INFLUXDB_PATH=/custom/path/influxdb3
 ```
 
 Persist them in your shell profile if desired.
