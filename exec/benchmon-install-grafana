@@ -70,20 +70,6 @@ fi
 
 mkdir -p "${INSTALL_DIR}/grafana/data" "${INSTALL_DIR}/grafana/logs"
 
-# Locate source directory to copy dashboards
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-# Assuming the script is in exec/, and grafana/ is a sibling of exec/ in the source tree
-SOURCE_ROOT="$(dirname "$SCRIPT_DIR")"
-DASHBOARDS_SRC="$SOURCE_ROOT/grafana/dashboards"
-
-if [ -d "$DASHBOARDS_SRC" ]; then
-    echo "Copying dashboards from $DASHBOARDS_SRC..."
-    mkdir -p "${INSTALL_DIR}/grafana/dashboards"
-    cp -r "$DASHBOARDS_SRC"/* "${INSTALL_DIR}/grafana/dashboards/"
-else
-    echo "Warning: Could not find dashboards at $DASHBOARDS_SRC. Skipping copy."
-fi
-
 # Configure Grafana (Enable Anonymous Access)
 echo "Configuring Grafana custom.ini..."
 cat <<EOF > "${INSTALL_DIR}/grafana/conf/custom.ini"
