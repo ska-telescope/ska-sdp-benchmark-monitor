@@ -30,14 +30,17 @@ After cloning the repository, **you must run the installer from inside the clone
 ```bash
 $ git clone <repo-url>
 $ cd ska-sdp-benchmark-monitor
-$ ./exec/benchmon-install-grafana            # run from repository root
+$ python -m venv .venv
+$ source .venv/bin/activate
+$ pip install .
+$ benchmon-install-grafana            # run from repository root
 ```
 
 Installation directory selection (what the script actually does):
 
 - No argument provided → defaults to `${HOME}/benchmon-stack`.
-- Provide a path argument without a flag → uses that path, e.g. `./exec/benchmon-install-grafana /opt/benchmon-stack`.
-- Provide `--install-dir <path>` → uses the supplied path, e.g. `./exec/benchmon-install-grafana --install-dir ~/bm-stack`.
+- Provide a path argument without a flag → uses that path, e.g. `benchmon-install-grafana /opt/benchmon-stack`.
+- Provide `--install-dir <path>` → uses the supplied path, e.g. `benchmon-install-grafana --install-dir ~/bm-stack`.
 - Any other `-`-prefixed option is rejected with an error.
 
 Resulting layout when no `--install-dir` is given (default `${HOME}/benchmon-stack`):

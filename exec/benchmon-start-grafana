@@ -276,6 +276,7 @@ def main():
         )
     pids["influxdb"] = influx_process.pid
     logger.info(f"InfluxDB started with PID: {influx_process.pid}. Log: {influx_log_file}")
+    logger.info(f"InfluxDB data directory: {influxdb_data_dir} Database: metrics")
 
     # 5. Start Grafana
     grafana_port = pick_available_port(args.grafana_port, "Grafana")
