@@ -1,10 +1,17 @@
 #!/usr/bin/bash
 args=""
 backend="mpi"
+hosts=""
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         "-b" | "--backend")
             backend=$2
+            shift 2
+            ;;
+        "-H" | "--hosts")
+            # Take a space-separated or comma-separated list of hosts
+            hosts=$2
             shift 2
             ;;
          *)
@@ -14,18 +21,21 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Get hosts
-if command -v scontrol &> /dev/null; then
-    hosts=$(scontrol show hostname)
-elif command -v oarprint &> /dev/null; then
-    hosts=$(oarprint host | awk -F "." '{print $1}')
-else
-    echo "netheir scontrol nor oarprint found"
-    exit 1
+# Get hosts automatically ONLY if they weren't provided as a parameter
+if [[ -z "$hosts" ]]; then
+    if command -v scontrol &> /dev/null; then
+        hosts=$(scontrol show hostname)
+    elif command -v oarprint &> /dev/null; then
+        hosts=$(oarprint host | awk -F "." '{print $1}')
+    else
+        echo "Error: No hosts provided and neither scontrol nor oarprint found"
+        exit 1
+    fi
 fi
 
 # Stop benchmon on hosts
 if [[ $backend == "mpi" ]]; then
+    # Ensure hosts are comma-separated for mpirun
     mpi_hosts=$(echo $hosts | tr -s " " ",")
     mpirun -host $mpi_hosts -x PATH $(dirname $0)/benchmon-stop $args
 elif [[ $backend == "ssh" ]]; then
