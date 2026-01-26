@@ -71,11 +71,14 @@ graph TD
 
 ### Collecting Data
 
-To start collecting data and streaming to InfluxDB:
+**benchmon-start-grafana** is use to start collecting data and streaming to InfluxDB. The default value of --save-dir is **~\bench
 
 ```bash
-# 1. Start the stack (InfluxDB + Grafana)
+# 1. Start the stack (InfluxDB + Grafana) with a specified directory
 benchmon-start-grafana --save-dir /tmp/demo
+
+# or use default data storage directory (./benchmon_traces_)
+benchmon-start-grafana
 
 # 2. Run Benchmon (Stream to InfluxDB)
 benchmon-run --system --grafana --save-dir /tmp/demo/run1

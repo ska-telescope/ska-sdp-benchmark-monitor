@@ -116,29 +116,39 @@ This walkthrough demonstrates the full lifecycle of monitoring a computationally
 
 **1. Prepare the Environment**
 
-First, ensure the monitoring stack is running.
+First, ensure the monitoring stack is running. 
 
 ```bash
 # Start InfluxDB and Grafana in the background
-benchmon-start-grafana --save-dir /tmp/benchmon-demo
+benchmon-start-grafana --save-dir /tmp/benchmon-demo 
+
+# or using default directory
+benchmon-start-grafana
 ```
 
 **2. Generate Load & Monitor**
 
-We will use `benchmon-run` to wrap a workload. In this example, we'll simulate a CPU-intensive task using `stress-ng` (or a simple shell loop if `stress-ng` isn't available). We enabled both system monitoring (`--system`) and Grafana streaming (`--grafana`).
+We will use `benchmon-run` to start benchmarking monitoring. In this example, we'll simulate a CPU-intensive task using `stress-ng` (or a simple shell loop if `stress-ng` isn't available). We enabled both system monitoring (`--system`) and Grafana streaming (`--grafana`).
 
 ```bash
 # Example: Monitor a 60-second CPU load
 benchmon-run --system --grafana \
-             --save-dir /tmp/benchmon-demo/run-stress-test \
-             --stress-ng --cpu 4 --timeout 60s
-# Note: If you don't have stress-ng, any command works:
-# benchmon-run --system --grafana --save-dir ... -- sleep 60
+             --save-dir /tmp/benchmon-demo/run-stress-test
 ```
 
+Open a new terminal, run stree-ng
+```bash
+stress-ng --cpu 4 --timeout 60s
+# Note: If you don't have stress-ng, any command works:
+# sleep 60
+```
 **3. Visualise in Real-time**
 
 While the command above is running:
+
+The user opens the browser on the node where benchmon-run is running
+the user is accessing a server via ssh and then opening his browser on his own machine and an additional connection is need via ssh -L
+
 1.  Open your browser to `http://<hostname>:3000`.
 2.  Navigate to **Dashboards** > **System Monitoring**.
 3.  You will see the **CPU Usage** graph spike corresponding to the load generated in step 2. High-frequency metrics like CPU frequency will also reflect the processor's boost behavior.
@@ -162,6 +172,41 @@ $ pkill -F /tmp/benchmon-demo/grafana-data/pids.json
 ```
 
 Logs remain under `/tmp/benchmon-demo/grafana-data/logs/`.
+
+
+## Run Influxdb and Grafana Remotely (AWS)
+
+#### Login into HEADNODE
+```bash
+srun -N 1 -n 1 -c 16 -p c7i-metal-24xl-noht-ond --pty bash
+
+# Please record the IP address of the node
+ifconfig 
+
+# Change to venv
+source <path/to/venv/bin/activate>
+
+cd ska-sdp-benchmark-monitor/
+pip uninstall ska-sdp-benchmark-monitor
+pip install .
+
+# Install Grafana and InfluxBD3 with deault value
+benchmon-install-grafana
+
+# Start InfluxDB and Grafana
+benchmon-start-grafana
+
+# Run Benchmark Monitoring (C++ version)
+rt-monitor --sampling-frequency 5 --batch-size 10000  --cpu --grafana http://localhost:8181?db=metrics --log-level debug
+
+
+# On the local notepad computer), forward SSH port
+# Note: 10.192.34.110 is an example IP addrss retrived by `ifconfig` cmd
+ssh -L 3000:10.192.34.110:3000 dp-hpc-headnode -N 
+
+```
+
+Open browser and visit: http://localhost:3000
 
 ## Command Line Options
 
