@@ -1,11 +1,22 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <unistd.h>
 
 #include "monitor_io.h"
 
 namespace rt_monitor::io
 {
+std::string get_hostname()
+{
+    char hostname[1024];
+    if (gethostname(hostname, sizeof(hostname)) == 0)
+    {
+        return std::string(hostname);
+    }
+    return "unknown";
+}
+
 template <> void write_binary(std::ostream &stream, std::string arr)
 {
     stream << arr;

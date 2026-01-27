@@ -1,12 +1,15 @@
-#include <InfluxDBFactory.h>
-#include <scn/scan.h>
-
-#include "Point.h"
 #include "cpu_monitor.h"
 #include "db_stream.hpp"
 #include "file_stream.hpp"
 #include "monitor_io.h"
 #include "pause_manager.h"
+#include "thread_safe_queue.hpp"
+#include <thread>
+#include <fcntl.h>
+#include <unistd.h>
+#include <charconv>
+#include <cstring>
+#include <cctype>
 
 namespace rt_monitor
 {
@@ -52,50 +55,79 @@ struct data_sample
 };
 } // namespace cpu
 
-template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample sample_diff)
+template <> db_stream &db_stream::operator<< <cpu::data_sample>(cpu::data_sample sample)
 {
-    const float user_value = sample_diff.user_value;
-    const float nice_value = sample_diff.nice_value;
-    const float system_value = sample_diff.system_value;
-    const float idle_value = sample_diff.idle_value;
-    const float iowait_value = sample_diff.iowait_value;
-    const float irq_value = sample_diff.irq_value;
-    const float softirq_value = sample_diff.softirq_value;
-    const float steal_value = sample_diff.steal_value;
-    const float guest_value = sample_diff.guest_value;
-    const float guestnice_value = sample_diff.guestnice_value;
+    static const std::string hostname = rt_monitor::io::get_hostname();
 
-    const float stl = steal_value + guest_value + guestnice_value;
-    const float sys = system_value + irq_value + softirq_value;
-    const float usr = user_value + nice_value;
-    const float wai = iowait_value;
-    const float idle = idle_value;
-    float total = stl + sys + usr + wai + idle;
-    total = (total == 0.) ? 1. : total;
-
-    constexpr int ratio_factor = 100000;
-
-    const int stl_ratio = ratio_factor * (stl / total);
-    const int sys_ratio = ratio_factor * (sys / total);
-    const int usr_ratio = ratio_factor * (usr / total);
-    const int wai_ratio = ratio_factor * (wai / total);
-
-    auto point = influxdb::Point{"cpu"}
-                     .addTag("id", std::to_string(sample_diff.cpuid))
-                     .addField("stl", stl_ratio)
-                     .addField("sys", sys_ratio)
-                     .addField("usr", usr_ratio)
-                     .addField("wai", wai_ratio)
-                     .setTimestamp(sample_diff.timestamp);
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (const std::runtime_error &e)
-    {
-        spdlog::error(std::string{"Error while pushing a CPU sample: "} + e.what());
+    std::stringstream ss;
+    if (sample.cpuid == std::numeric_limits<uint32_t>::max()) {
+        ss << "cpu_total";
+    } else {
+        ss << "cpu_core,cpu=cpu" << sample.cpuid;
     }
 
+    ss << ",hostname=" << hostname << " ";
+    ss << "user=" << sample.user_value << "i,"
+       << "nice=" << sample.nice_value << "i,"
+       << "system=" << sample.system_value << "i,"
+       << "idle=" << sample.idle_value << "i,"
+       << "iowait=" << sample.iowait_value << "i,"
+       << "irq=" << sample.irq_value << "i,"
+       << "softirq=" << sample.softirq_value << "i,"
+       << "steal=" << sample.steal_value << "i,"
+       << "guest=" << sample.guest_value << "i,"
+       << "guest_nice=" << sample.guestnice_value << "i";
+    
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+
+    this->write_line(ss.str());
+    
+    spdlog::trace("Buffering CPU sample for core {} to InfluxDB", sample.cpuid);
+
+    return *this;
+}
+
+template <> db_stream &db_stream::operator<< <std::unordered_map<uint32_t, cpu::data_sample>>(std::unordered_map<uint32_t, cpu::data_sample> samples)
+{
+    if (samples.empty()) return *this;
+    static const std::string hostname = rt_monitor::io::get_hostname();
+    
+    // Use the timestamp from the first sample for all samples in this batch
+    auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(samples.begin()->second.timestamp.time_since_epoch()).count();
+    std::string timestamp_str = std::to_string(timestamp_ns);
+
+    for (const auto& [cpuid, sample] : samples) {
+        std::string line;
+        line.reserve(256); // Pre-allocate to avoid reallocations
+
+        if (cpuid == std::numeric_limits<uint32_t>::max()) {
+            line += "cpu_total";
+        } else {
+            line += "cpu_core,cpu=cpu";
+            line += std::to_string(cpuid);
+        }
+
+        line += ",hostname=";
+        line += hostname;
+        line += " ";
+        
+        line += "user="; line += std::to_string(sample.user_value); line += "i,";
+        line += "nice="; line += std::to_string(sample.nice_value); line += "i,";
+        line += "system="; line += std::to_string(sample.system_value); line += "i,";
+        line += "idle="; line += std::to_string(sample.idle_value); line += "i,";
+        line += "iowait="; line += std::to_string(sample.iowait_value); line += "i,";
+        line += "irq="; line += std::to_string(sample.irq_value); line += "i,";
+        line += "softirq="; line += std::to_string(sample.softirq_value); line += "i,";
+        line += "steal="; line += std::to_string(sample.steal_value); line += "i,";
+        line += "guest="; line += std::to_string(sample.guest_value); line += "i,";
+        line += "guest_nice="; line += std::to_string(sample.guestnice_value); line += "i ";
+        
+        line += timestamp_str;
+
+        this->write_line(line);
+    }
+    
+    spdlog::debug("Buffered {} CPU samples for InfluxDB", samples.size());
     return *this;
 }
 
@@ -116,134 +148,157 @@ template <> file_stream &file_stream::operator<< <cpu::data_sample>(cpu::data_sa
     return *this;
 }
 
+template <> file_stream &file_stream::operator<< <std::unordered_map<uint32_t, cpu::data_sample>>(std::unordered_map<uint32_t, cpu::data_sample> samples)
+{
+    for (const auto& [cpuid, sample] : samples) {
+        *this << sample;
+    }
+    return *this;
+}
+
 namespace cpu
 {
-void read_cpu_samples(std::unordered_map<uint32_t, data_sample> &cpu_samples_map)
+void read_cpu_samples(int fd, std::unordered_map<uint32_t, data_sample> &cpu_samples_map)
 {
     spdlog::trace("reading a CPU monitoring sample");
     const auto now = std::chrono::system_clock::now();
-    const auto duration = now.time_since_epoch();
-    const uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    
+    char buffer[65536]; // 64KB should be enough for /proc/stat
+    // Use pread to read from offset 0 without changing the file offset
+    ssize_t bytes_read = pread(fd, buffer, sizeof(buffer) - 1, 0);
+    if (bytes_read <= 0) return;
+    buffer[bytes_read] = '\0';
 
-    std::ifstream file("/proc/stat");
-    std::string line;
-    while (std::getline(file, line))
+    const char* ptr = buffer;
+    const char* end = buffer + bytes_read;
+
+    while (ptr < end)
     {
-        if (!line.starts_with("cpu"))
-            break;
+        const char* eol = static_cast<const char*>(std::memchr(ptr, '\n', end - ptr));
+        const char* line_end = eol ? eol : end;
 
-        const auto result = scn::scan<std::string, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
-                                      uint64_t, uint64_t, uint64_t>(line, "{} {} {} {} {} {} {} {} {} {} {}");
-        if (!result)
-            continue;
-        const auto [cpuid_value, user_value, nice_value, system_value, idle_value, iowait_value, irq_value,
-                    softirq_value, steal_value, guest_value, guestnice_value] = result->values();
-        const auto cpuid = io::cpuid_str_to_uint(cpuid_value);
+        // Check if line starts with "cpu"
+        if (line_end - ptr >= 3 && std::strncmp(ptr, "cpu", 3) == 0)
+        {
+            const char* curr = ptr + 3;
+            uint32_t cpuid = std::numeric_limits<uint32_t>::max();
 
-        data_sample sample{now,          cpuid,     user_value,    nice_value,  system_value, idle_value,
-                           iowait_value, irq_value, softirq_value, steal_value, guest_value,  guestnice_value};
-        cpu_samples_map[cpuid] = sample;
+            if (curr < line_end && std::isdigit(*curr))
+            {
+                 auto res = std::from_chars(curr, line_end, cpuid);
+                 if (res.ec == std::errc()) curr = res.ptr;
+            }
+
+            uint64_t v[10] = {0};
+            int count = 0;
+
+            while (curr < line_end && count < 10)
+            {
+                 while (curr < line_end && std::isspace(*curr)) curr++;
+                 if (curr >= line_end) break;
+                 
+                 auto res = std::from_chars(curr, line_end, v[count]);
+                 if (res.ec == std::errc()) 
+                 {
+                     count++;
+                     curr = res.ptr;
+                 }
+                 else
+                 {
+                     break; 
+                 }
+            }
+
+            if (count >= 10)
+            {
+                data_sample sample{now, cpuid, v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9]};
+                cpu_samples_map[cpuid] = sample;
+            }
+        }
+        else if (ptr != buffer) 
+        {
+             break;
+        }
+
+        ptr = eol ? eol + 1 : end;
     }
+}
+
+void cpu_producer(double time_interval, ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>>& queue)
+{
+    int fd = open("/proc/stat", O_RDONLY);
+    if (fd < 0) {
+        spdlog::error("Failed to open /proc/stat");
+        queue.stop();
+        return;
+    }
+
+    bool sampling_warning_provided = false;
+    while (!pause_manager::stopped())
+    {
+        pause_manager::wait_if_paused();
+
+        const auto begin = std::chrono::high_resolution_clock::now();
+        
+        std::unordered_map<uint32_t, data_sample> samples;
+        read_cpu_samples(fd, samples);
+        spdlog::debug("Collected {} CPU samples", samples.size());
+        queue.push(std::move(samples));
+
+        const auto end = std::chrono::high_resolution_clock::now();
+        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+        auto time_to_wait = time_interval - sampling_time;
+        if (time_to_wait < 0.)
+        {
+            if (!sampling_warning_provided)
+            {
+                spdlog::warn("The sampling period of {} ms might be too low for CPU monitoring. The last sampling time "
+                             "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
+                             static_cast<int>(time_interval), sampling_time);
+                sampling_warning_provided = true;
+            }
+            time_to_wait = 0.;
+        }
+        pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+    }
+    close(fd);
+    queue.stop();
+    spdlog::trace("CPU producer stopped");
 }
 
 template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream);
 
 template <> void start_sampling(const double time_interval, db_stream &&stream)
 {
-    bool sampling_warning_provided = false;
-    std::array<std::unordered_map<uint32_t, data_sample>, 2> samples_sets;
-    size_t last_index = 0;
-    read_cpu_samples(samples_sets[last_index]);
-    std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_interval)));
+    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
+    std::thread producer_thread(cpu_producer, time_interval, std::ref(queue));
 
-    while (!pause_manager::stopped())
+    std::unordered_map<uint32_t, data_sample> current_sample_set;
+    while (queue.pop(current_sample_set))
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("CPU monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
-
-        const auto begin = std::chrono::high_resolution_clock::now();
-
-        auto &last_sample_set = samples_sets[last_index];
-        auto &current_sample_set = samples_sets[1 - last_index];
-
-        read_cpu_samples(current_sample_set);
-
-        for (const auto [index, current_sample] : current_sample_set)
-        {
-            const auto last_sample_it = last_sample_set.find(index);
-            if (last_sample_it != last_sample_set.end())
-            {
-                const auto &last_sample = last_sample_it->second;
-                data_sample sample_diff = current_sample - last_sample;
-                stream << sample_diff;
-            }
-        }
-
-        const auto end = std::chrono::high_resolution_clock::now();
-        last_index = 1 - last_index;
-
-        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        auto time_to_wait = time_interval - sampling_time;
-        if (time_to_wait < 0.)
-        {
-            if (!sampling_warning_provided)
-            {
-                spdlog::warn("The sampling period of {} ms might be too low for CPU monitoring. The last sampling time "
-                             "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
-                             static_cast<int>(time_interval), sampling_time);
-                sampling_warning_provided = true;
-            }
-            time_to_wait = 0.;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        if (pause_manager::stopped()) break;
+        stream << current_sample_set;
     }
+    
+    producer_thread.join();
     spdlog::trace("CPU monitoring stopped");
 }
 
 template <> void start_sampling(const double time_interval, file_stream &&stream)
 {
-    bool sampling_warning_provided = false;
+    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
+    std::thread producer_thread(cpu_producer, time_interval, std::ref(queue));
+
     std::unordered_map<uint32_t, data_sample> samples_set;
-    size_t last_index = 0;
-    read_cpu_samples(samples_set);
-
-    while (!pause_manager::stopped())
+    while (queue.pop(samples_set))
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("CPU monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
-
-        const auto begin = std::chrono::high_resolution_clock::now();
-        read_cpu_samples(samples_set);
+        if (pause_manager::stopped()) break;
         for (const auto [index, current_sample] : samples_set)
         {
             stream << current_sample;
         }
-        const auto end = std::chrono::high_resolution_clock::now();
-
-        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        auto time_to_wait = time_interval - sampling_time;
-        if (time_to_wait < 0.)
-        {
-            if (!sampling_warning_provided)
-            {
-                spdlog::warn("The sampling period of {} ms might be too low for CPU monitoring. The last sampling time "
-                             "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
-                             static_cast<int>(time_interval), sampling_time);
-                sampling_warning_provided = true;
-            }
-            time_to_wait = 0.;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    producer_thread.join();
     spdlog::trace("CPU monitoring stopped");
 }
 } // namespace cpu

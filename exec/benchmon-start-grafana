@@ -194,7 +194,8 @@ def main():
 
     # --- MODIFICATION: Programmatically find default dashboard directory ---
     if args.dashboard_dir is None:
-        fallback_path = Path(__file__).parent.parent / "grafana" / "dashboards"
+        import benchmon.visualization
+        fallback_path = Path(benchmon.visualization.__file__).parent
         if fallback_path.is_dir():
             args.dashboard_dir = fallback_path
             logger.info(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
@@ -275,6 +276,7 @@ def main():
         )
     pids["influxdb"] = influx_process.pid
     logger.info(f"InfluxDB started with PID: {influx_process.pid}. Log: {influx_log_file}")
+    logger.info(f"InfluxDB data directory: {influxdb_data_dir} Database: metrics")
 
     # 5. Start Grafana
     grafana_port = pick_available_port(args.grafana_port, "Grafana")
@@ -316,7 +318,7 @@ def main():
         sys.exit(1)
 
     # Upload dashboards
-    if not setup_grafana_dashboards(args.grafana_port, args.dashboard_dir):
+    if not setup_grafana_dashboards(args.grafana_port, fallback_path):
         logger.error("Failed to upload one or more dashboards to Grafana.")
         sys.exit(1)
 
