@@ -1,103 +1,103 @@
-# Benchmon Data Export to InfluxDB - Detailed Tutorial
+# Benchmon Data Export & Backends Internals
 
 ## Overview
 
-This tutorial provides a comprehensive guide on implementing high-performance data export to InfluxDB in the SKA SDP Benchmark Monitor. We will explore InfluxDB fundamentals, Benchmon's data processing architecture, and specific implementation methods for various system metrics.
+Benchmon provides two distinct back-ends for collecting system metrics, allowing users to trade off between ease of use/portability and raw performance/low overhead. Detailed below are the architectures of these back-ends and how data is exported to InfluxDB.
 
-## InfluxDB Fundamentals
+## 1. Back-end Architectures
 
-### What is InfluxDB?
+### A. Standard Backend (Python/Bash) - *Default*
 
-InfluxDB is an open-source time-series database specifically designed for handling large volumes of timestamped data. It features:
+This is the default mode of operation when running `benchmon-run`. It uses a hybrid approach:
 
-- **Time-series Optimization**: Storage engine designed specifically for timestamped data
-- **High-performance Writes**: Support for massive concurrent write operations
-- **SQL-like Queries**: Uses Flux query language for data retrieval
-- **Automatic Data Compression**: Efficient data storage and retrieval
-- **Tag and Field Separation**: Flexible data model
+*   **CSV Recording**: Legacy Bash scripts (`disk_mon.sh`, `cpu_mon.sh`, etc.) run as subprocesses to collect metrics from `/proc` and system tools, writing directly to CSV files.
+*   **InfluxDB Streaming**: A dedicated **Pure Python** component (`HighPerformanceCollector`) runs within the main process. It uses a multi-threaded Producer-Consumer architecture to read system metrics (directly from `/proc` where possible) and stream them to InfluxDB asynchronously.
 
-### InfluxDB Core Concepts
+**Pros:**
+*   Python-based, no compilation required for the collector.
+*   Robust error handling and logging.
+*   Concurrent non-blocking writes to InfluxDB.
 
-| Concept | Description | Example |
-|---------|-------------|---------|
-| **Database** | Database (v1.x) / Bucket (v2.x) | `benchmon` |
-| **Measurement** | Measurement name, similar to SQL table name | `cpu`, `memory`, `network` |
-| **Tags** | Indexed labels for fast querying | `host=server1`, `core=cpu0` |
-| **Fields** | Actual numeric data | `usage_percent=45.2` |
-| **Timestamp** | Timestamp | `1640995200` |
+**Cons:**
+*   Higher CPU overhead compared to compiled languages.
+*   Limited sampling frequency (typically up to 10-20 Hz before overhead becomes noticeable).
 
-### Line Protocol Format
+**Status of previous "HP Script" implementation:**
+Use of intermediate Bash scripts (`*_hp.sh`) piping data to a Python processor via named pipes (described in earlier tutorials) has been **deprecated and removed**. It has been replaced by the pure Python `HighPerformanceCollector` which offers better stability and maintainability without the complexity of managing external pipes.
 
-InfluxDB uses Line Protocol as the data write format:
+### B. High-Performance Backend (C++)
 
-```
-measurement,tag1=value1,tag2=value2 field1=value1,field2=value2 timestamp
-```
+For scenarios requiring high-frequency sampling (>100 Hz) or minimal system intrusion, Benchmon provides a C++ backend named `rt-monitor`.
 
-Example:
-```
-cpu,host=server1,core=cpu0 usage_percent=45.2,user_time=123.4 1640995200
-```
+**Activation:**
+Use the `--binary` (or `-b`) flag with `benchmon-run`.
 
-## Benchmon InfluxDB Integration Architecture
-
-### Overall Architecture
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  Monitor Scripts│    │   HP Processor   │    │   InfluxDB      │
-│   (*_hp.sh)     │────│  (hp_processor)  │────│   Write API     │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-        │                        │                        │
-        ▼                        ▼                        ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  System Metrics │    │   Data Formatting│    │   Time-series   │
-│   /proc/*       │    │   Line Protocol  │    │   Storage       │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-```
-
-### Data Flow
-
-1. **Data Collection**: `*_hp.sh` scripts read raw data from system files
-2. **Data Transmission**: Transfer to HP processor via Named Pipe
-3. **Data Processing**: HP processor parses and formats to Line Protocol
-4. **Batch Sending**: InfluxDBSender sends batches to InfluxDB
-5. **Data Storage**: InfluxDB stores as time-series data
-
-### High-Performance Features
-
-| Feature | Description | Advantage |
-|---------|-------------|-----------|
-| **Named Pipes** | Inter-process communication, avoiding file I/O | Reduce disk operations, improve performance |
-| **Batch Sending** | Aggregate multiple data points before sending | Reduce network requests, improve throughput |
-| **Async Processing** | Background thread handles data sending | Non-blocking monitoring data collection |
-| **Connection Reuse** | HTTP session reuse | Reduce connection overhead |
-
-## 🔧 Monitoring Module Detailed Analysis
-
-### 1. CPU Monitoring (cpu_mon_hp.sh)
-
-#### Data Source
 ```bash
-# Read /proc/stat file
-cat /proc/stat | grep cpu
+benchmon-run --system --binary --sys-freq 100
 ```
 
-#### Data Format
-```bash
-# HP processor format
-CPU|timestamp|cpu_core user nice system idle iowait irq softirq steal guest guestnice
+**Architecture:**
+*   **Binaries**: Powered by the `rt-monitor` executable (built via CMake).
+*   **Core**: Uses native C++ system calls and highly optimized parsing of `/proc` files.
+*   **Output**: Writes compact binary files (`.bin`) to disk, minimizing I/O overhead.
+*   **InfluxDB**: The C++ backend features an internal `AsyncInfluxDBWriter` capable of streaming metrics directly to InfluxDB with negligible latency.
+
+**Pros:**
+*   Extremely low CPU and specific memory footprint.
+*   Supports sampling frequencies of 100 Hz or more.
+
+## 2. InfluxDB Integration Architecture (Python Collector)
+
+When using the default Python backend with `benchmon-run --grafana`, the `HighPerformanceCollector` (internal class) is instantiated.
+
+```mermaid
+graph TD
+    subgraph "Benchmon Process"
+        A[Producers Threads] -->|Queue| B[Internal Queues]
+        B -->|Deque| C[Consumers Threads]
+        C -->|Batch Write| D[InfluxDB Client]
+    end
+    D -->|HTTP/Line Protocol| E[(InfluxDB v3)]
+    E --> F[Grafana]
 ```
 
-#### Implementation Example
+### Key Components
+
+*   **Producers**: Dedicated threads for each metric type (CPU, Mem, Net, Disk). They perform blocking I/O (reading `/proc`) independent of the main loop.
+*   **Queues**: Thread-safe queues buffer data points, handling bursts in system activity or network latency.
+*   **Consumers**: Worker threads that pull data from queues, format it into InfluxDB Line Protocol, and dispatch it via the `InfluxDBClient3` (using the official high-performance Flight/Arrow client where applicable).
+
+## 3. How to Use
+
+### Collecting Data
+
+**benchmon-start-grafana** is use to start collecting data and streaming to InfluxDB. The default value of --save-dir is **~\bench
+
 ```bash
-send_to_influxdb() {
-    local timestamp=$1
-    local cpu_core=$2
-    local user=$3
-    local nice=$4
-    local system=$5
-    local idle=$6
+# 1. Start the stack (InfluxDB + Grafana) with a specified directory
+benchmon-start-grafana --save-dir /tmp/demo
+
+# or use default data storage directory (./benchmon_traces_)
+benchmon-start-grafana
+
+# 2. Run Benchmon (Stream to InfluxDB)
+benchmon-run --system --grafana --save-dir /tmp/demo/run1
+```
+
+### Visualizing Data
+
+Once `benchmon-run` starts, data appears immediately in InfluxDB. Open one of the pre-provisioned Grafana dashboards (deployed by `benchmon-start-grafana`) to view real-time metrics.
+
+*   **System Overview**: CPU, Memory, Network I/O.
+*   **Detailed Views**: Per-core frequency, disk IOPS.
+
+For a step-by-step guide on setting up the visualization stack, see the [InfluxDB + Grafana Integration Tutorial](tutorial_influxdb-grafana-integration.md).
+
+## 4. References
+
+*   **Python Collector**: `benchmon/run/hp_collector.py`
+*   **C++ Backend**: `benchmon/rt-monitor/`
+*   **Line Protocol**: [InfluxDB Documentation](https://docs.influxdata.com/influxdb/v2/reference/syntax/line-protocol/)
     local iowait=$7
     local irq=$8
     local softirq=$9

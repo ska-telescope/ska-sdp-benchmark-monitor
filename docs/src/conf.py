@@ -38,15 +38,25 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.ifconfig',
               'sphinx.ext.viewcode',
               'sphinx.ext.githubpages',
-              'recommonmark',
+              'myst_parser',
               'sphinx_markdown_tables']
+
+autodoc_mock_imports = [
+    'psutil',
+    'ping3',
+    'matplotlib',
+    'scipy',
+    'numpy',
+    'requests',
+    'influxdb_client_3'
+]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
-source_parsers = {'.md': 'recommonmark.parser.CommonMarkParser'}
+# source_parsers = {'.md': 'recommonmark.parser.CommonMarkParser'}
 source_suffix = ['.rst', '.md']
 
 # The master toctree document.
