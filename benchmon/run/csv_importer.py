@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import time
+import threading
+import queue
 from pathlib import Path
 
 from influxdb_client_3 import InfluxDBClient3, WriteOptions, write_client_options
@@ -33,6 +35,7 @@ def parse_args():
     parser.add_argument("--database", default="metrics", help="InfluxDB Database/Bucket (default: metrics)")
     
     parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for writing to InfluxDB")
+    parser.add_argument("--workers", type=int, default=4, help="Number of concurrent write workers")
     
     return parser.parse_args()
 
@@ -74,8 +77,6 @@ def to_nanos(timestamp_str):
     except ValueError:
         return int(time.time() * 1e9)
 
-
-
 def process_cpu(filepath, hostname, timestamp_holder=None):
     with open(filepath, 'r') as f:
         reader = csv.DictReader(f)
@@ -114,7 +115,6 @@ def process_cpu(filepath, hostname, timestamp_holder=None):
                     yield f"{measurement},{tags} {','.join(fields)} {ts}"
             except Exception as e:
                 logger.error(f"Error parsing line in cpu_report: {e}")
-
 
 def process_cpufreq(filepath, hostname):
     with open(filepath, 'r') as f:
@@ -212,7 +212,6 @@ def process_disk(filepath, hostname):
             except Exception as e:
                 logger.error(f"Error parsing line in disk_report: {e}")
 
-
 def process_ib(filepath, hostname):
     with open(filepath, 'r') as f:
         reader = csv.DictReader(f)
@@ -233,7 +232,6 @@ def process_ib(filepath, hostname):
                 yield f"infiniband,hostname={hostname},device={device} {metric_key}={metric_value}i {ts}"
             except Exception as e:
                 logger.error(f"Error parsing line in ib_report: {e}")
-
 
 def generate_variable(hostname, dir_path, timestamp_holder=None):
     first_timestamp = None
@@ -259,6 +257,44 @@ def generate_variable(hostname, dir_path, timestamp_holder=None):
         
     return f"variable,hostname={hostname} stamp={first_timestamp} {first_timestamp}"
 
+def worker_write(idx, q, client_config):
+    # Initialize separate client per thread for safety
+    try:
+        # Clone client config
+        config = client_config.copy()
+        
+        # Explicit synchronous client (no WriteOptions)
+        client = InfluxDBClient3(
+            host=config['host'],
+            token=config['token'],
+            org=config['org'],
+            database=config['database']
+        )
+        logger.info(f"Worker {idx}: Started.")
+    except Exception as e:
+        logger.error(f"Worker {idx}: Failed to init client: {e}")
+        return
+
+    while True:
+        batch = q.get()
+        if batch is None:
+            # Receive stop signal
+            q.task_done()
+            break
+        
+        try:
+            client.write(batch)
+        except Exception as e:
+            logger.error(f"Worker {idx}: Write failed: {e}")
+        
+        q.task_done()
+    
+    try:
+        client.close()
+    except:
+        pass
+    logger.info(f"Worker {idx}: Stopped.")
+
 def main():
     args = parse_args()
     
@@ -277,19 +313,25 @@ def main():
     
     hostname = get_hostname_from_path(args.dir)
     logger.info(f"Detected hostname: {hostname}")
+
+    # Configuration for workers
+    client_config = {
+        "host": url,
+        "token": token,
+        "org": args.org,
+        "database": args.database
+    }
     
-    client = InfluxDBClient3(
-        host=url,
-        token=token,
-        org=args.org,
-        database=args.database,
-        # Remove WriteOptions to enforce synchronous (blocking) writes.
-        # This prevents the client internal queue from filling up and causing OOM or timestamps
-        # when reading files much faster than network speed.
-        # write_client_options=write_client_options(
-        #     write_options=WriteOptions(batch_size=args.batch_size)
-        # )
-    )
+    # --- Parallel Write Queue Setup ---
+    # Maxsize provides backpressure: if workers are slow, main thread reading pauses.
+    write_queue = queue.Queue(maxsize=16) 
+    workers = []
+    
+    logger.info(f"Starting {args.workers} write workers...")
+    for i in range(args.workers):
+        t = threading.Thread(target=worker_write, args=(i, write_queue, client_config))
+        t.start()
+        workers.append(t)
     
     processors = {
         'cpu_report.csv': process_cpu,
@@ -303,21 +345,20 @@ def main():
     # Context object to share data between processors and main
     ctx = {'first_ts': None}
     
-    # Write buffer
+    # Write buffer for main thread
     batch_buffer = []
-    total_written = 0
+    total_generated = 0
 
-    def flush_buffer():
-        nonlocal total_written
+    def flush_to_queue():
+        nonlocal total_generated
         if batch_buffer:
-            try:
-                # With synchronous client (no WriteOptions), this will block until written
-                # providing backpressure.
-                client.write(batch_buffer)
-                total_written += len(batch_buffer)
-                logger.info(f"Written batch. Total points: {total_written}")
-            except Exception as e:
-                logger.error(f"Failed to write batch: {e}")
+            # Push COPY of buffer (or just reference since we clear original)
+            # Actually we must send a new list object because list is mutable
+            write_queue.put(list(batch_buffer))
+            total_generated += len(batch_buffer)
+            # Log progress based on generation, not writing (writing is async)
+            if total_generated % 100000 == 0:
+                logger.info(f"Parsed & Queued {total_generated} points...")
             batch_buffer.clear()
 
     # Iterate through all processors and stream data
@@ -337,7 +378,7 @@ def main():
                 batch_buffer.append(point)
                 count += 1
                 if len(batch_buffer) >= args.batch_size:
-                    flush_buffer()
+                    flush_to_queue()
             logger.info(f"Finished {filename}: {count} points generated.")
         else:
             logger.warning(f"File {filename} not found in {args.dir}")
@@ -347,9 +388,17 @@ def main():
     batch_buffer.append(variable_point)
     
     # Flush remaining
-    flush_buffer()
+    flush_to_queue()
             
-    client.close()
+    # Send stop signals
+    logger.info("Parsing finished. Waiting for workers to complete writing...")
+    for _ in range(args.workers):
+        write_queue.put(None)
+        
+    write_queue.join()
+    for t in workers:
+        t.join()
+        
     logger.info("Import finished.")
 
 if __name__ == "__main__":
