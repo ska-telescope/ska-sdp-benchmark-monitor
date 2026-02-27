@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 
+
 def read_ical_log_file(traces_repo: str) -> dict:
     """
     Read ical log file
@@ -80,6 +81,7 @@ def plot_ical_stages(major_stages: dict, ymax=100.) -> None:
                  size="x-small",
                  weight="semibold")
 
+
 def read_annotation_csv(traces_repo: str, filename: str = "annotations.csv"):
     """
     Read annotation CSV and return a list of stage intervals.
@@ -146,10 +148,12 @@ def add_stage_legend(ax):
     Add a legend explaining the START/STOP markers.
     Should be called on the first subplot (pipeline events).
     """
-    start_line = mlines.Line2D([], [], color='black', linestyle=(0, (4,3)), label='START')
+    start_line = mlines.Line2D([], [], color='black', linestyle=(0, (4, 3)), label='START')
     stop_marker = mlines.Line2D([], [], color='black', marker='+', linestyle='None', markersize=10, label='FINISHED')
-    
+
     ax.legend(handles=[start_line, stop_marker], loc='upper right', fontsize=9)
+
+
 def plot_stage_timeline(stages, ax, xlim=None):
     """
     Draw horizontal stage segments with start/stop caps and readable labels.
@@ -219,6 +223,7 @@ def plot_stage_timeline(stages, ax, xlim=None):
 
     if xlim:
         ax.set_xlim(xlim)
+
 
 def get_stage_color(label, palette=plt.cm.tab20.colors):
     """
