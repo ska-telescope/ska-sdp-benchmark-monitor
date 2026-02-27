@@ -139,6 +139,7 @@ Available options:
 - `--inline-call`: Annotate plots with running commands (if `--call` is enabled).
 - `--inline-call-cmd`: Comma-separated list of commands for inline call annotations.
 - `--ical-log`: Annotate with ICAL stages; the log file (`wflow-selfcal.*.log`) must be in the same directory as the traces.
+- `--annotate-with-log`: Annotate plots with pipeline events from a CSV file (e.g. `events.csv`). The file path must be provided and should point to a valid events CSV file.
 
 ##### Global visualization
 - `--recursive`: Generate synchronized plots for multi-node runs.
