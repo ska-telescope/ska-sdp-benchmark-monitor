@@ -40,9 +40,10 @@ This guide describes the main features, installation, usage, and visualization c
   ./guide/tutorial_multi-node.md
   ./guide/tutorial_ical.md
   ./guide/tutorial_pre-defined_levels.md
-  ./guide/tutorial_influxdb-grafna-integration.md
+  ./guide/tutorial_influxdb-grafana-integration.md
   ./guide/tutorial_export-benchmon-influxdb.md
   
+docs/src
 .. toctree::
   :maxdepth: 1
   :caption: Developer guide
