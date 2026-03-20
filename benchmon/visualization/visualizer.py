@@ -15,7 +15,7 @@ from .call_profile import PerfCallData
 from .call_profile import PerfCallRawData
 from .power_metrics import G5KPowerData
 from .power_metrics import PerfPowerData
-from .system_metrics_binary import SystemDataBinary
+from .system_metrics import SystemData
 from .utils import read_ical_log_file, plot_ical_stages, plot_stage_boxes
 
 
