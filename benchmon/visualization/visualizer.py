@@ -433,6 +433,8 @@ class BenchmonVisualizer:
             sbp = 1
             annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
 
+            # Only label the first plot as stage box labels are a bit messy
+            first_plot = True
             # CPU plot
             if self.args.cpu:
                 if self.system_metrics:
@@ -443,7 +445,8 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
                     if self.stage_boxes:
-                        plot_stage_boxes(self.stage_boxes)
+                        plot_stage_boxes(self.stage_boxes, first_plot)
+                        first_plot = False
                 else:
                     self.logger.warning("No system metrics available for CPU plot")
 
@@ -459,7 +462,8 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
                     if self.stage_boxes:
-                        plot_stage_boxes(self.stage_boxes)
+                        plot_stage_boxes(self.stage_boxes, first_plot)
+                        first_plot = False
                 else:
                     self.logger.warning("No system metrics available for CPU cores plot")
 
@@ -475,7 +479,8 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
                     if self.stage_boxes:
-                        plot_stage_boxes(self.stage_boxes)
+                        plot_stage_boxes(self.stage_boxes, first_plot)
+                        first_plot = False
                 else:
                     self.logger.warning("No system metrics available for CPU per core plot")
 
@@ -491,7 +496,8 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=freqmax)
                     if self.stage_boxes:
-                        plot_stage_boxes(self.stage_boxes, ymax=freqmax)
+                        plot_stage_boxes(self.stage_boxes, first_plot, ymax=freqmax)
+                        first_plot = False
                 else:
                     self.logger.warning("No system metrics available for CPU frequency plot")
 
@@ -505,7 +511,8 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=memmax)
                     if self.stage_boxes:
-                        plot_stage_boxes(self.stage_boxes, ymax=memmax)
+                        plot_stage_boxes(self.stage_boxes, first_plot, ymax=memmax)
+                        first_plot = False
                 else:
                     self.logger.warning("No system metrics available for memory plot")
 
@@ -523,7 +530,8 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=netmax)
                     if self.stage_boxes:
-                        plot_stage_boxes(self.stage_boxes, ymax=netmax)
+                        plot_stage_boxes(self.stage_boxes, first_plot, ymax=netmax)
+                        first_plot = False
                 else:
                     self.logger.warning("No system metrics available for network plot")
 
@@ -537,7 +545,8 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=ibmax)
                     if self.stage_boxes:
-                        plot_stage_boxes(self.stage_boxes, ymax=ibmax)
+                        plot_stage_boxes(self.stage_boxes, first_plot, ymax=ibmax)
+                        first_plot = False
                 else:
                     self.logger.warning("No system metrics available for InfiniBand plot")
 
@@ -555,7 +564,8 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=diskmax)
                     if self.stage_boxes:
-                        plot_stage_boxes(self.stage_boxes, ymax=diskmax)
+                        plot_stage_boxes(self.stage_boxes, first_plot, ymax=diskmax)
+                        first_plot = False
                 else:
                     self.logger.warning("No system metrics available for disk plot")
 
@@ -583,7 +593,8 @@ class BenchmonVisualizer:
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=max(powmax))
                 if self.stage_boxes:
-                    plot_stage_boxes(self.stage_boxes, ymax=powmax)
+                    plot_stage_boxes(self.stage_boxes, first_plot, ymax=powmax)
+                    first_plot = False
 
                 plt.xticks(*self.xticks)
                 plt.xlim(self.xlim)

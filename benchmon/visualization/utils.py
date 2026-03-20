@@ -130,7 +130,7 @@ def parse_color(value):
     # Assume explicit color  (e.g. hex value or similar)
     return value
 
-def plot_stage_boxes(stage_file, ymax=100.0) -> None:
+def plot_stage_boxes(stage_file, plot_labels, ymax=100.0) -> None:
     """
     Plot stages with boxes for each stage that has been stored in the json file.
 
@@ -148,7 +148,7 @@ def plot_stage_boxes(stage_file, ymax=100.0) -> None:
     with open(stage_file, "r") as file_in:
         stages = json.load(file_in, object_hook=datetime_object_hook)
 
-    for stage in stages:
+    for i, stage in enumerate(stages):
         start_time = stages[stage]["Start"]
         end_time = stages[stage]["End"]
 
@@ -164,13 +164,17 @@ def plot_stage_boxes(stage_file, ymax=100.0) -> None:
         )
 
         # Add a label centered in top of rectangle
-        plt.text(
-            (start_time+((end_time-start_time)/2)).timestamp(),
-            ymax * 1.1,
-            f"{stage}",
-            va="bottom",
-            ha="center",
-            size="x-small",
-            weight="semibold",
-            color=parse_color(stages[stage]["Color"])
-        )
+        if plot_labels:
+            # Alternate label increment so that labels for small sections next to each other don't write over each other'
+            y_increment = (i % 3) * 0.035
+            y_increment = 1.1 - y_increment
+            plt.text(
+                (start_time+((end_time-start_time)/2)).timestamp(),
+                ymax * y_increment,
+                f"{stage}",
+                va="bottom",
+                ha="center",
+                size="x-small",
+                weight="semibold",
+                color=parse_color(stages[stage]["Color"])
+            )
