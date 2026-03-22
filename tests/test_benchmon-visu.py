@@ -2,13 +2,14 @@
 
 import os
 import subprocess
+import sys
 
 
 def test_unit_benchmon_visu():
     """Unit test for benchmon-visu"""
     cwd = os.path.dirname(__file__)
 
-    cmd = [f"{cwd}/../exec/benchmon-visu",
+    cmd = [sys.executable, f"{cwd}/../exec/benchmon-visu",
            "--cpu", "--cpu-all",
            "--cpu-cores-full", "5,6",
            "--cpu-cores-in", "0,11,12",

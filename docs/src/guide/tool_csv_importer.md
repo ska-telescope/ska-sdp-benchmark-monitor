@@ -63,3 +63,29 @@ To solve issues with slow imports on large datasets (10GB+ traces), the tool use
 4.  **Writing**: `N` worker threads pull batches from the queue and send HTTP requests to InfluxDB in parallel.
 
 This design ensures that network latency (waiting for InfluxDB response) does not block the file reading process, significantly accelerating the import speed.
+
+
+## Visualize Imported Data With `benchmon-visu`
+
+Once the CSV files have been imported into InfluxDB, you can generate the same benchmon-style figures directly from the database without re-reading the original CSV files.
+
+```bash
+benchmon-visu ./benchmon_influx_figures \
+    --influxdb \
+    --influxdb-url http://localhost:8181 \
+    --influxdb-database metrics \
+    --start-time 2026-02-04T21:48:20 \
+    --end-time 2026-02-04T22:03:20 \
+    --sys \
+    --recursive \
+    --fig-fmt png \
+    --fig-name benchmon_influx_overview
+```
+
+Notes:
+- The positional argument is the output directory for generated figures and logs. For example, `./benchmon_influx_figures` creates per-host figures under `./benchmon_influx_figures/benchmon_traces_<hostname>/`.
+- If `--influxdb-hostname` is omitted, benchmon discovers all hostnames that have data in the selected time range and generates one figure set per host.
+- `--recursive` additionally creates `./benchmon_influx_figures/multi-node_sync.<fmt>` to match the legacy synchronized multi-node view.
+- `--resolution auto` chooses a coarser time bucket automatically for long time windows. You can also force a fixed resolution such as `--resolution 1m`.
+- `--start-time` and `--end-time` use local wall-clock time on the machine running `benchmon-visu`, with format `YYYY-MM-DDTHH:MM:SS`. No UTC conversion is required.
+- InfluxDB visualization currently supports system plots only: `--cpu`, `--cpu-all`, `--cpu-freq`, `--mem`, `--net`, `--disk`, `--ib`, and `--sys`.
