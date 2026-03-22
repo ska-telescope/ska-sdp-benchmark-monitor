@@ -536,7 +536,9 @@ class SystemDataInfluxDB(SystemData):
 
         if self.actual_resolution == "raw":
             rows = self._query_rows(
-                "SELECT time, cpu, value FROM cpu_freq WHERE hostname = $hostname AND time >= $start_time AND time < $end_time ORDER BY time, cpu",
+                "SELECT time, cpu, value FROM cpu_freq "
+                "WHERE hostname = $hostname AND time >= $start_time AND time < $end_time "
+                "ORDER BY time, cpu",
                 **base_params,
             )
         else:
@@ -582,7 +584,9 @@ class SystemDataInfluxDB(SystemData):
             "end_time": self._local_time_param(self.end_time),
         }
         rows = self._query_rows(
-            "SELECT * FROM memory WHERE hostname = $hostname AND time >= $start_time AND time < $end_time ORDER BY time",
+            "SELECT * FROM memory "
+            "WHERE hostname = $hostname AND time >= $start_time AND time < $end_time "
+            "ORDER BY time",
             **base_params,
         )
         if not rows:
@@ -695,8 +699,11 @@ class SystemDataInfluxDB(SystemData):
         for display_key, source_key in fields.items():
             alias = display_key.replace("-", "_")
             inner_exprs.append(
-                "CASE WHEN EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) = 0 THEN NULL ELSE "
-                f"GREATEST(0, ({source_key} - LAG({source_key}) OVER w) / EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) * {scale}) END AS {alias}"
+                "CASE WHEN EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) = 0 "
+                "THEN NULL ELSE "
+                f"GREATEST(0, ({source_key} - LAG({source_key}) OVER w) "
+                f"/ EXTRACT(EPOCH FROM (time - LAG(time) OVER w)) * {scale}) "
+                f"END AS {alias}"
             )
         bucket_query = f"""
             SELECT bucket_time AS time, {tag_key}, {', '.join(rate_exprs)}
@@ -719,7 +726,8 @@ class SystemDataInfluxDB(SystemData):
             )
         totals = self._query_rows(
             f"SELECT {tag_key}, {', '.join(total_exprs)} FROM {measurement} "
-            f"WHERE hostname = $hostname AND time >= $start_time AND time < $end_time GROUP BY {tag_key} ORDER BY {tag_key}",
+            f"WHERE hostname = $hostname AND time >= $start_time AND time < $end_time "
+            f"GROUP BY {tag_key} ORDER BY {tag_key}",
             **base_params,
         )
         return self._build_rate_profiles_from_bucket(rows, totals, tag_key, fields)
@@ -774,10 +782,18 @@ class SystemDataInfluxDB(SystemData):
             if tag_key == "interface" and not label.endswith(":"):
                 label = f"{label}:"
             entries.sort(key=lambda item: parse_query_timestamp(item["time"]))
-            profiles[label] = {"timestamp": np.array([parse_query_timestamp(item["time"]) for item in entries], dtype=float)}
+            profiles[label] = {
+                "timestamp": np.array(
+                    [parse_query_timestamp(item["time"]) for item in entries],
+                    dtype=float,
+                )
+            }
             for display_key in fields:
                 alias = display_key.replace("-", "_")
-                profiles[label][display_key] = np.array([self._extract_field(item, alias) for item in entries], dtype=float)
+                profiles[label][display_key] = np.array(
+                    [self._extract_field(item, alias) for item in entries],
+                    dtype=float,
+                )
 
         totals = {}
         for row in totals_rows:

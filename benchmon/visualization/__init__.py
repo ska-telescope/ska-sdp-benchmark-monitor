@@ -7,6 +7,7 @@ __all__ = [
     "BenchmonInfluxDBVisualizer",
 ]
 
+
 def __getattr__(name):
     if name == "BenchmonInfluxDBVisualizer":
         from .visualizer_influxdb import BenchmonInfluxDBVisualizer

@@ -84,7 +84,10 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
             raise ValueError("InfluxDB mode does not support --inline-call-cmd")
 
         if self.args.recursive:
-            self.logger.info("InfluxDB recursive mode will render per-host figures and a multi-node sync figure when possible")
+            self.logger.info(
+                "InfluxDB recursive mode will render per-host figures "
+                "and a multi-node sync figure when possible"
+            )
 
     def _enabled_metrics(self) -> dict[str, bool]:
         is_net = self.args.net or self.args.net_all or self.args.net_data
@@ -246,7 +249,8 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         hostnames = set()
         for measurement in ["variable", *self._enabled_measurements()]:
             rows = self._query_rows(
-                f"SELECT DISTINCT hostname FROM {measurement} WHERE time >= $start_time AND time < $end_time ORDER BY hostname",
+                f"SELECT DISTINCT hostname FROM {measurement} "
+                "WHERE time >= $start_time AND time < $end_time ORDER BY hostname",
                 **query_params,
             )
             for row in rows:
@@ -477,7 +481,10 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
 
         pages = self._split_pages(specs)
         if len(pages) > 1:
-            self.logger.info(f"InfluxDB visualizer switched to paginated output for host {hostname} ({len(pages)} pages)")
+            self.logger.info(
+                f"InfluxDB visualizer switched to paginated output for host {hostname} "
+                f"({len(pages)} pages)"
+            )
             for idx, page in enumerate(pages, start=1):
                 self._render_page(page, hostname, page_idx=idx)
             return True
@@ -518,7 +525,14 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                 self.apply_xaxis_params()
                 if self._render_host_plots(hostname):
                     saved_hosts += 1
-                    node_views.append(self._build_node_view(hostname, system_metrics, sync_xticks or self.xticks, sync_xlim or self.xlim))
+                    node_views.append(
+                        self._build_node_view(
+                            hostname,
+                            system_metrics,
+                            sync_xticks or self.xticks,
+                            sync_xlim or self.xlim,
+                        )
+                    )
 
             if saved_hosts == 0:
                 raise ValueError("No valid InfluxDB data found for any discovered host")
