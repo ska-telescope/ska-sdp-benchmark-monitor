@@ -12,7 +12,8 @@ $ benchmon-report --software-report "$save_dir/swmon.json" \
                   --output "$traces_repo/benchmon_report.md"
 
 # Convert the Markdown report to HTML using pandoc:
-$ python3 -m pandoc read $traces_repo/benchmon_report.md | python3 -m pandoc write -f html -o $traces_repo/benchmon_report.html
+$ python3 -m pandoc read $traces_repo/benchmon_report.md
+$ python3 -m pandoc write -f html -o $traces_repo/benchmon_report.html
 """
 
 import argparse
