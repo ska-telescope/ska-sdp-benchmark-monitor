@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """
 Main Python script to generate a report from monitoring metrics
+
+Example usage:
+
+$ benchmon-report --software-report "$save_dir/swmon.json" \
+                  --hardware-report "$save_dir/hwmon.json" \
+                  --figure-path "$traces_repo/benchmon_figure_detailed.png" \
+                  --ps-report "$traces_repo/timing_mapping_report.csv" \
+                  --template "$benchmon_template" \
+                  --output "$traces_repo/benchmon_report.md"
+
+# Convert the Markdown report to HTML using pandoc:
+$ python3 -m pandoc read $traces_repo/benchmon_report.md | python3 -m pandoc write -f html -o $traces_repo/benchmon_report.html
 """
 
 import argparse
