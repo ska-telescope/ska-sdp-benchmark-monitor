@@ -21,7 +21,7 @@ from .system_metrics_binary import SystemDataBinary
 
 from .utils import read_annotation_csv, plot_stage_timeline
 from .utils import plot_stage_markers
-from .utils import plot_ical_stages
+from .utils import read_ical_log_file, plot_ical_stages
 from .utils import add_stage_legend
 
 
@@ -92,7 +92,14 @@ class BenchmonVisualizer:
         if self.annotation_stages:
             self.n_subplots += 1
 
-        self.load_system_metrics()
+        self.ical_stages = {}
+        if self.args.annotate_with_log == "ical":
+            self.ical_stages = read_ical_log_file(self.traces_repo)
+
+        if args.binary:
+            self.load_system_metrics_binary()
+        else:
+            self.load_system_metrics()
         self.load_power_metrics()
         self.load_call_metrics()
 
@@ -564,11 +571,11 @@ class BenchmonVisualizer:
                                                                annotate_with_cmds=annotate_with_cmds)
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=freqmax)
-                    if self.annotation_stages:
-                        plot_stage_markers(self.annotation_stages,
-                                           ax_top=ax_pipeline,
-                                           ax_bottom=ax_last,
-                                           xlim=self.xlim)
+                    # if self.annotation_stages:
+                    #     plot_stage_markers(self.annotation_stages,
+                    #                        ax_top=ax_pipeline,
+                    #                        ax_bottom=ax_last,
+                    #                        xlim=self.xlim)
                 else:
                     self.logger.warning("No system metrics available for CPU frequency plot")
 
