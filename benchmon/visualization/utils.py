@@ -82,7 +82,7 @@ def plot_ical_stages(major_stages: dict, ymax=100.) -> None:
                  weight="semibold")
 
 
-def read_annotation_csv(traces_repo: str, filename: str = "annotations.csv"):
+def read_annotation_csv(traces_repo: str, filename: str = "annotations.csv", node_name: str = None):
     """
     Read annotation CSV and return a list of stage intervals.
 
@@ -113,6 +113,11 @@ def read_annotation_csv(traces_repo: str, filename: str = "annotations.csv"):
         reader = csv.DictReader(f)
 
         for row in reader:
+            row_node = row.get("node", "").strip()
+
+            # Skip rows that don't match the current node
+            if node_name is not None and row_node != node_name:
+                continue
             pipeline = row.get("pipeline", "").strip()
             stage = row.get("stage", "").strip()
             event = row.get("event", "").strip().upper()
