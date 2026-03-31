@@ -86,24 +86,24 @@ class BenchmonVisualizer:
             # Expecting a CSV file passed with --annotate-with-log=name.csv
             # or defaulting to annotations.csv
             filename = self.args.annotate_with_log
-        try:
-            node_name = os.path.basename(os.path.realpath(self.traces_repo)).replace("benchmon_traces_", "")
-            events_dir = os.path.dirname(os.path.dirname(self.traces_repo))
-            self.logger.debug(f"Using events file from: {events_dir}")
-            self.logger.debug(f"Filtering annotations for node: {node_name}")
-            self.annotation_stages = read_annotation_csv(
-                events_dir,
-                filename,
-                node_name=node_name,
-            )
+            try:
+                node_name = os.path.basename(os.path.realpath(self.traces_repo)).replace("benchmon_traces_", "")
+                events_dir = os.path.dirname(os.path.dirname(self.traces_repo))
+                self.logger.debug(f"Using events file from: {events_dir}")
+                self.logger.debug(f"Filtering annotations for node: {node_name}")
+                self.annotation_stages = read_annotation_csv(
+                    events_dir,
+                    filename,
+                    node_name=node_name,
+                )
 
-            if not self.annotation_stages:
-                self.logger.warning(f"No annotations found for node {node_name}")
+                if not self.annotation_stages:
+                    self.logger.warning(f"No annotations found for node {node_name}")
+                    self.annotation_stages = None
+
+            except FileNotFoundError:
+                self.logger.warning(f"Annotation file not found: {filename}")
                 self.annotation_stages = None
-
-        except FileNotFoundError:
-            self.logger.warning(f"Annotation file not found: {filename}")
-            self.annotation_stages = None
         # Reserve one subplot for annotation timeline
         if self.annotation_stages:
             self.n_subplots += 1
