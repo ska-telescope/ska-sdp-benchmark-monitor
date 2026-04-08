@@ -3,6 +3,9 @@
 # Pass frequency as first argument, output filename as second, no-mapping as third to skipping mapping 
 freq=$1
 output=$2
+journal=""
+node=$(hostname)
+
 if [ "$3" = 'no-mapping' ]; then
     ps_fields="ppid,pid,tid,etimes,lstart,cmd";
     awk_fields='$1, $2, $3'
@@ -11,8 +14,8 @@ else
     awk_fields='$1, $2, $3, $4'
 fi
 
-# Manage termination
-trap 'echo "#" "$(ps -o $ps_fields|head -1)" "$(sort -s -nk3 <(echo "$journal"))" > $output; exit 0' SIGTERM
+# Manage termination: add the header, sort entries in the journal variable and write to the output file
+trap 'printf "%s\n%s" "timestamp,pipeline,stage,event,node,process,source,message,core" "$journal" > ${output}; exit 0' SIGTERM
 
 # Determine sampling period
 sampl=$(bc <<< "scale=6; 1/$freq")
@@ -30,8 +33,7 @@ skip_pid=$$
 # processes have tid matching pid, with -T threads have their parent PID shown, use ww and place cmd
 # last to have them untruncated
 # ps's native sorting does not seem compatible with listing threads: revert to sort on tid
-psfull="ps --no-header -eTwwo $ps_fields | sort -nk3"
-echo "$psfull"
+psfull="ps --no-header -D %s -eTwwo $ps_fields | sort -nk3"
 
 # Recursively search for child processes and threads with awk
 psold_full="$(eval $psfull | awk -vpp=$root_pid -vp=$skip_pid 'function r(s,e){if(s!=e) {print ps_string[s];s=child_id[s];while(s){sub(",","",s);t=s;sub(",.*","",t);sub("[0-9]+","",s);r(t,e)}}}{child_id[$1]=child_id[$1]","$3;ps_string[$3]=$0}END{r(pp,p)}')"
@@ -55,12 +57,25 @@ do
     # psold_full with awk. Depending on the sequence, line suppression corresponding
     # to completed processes/threads can appear as deletions or changes. Deletions will have to
     # be identified based on the fact that this is the last change recorded for this process/thread
-    # (sort based on tid: all records execpt for the last correspond to mapping to different cores,
+    # (sort based on tid: all records except for the last correspond to mapping to different cores,
     # and the last to completion).
+    
+    # NEW LINES SHOULD LEAD TO START WHILE DELETED LINES SHOULD LEAD TO STOP
+    # CHANGED LINES CORRESPOND TO CHANGE OF CORE
+
     newlines=$(awk 'BEGIN{i=1; j=1} (FILENAME==ARGV[1] && /^[0-9,]+[cd][0-9,]+/) {split($0, a, "[cd]"); n=split(a[1], b, ","); if(n==1) {b[2]=b[1]}; for(k=b[1];k<=b[2];k++) {line[i++]=k}; next} FILENAME==ARGV[2]{psfull[j++]=$0; next} END{for(k=1;k<i;k++) {print psfull[line[k]]}}' <(echo "$difflines") <(echo "$psold_full"))
 
     # If something is returned by awk, append to the journal variable with a final new line
-    if [ "$newlines" != '' ]; then journal+="$newlines"; journal+=$'\n'; fi
+    if [ "$newlines" != '' ]; then
+	    stage=$(awk '{for (i=7; i<=NF; i++) printf "%s ", $i}' <(echo "$newlines"))
+            # START line
+	    event=$(awk -vSTAGE="$stage" -vNODE=$node '{printf "%d,THREAD,%s,START,%s,%d,ps,PPID:%d PID:%d,%d", $6, STAGE, NODE, $3, $1, $2, $4}' <(echo "$newlines"))
+	    journal+="$event"; journal+=$'\n'
+
+	    # STOP line
+	    event=$(awk -vSTAGE="$stage" -vNODE=$node '{printf "%d,THREAD,%s,FINISHED,%s,%d,ps,PPID:%d PID:%d elapsed:%d,%d", $6+$5+1, STAGE, NODE, $3, $1, $2, $5+1, $4}' <(echo "$newlines"))
+	    journal+="$event"; journal+=$'\n'
+    fi
 
     # Exchange psold and psnew and full entries
     psold=$psnew
