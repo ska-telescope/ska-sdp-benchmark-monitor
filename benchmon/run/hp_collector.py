@@ -131,20 +131,18 @@ class HighPerformanceCollector:
 
     def _consumer(self, q: queue.Queue, client: InfluxDBClient3, name: str):
         """A dedicated consumer for a single queue, using its own client."""
-        while True:
+        while not self.stop_event.is_set():
             try:
                 points = q.get(timeout=1)
-            except queue.Empty:
-                continue
-            try:
                 if points is None:
                     break
                 if points:
                     client.write(points)
+                q.task_done()
+            except queue.Empty:
+                continue
             except Exception as e:
                 self.logger.error(f"HP Collector consumer error for '{name}': {e}")
-            finally:
-                q.task_done()
 
     def _report_queue_sizes(self, interval: int):
         """Periodically reports the size of all internal queues."""
@@ -198,8 +196,6 @@ class HighPerformanceCollector:
                     batch_list = []
             except Exception as e:
                 self.logger.warning(f"CPU producer error: {e}")
-        if batch_list:
-            q.put(batch_list)
 
     def _mem_producer(self, q: queue.Queue):
         """Producer for Memory metrics from /proc/meminfo."""
@@ -225,8 +221,6 @@ class HighPerformanceCollector:
                     batch_list = []
             except Exception as e:
                 self.logger.warning(f"Memory producer error: {e}")
-        if batch_list:
-            q.put(batch_list)
 
     def _cpufreq_producer(self, q: queue.Queue):
         """Producer for CPU frequency metrics."""
@@ -250,8 +244,6 @@ class HighPerformanceCollector:
                     batch_list = []
             except Exception as e:
                 self.logger.warning(f"CPU Freq producer error: {e}")
-        if batch_list:
-            q.put(batch_list)
 
     def _net_producer(self, q: queue.Queue):
         """Producer for Network metrics from /proc/net/dev."""
@@ -278,8 +270,6 @@ class HighPerformanceCollector:
                     batch_list = []
             except Exception as e:
                 self.logger.warning(f"Network producer error: {e}")
-        if batch_list:
-            q.put(batch_list)
 
     def _disk_producer(self, q: queue.Queue):
         """Producer for Disk metrics from /proc/diskstats."""
@@ -311,8 +301,6 @@ class HighPerformanceCollector:
                     batch_list = []
             except Exception as e:
                 self.logger.warning(f"Disk producer error: {e}")
-        if batch_list:
-            q.put(batch_list)
 
     def _ib_producer(self, q: queue.Queue):
         """Producer for InfiniBand metrics."""
@@ -344,5 +332,3 @@ class HighPerformanceCollector:
                     batch_list = []
             except Exception as e:
                 self.logger.warning(f"IB producer error: {e}")
-        if batch_list:
-            q.put(batch_list)

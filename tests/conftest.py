@@ -9,7 +9,6 @@ def pytest_collection_modifyitems(session, config, items):
         "tests/test_benchmon-run.py",
         "tests/test_benchmon-visu.py",
         "tests/test_visualizer.py",
-        "tests/test_hp_collector.py",
         "tests/test_benchmon-visu_func.py",
         "tests/test_g5k.py",
         "tests/test_metrics.py"
