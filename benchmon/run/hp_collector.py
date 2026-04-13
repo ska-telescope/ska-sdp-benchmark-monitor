@@ -31,6 +31,15 @@ class HighPerformanceCollector:
         self.stop_event = threading.Event()
         self.batch_size = batch_size
 
+        if batch_size >= 10:
+            self.batch_size_over_10 = self.batch_size // 10
+        else:
+            self.batch_size_over_10 = 10
+        if batch_size >= 100:
+            self.batch_size_over_100 = self.batch_size // 100
+        else:
+            self.batch_size_over_100 = 100
+
     def start(self):
         """Starts a producer and consumer thread for each metric type."""
         from reactivex.scheduler import ThreadPoolScheduler
@@ -157,8 +166,8 @@ class HighPerformanceCollector:
 
     def _cpu_producer(self, q: queue.Queue):
         """Producer for CPU metrics from /proc/stat."""
+        batch_list = []
         while not self.stop_event.wait(self.interval):
-            batch_list = []
             try:
                 with open("/proc/stat", "r") as f:
                     content = f.read()
@@ -184,16 +193,19 @@ class HighPerformanceCollector:
                             else:
                                 lp = f"cpu_core,{tags},cpu={core_id} {fields} {timestamp}"
                             batch_list.append(lp)
-                if batch_list:
+                if len(batch_list) >= self.batch_size:
                     q.put(batch_list)
+                    batch_list = []
             except Exception as e:
                 self.logger.warning(f"CPU producer error: {e}")
+        if batch_list:
+            q.put(batch_list)
 
     def _mem_producer(self, q: queue.Queue):
         """Producer for Memory metrics from /proc/meminfo."""
         mem_fields_of_interest = {"MemTotal", "MemFree", "MemAvailable", "Buffers", "Cached", "Slab"}
+        batch_list = []
         while not self.stop_event.wait(self.interval):
-            batch_list = []
             try:
                 with open("/proc/meminfo", "r") as f:
                     content = f.read()
@@ -208,18 +220,21 @@ class HighPerformanceCollector:
                         fields.append(f"{key}={value}i")
 
                 batch_list.append(f"memory,hostname={self.hostname} {','.join(fields)} {timestamp}")
-                if batch_list:
+                if len(batch_list) >= self.batch_size_over_100:
                     q.put(batch_list)
+                    batch_list = []
             except Exception as e:
                 self.logger.warning(f"Memory producer error: {e}")
+        if batch_list:
+            q.put(batch_list)
 
     def _cpufreq_producer(self, q: queue.Queue):
         """Producer for CPU frequency metrics."""
         freq_files = glob.glob(
             "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq"
         )
+        batch_list = []
         while not self.stop_event.wait(self.interval):
-            batch_list = []
             try:
                 timestamp = time.time_ns()
                 for file_path in freq_files:
@@ -230,15 +245,18 @@ class HighPerformanceCollector:
                     lp = f"cpu_freq,hostname={self.hostname},cpu={core_id} value={freq}i {timestamp}"
                     batch_list.append(lp)
 
-                if batch_list:
+                if len(batch_list) >= self.batch_size_over_100:
                     q.put(batch_list)
+                    batch_list = []
             except Exception as e:
                 self.logger.warning(f"CPU Freq producer error: {e}")
+        if batch_list:
+            q.put(batch_list)
 
     def _net_producer(self, q: queue.Queue):
         """Producer for Network metrics from /proc/net/dev."""
+        batch_list = []
         while not self.stop_event.wait(self.interval):
-            batch_list = []
             try:
                 with open("/proc/net/dev", "r") as f:
                     content = f.readlines()[2:]   # Skip header lines
@@ -255,15 +273,18 @@ class HighPerformanceCollector:
                     )
                     batch_list.append(lp)
 
-                if batch_list:
+                if len(batch_list) >= self.batch_size_over_10:
                     q.put(batch_list)
+                    batch_list = []
             except Exception as e:
                 self.logger.warning(f"Network producer error: {e}")
+        if batch_list:
+            q.put(batch_list)
 
     def _disk_producer(self, q: queue.Queue):
         """Producer for Disk metrics from /proc/diskstats."""
+        batch_list = []
         while not self.stop_event.wait(self.interval):
-            batch_list = []
             try:
                 with open("/proc/diskstats", "r") as f:
                     content = f.readlines()
@@ -285,10 +306,13 @@ class HighPerformanceCollector:
                     )
                     batch_list.append(lp)
 
-                if batch_list:
+                if len(batch_list) >= self.batch_size_over_100:
                     q.put(batch_list)
+                    batch_list = []
             except Exception as e:
                 self.logger.warning(f"Disk producer error: {e}")
+        if batch_list:
+            q.put(batch_list)
 
     def _ib_producer(self, q: queue.Queue):
         """Producer for InfiniBand metrics."""
@@ -296,8 +320,8 @@ class HighPerformanceCollector:
         ib_ports = [p.split('/')[4] for p in glob.glob(ib_ports_glob)]
         ib_ports = list(set(ib_ports))
 
+        batch_list = []
         while not self.stop_event.wait(self.interval):
-            batch_list = []
             try:
                 timestamp = time.time_ns()
                 for port in ib_ports:
@@ -315,7 +339,10 @@ class HighPerformanceCollector:
                     except FileNotFoundError:
                         continue
 
-                if batch_list:
+                if len(batch_list) >= self.batch_size_over_100:
                     q.put(batch_list)
+                    batch_list = []
             except Exception as e:
                 self.logger.warning(f"IB producer error: {e}")
+        if batch_list:
+            q.put(batch_list)
