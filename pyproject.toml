@@ -35,7 +35,8 @@ dependencies = [
   "psutil",
   "requests",
   "scipy",
-  "influxdb3-python"
+  "influxdb3-python",
+  "reactivex"
 ]
 
 [project.optional-dependencies]

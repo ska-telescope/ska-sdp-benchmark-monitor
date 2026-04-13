@@ -1,6 +1,7 @@
 """Module to test benchmon-run"""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import time
@@ -26,10 +27,12 @@ def create_args(save_dir: str = "/tmp/benchmon_savedir_test",
                 call_keep_datafile: bool = False,
                 csv: bool = True,
                 grafana: bool = False,
-                grafana_url: str = "http://localhost:8086",
+                grafana_influxdb_url: str = "http://localhost:8086",
+                grafana_token: str = "",
                 grafana_job_name: str = "benchmon",
                 grafana_batch_size: int = 50,
-                grafana_send_interval: float = 2.0) -> argparse.ArgumentParser:
+                grafana_sample_interval: float = 2.0,
+                start_after: int = 0) -> argparse.ArgumentParser:
     """
     Create arguments for run_monitor test
     """
@@ -49,7 +52,7 @@ def run(args: argparse.ArgumentParser, timeout: int = 1, with_pid: bool = False)
         RunUtils.get_benchmon_pid(logger)
 
     run_monitor = RunMonitor(args, logger)
-    run_monitor.run(timeout=1)
+    run_monitor.run(timeout=timeout)
 
 
 def test_repo_log_pid():
@@ -119,3 +122,57 @@ def test_call():
     for filename in filenames:
         path = Path(f"{args.save_dir}/benchmon_traces_{HOSTNAME}/{filename}")
         assert path.is_file(), f"{path} file does not exist"
+
+
+def test_grafana_mode_uses_cli_config_without_connection_file():
+    """Grafana mode should start without requiring connection.json."""
+    args = create_args(grafana=True, csv=False, grafana_influxdb_url="http://localhost:8181")
+    logger = RunUtils.create_logger(save_dir=args.save_dir, verbose=args.verbose)
+
+    class DummyCollector:
+        def __init__(self):
+            self.started = False
+            self.stopped = False
+
+        def start(self):
+            self.started = True
+
+        def stop(self):
+            self.stopped = True
+
+    dummy_collector = DummyCollector()
+    run_monitor = RunMonitor(args, logger)
+    run_monitor._create_hp_collector = lambda: dummy_collector
+    run_monitor.run(timeout=1)
+
+    assert dummy_collector.started
+    assert dummy_collector.stopped
+    assert run_monitor.influxdb_config["url"] == "http://localhost:8181"
+
+
+def test_grafana_mode_prefers_cli_over_connection_file():
+    """CLI Grafana settings should override connection.json values."""
+    args = create_args(
+        grafana=True,
+        csv=False,
+        grafana_influxdb_url="http://override-host:8181",
+        grafana_token="override-token",
+    )
+    connection_dir = Path(args.save_dir) / "grafana-data"
+    connection_dir.mkdir(parents=True, exist_ok=True)
+    with open(connection_dir / "connection.json", "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "influxdb_url": "http://file-host:8181",
+                "influxdb_token": "file-token",
+            },
+            f,
+        )
+
+    logger = RunUtils.create_logger(save_dir=args.save_dir, verbose=args.verbose)
+    run_monitor = RunMonitor(args, logger)
+
+    config = run_monitor._build_influxdb_config()
+
+    assert config["url"] == "http://override-host:8181"
+    assert config["token"] == "override-token"

@@ -55,7 +55,9 @@ setup(
         "ping3",
         "psutil",
         "requests",
-        "scipy"
+        "scipy",
+        "influxdb3-python",
+        "reactivex",
     ],
     extras_require={
         "test": [

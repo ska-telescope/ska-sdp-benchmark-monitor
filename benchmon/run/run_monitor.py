@@ -12,8 +12,6 @@ from pathlib import Path
 import psutil
 import requests
 
-from .hp_collector import HighPerformanceCollector
-
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
@@ -101,8 +99,61 @@ class RunMonitor:
                                    shell=True,
                                    text=True,
                                    check=False).stdout.split("\n")[0] == HOSTNAME
-        slurm_check = os.environ.get("SLURM_NODEID") == "0"
+        slurm_nodeid = os.environ.get("SLURM_NODEID")
+        slurm_check = slurm_nodeid == "0" or slurm_nodeid is None
         self.is_benchmon_control_node = oar_check or slurm_check
+
+    def _sleep_with_early_exit(self, duration: float) -> None:
+        """Sleep in short intervals so signal handlers can stop the run promptly."""
+        deadline = time.time() + max(duration, 0)
+        while self.should_run and time.time() < deadline:
+            time.sleep(min(0.1, deadline - time.time()))
+
+    def _build_influxdb_config(self) -> dict:
+        """Resolve InfluxDB configuration from connection.json and CLI overrides."""
+        config = {
+            "url": "",
+            "token": "",
+            "database": "metrics",
+        }
+        connection_file = Path(self.save_dir_base) / "grafana-data" / "connection.json"
+
+        if connection_file.is_file():
+            with open(connection_file, "r", encoding="utf-8") as f:
+                conn_info = json.load(f)
+            config["url"] = conn_info.get("influxdb_url", "")
+            config["token"] = conn_info.get("influxdb_token", "")
+        else:
+            self.logger.info(
+                "Grafana connection file not found at %s, using CLI/default InfluxDB settings.",
+                connection_file,
+            )
+
+        if self.args.grafana_influxdb_url:
+            config["url"] = self.args.grafana_influxdb_url
+        if self.args.grafana_token:
+            config["token"] = self.args.grafana_token
+
+        if not config["url"]:
+            raise ValueError("Grafana mode requires a valid InfluxDB URL")
+
+        return config
+
+    def _create_hp_collector(self):
+        """Create the Grafana/InfluxDB collector only when the feature is enabled."""
+        try:
+            from .hp_collector import HighPerformanceCollector
+        except ImportError as exc:
+            raise RuntimeError(
+                "Grafana mode requires the 'influxdb3-python' and 'reactivex' packages"
+            ) from exc
+
+        return HighPerformanceCollector(
+            self.logger,
+            self.influxdb_config,
+            self.args.grafana_sample_interval,
+            self.args.grafana_batch_size,
+        )
 
     def run(self, timeout: int = None):
         """
@@ -119,32 +170,20 @@ class RunMonitor:
         # Check if this is the control node
         self._check_control_node()
 
-        if self.is_grafana:
-            # --- REFACTOR: Load connection info from the correct shared path ---
-            connection_file = Path(self.save_dir_base) / "grafana-data" / "connection.json"
-            if not connection_file.is_file():
-                self.logger.error(f"Grafana connection file not found at {connection_file}")
-                self.logger.error("Hint: Run 'benchmon-start-grafana' before 'benchmon-run'.")
-                self.is_grafana = False  # Disable grafana features if config is missing
-            else:
-                with open(connection_file, "r") as f:
-                    conn_info = json.load(f)
-                if self.args.grafana_influxdb_url != "http://localhost:8181":
-                    conn_info["influxdb_url"] = self.args.grafana_influxdb_url
-                self.influxdb_config = {
-                    'url': conn_info.get("influxdb_url"),
-                    'token': conn_info.get("influxdb_token"),
-                    'database': 'metrics',
-                }
-
-        # --- REFACTOR: Initialize and start the new HP Collector ---
-        if self.is_grafana:
-            self.hp_collector = HighPerformanceCollector(
-                self.logger,
-                self.influxdb_config,
-                self.args.grafana_sample_interval,
-                self.args.grafana_batch_size
+        if self.args.start_after:
+            self.logger.info(
+                "Waiting %s seconds before starting monitoring.",
+                self.args.start_after,
             )
+            self._sleep_with_early_exit(self.args.start_after)
+
+        if not self.should_run:
+            self._shutdown()
+            return
+
+        if self.is_grafana:
+            self.influxdb_config = self._build_influxdb_config()
+            self.hp_collector = self._create_hp_collector()
             self.hp_collector.start()
 
         # Start writer processes (Only for CSV now)
@@ -163,7 +202,7 @@ class RunMonitor:
         # --- FIX: Replace blocking wait() with a main loop ---
         if timeout:
             self.logger.info(f"Running for a fixed duration of {timeout} seconds.")
-            time.sleep(timeout)
+            self._sleep_with_early_exit(timeout)
         else:
             self.logger.info("Monitoring started. Press Ctrl+C to stop.")
             try:
@@ -210,18 +249,6 @@ class RunMonitor:
             # The 'if self.is_grafana:' block is no longer needed here.
 
 
-    def write_benchmon_pid(self, pids) -> None:
-        """
-        Get benchmon-run pid
-        """
-        filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
-        with open(filename, "w") as fn:
-            for id in pids:
-                fn.write(f"{id},")
-
-        self.logger.debug(f"PID file created: {filename}")
-
-
     def run_sys_monitoring_binary(self):
         """
         Run system monitoring with the C++ backend
@@ -253,9 +280,6 @@ class RunMonitor:
                 text=True))
         except FileNotFoundError:
             self.logger.error("Unable to find the monitor executable file.")
-
-        pids = [process.pid for process in self.sys_process]
-        self.write_benchmon_pid(pids)
 
 
     def run_perf_pow(self):
