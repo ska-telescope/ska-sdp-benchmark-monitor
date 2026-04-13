@@ -1,8 +1,8 @@
-"""conftest file."""
+"""conftest file"""
 
 
 def pytest_collection_modifyitems(session, config, items):
-    """Define order for testing files."""
+    """Define order for testing files"""
     file_order = [
         "tests/test_flake8.py",
         "tests/test_run_monitor.py",
@@ -12,13 +12,7 @@ def pytest_collection_modifyitems(session, config, items):
         "tests/test_hp_collector.py",
         "tests/test_benchmon-visu_func.py",
         "tests/test_g5k.py",
-        "tests/test_metrics.py",
+        "tests/test_metrics.py"
     ]
 
-    def sort_key(item):
-        try:
-            return file_order.index(item.location[0])
-        except ValueError:
-            return len(file_order)
-
-    items.sort(key=sort_key)
+    items.sort(key=lambda item: file_order.index(item.location[0]))

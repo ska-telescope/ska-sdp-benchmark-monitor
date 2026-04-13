@@ -207,19 +207,11 @@ class RunUtils:
 
 
     @staticmethod
-    def pid_file_path() -> str:
-        """
-        Return the benchmon-run PID file path.
-        """
-        return f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
-
-
-    @staticmethod
     def get_benchmon_pid(logger: logging.Logger) -> None:
         """
         Get benchmon-run pid
         """
-        filename = RunUtils.pid_file_path()
+        filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
         with open(filename, "w") as fn:
             fn.write(f"{os.getpid()}")
 
