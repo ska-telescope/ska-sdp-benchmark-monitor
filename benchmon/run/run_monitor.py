@@ -84,7 +84,8 @@ class RunMonitor:
         slurm_check = os.environ.get("SLURM_NODEID") == "0" or os.environ.get("SLURM_NODEID") is None
         self.is_benchmon_control_node = True if oar_check or slurm_check else False
 
-        # Setup SIGTERM handler for graceful termination
+        # Handle both scheduler/user termination and explicit stop requests.
+        signal.signal(signal.SIGINT, self.terminate)
         signal.signal(signal.SIGTERM, self.terminate)
 
         # Init process variables

@@ -10,13 +10,14 @@ from benchmon.exceptions import CommandExecutionFailed
 log = logging.getLogger(__name__)
 
 
-def execute_cmd(cmd_str, handle_exception=True):
+def execute_cmd(cmd_str, handle_exception=True, timeout=None):
     """Accept command string and returns output.
 
     Args:
         cmd_str (str): Command string to be executed
         handle_exception (bool): Handle exception manually. If set to false, raises an exception
                                  to the caller function
+        timeout (float | None): Optional timeout in seconds for the command
     Returns:
         str: Output of the command. If command execution fails, returns 'not_available'
     Raises:
@@ -28,10 +29,26 @@ def execute_cmd(cmd_str, handle_exception=True):
 
     try:
         # Execute command
-        cmd_out = subprocess.run(cmd_str, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=True)
+        cmd_out = subprocess.run(
+            cmd_str,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=True,
+            timeout=timeout,
+        )
 
         # Get stdout and stderr. We are piping stderr to stdout as well
         cmd_out = cmd_out.stdout.decode("utf-8").rstrip()
+    except subprocess.TimeoutExpired as err:
+        if handle_exception:
+            log.warning("Execution of command %s timed out after %s seconds", cmd_str, timeout)
+            cmd_out = "not_available"
+        else:
+            log.warning(f"Execution of command {cmd_str} timed out after {timeout} seconds")
+            raise CommandExecutionFailed(
+                f"Execution of command '{cmd_str}' timed out after {timeout} seconds."
+            ) from err
     except subprocess.CalledProcessError as err:
         # If handle_exception is True, return 'not_available'
         if handle_exception:

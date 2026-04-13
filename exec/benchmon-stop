@@ -22,33 +22,95 @@ done
 benchmon_pid_file=./.benchmon-run_pid_${OAR_JOB_ID}${SLURM_JOB_ID}_$(hostname)
 if [[ -f ${benchmon_pid_file} ]]
 then
-    pids=$(tr ',' ' ' < ${benchmon_pid_file})
-    xargs -d',' -a ${benchmon_pid_file} kill -2
-    while kill -0 "${pids[@]}" 2>/dev/null; do sleep 1; done
+    stop_signal=${BENCHMON_STOP_SIGNAL:-TERM}
+    force_kill_after=${BENCHMON_STOP_FORCE_KILL_AFTER:-0}
+    pids_csv=$(tr -d '\n' < ${benchmon_pid_file})
+    IFS=',' read -r -a pids <<< "${pids_csv}"
+
+    if [[ ${#pids[@]} -gt 0 ]]
+    then
+        echo "[INFO] benchmon-stop: sending SIG${stop_signal} to ${pids[*]}"
+        kill -"${stop_signal}" "${pids[@]}" 2>/dev/null || true
+
+        start_wait=$SECONDS
+        force_sent=0
+        while true
+        do
+            alive=0
+            for pid in "${pids[@]}"
+            do
+                if kill -0 "${pid}" 2>/dev/null
+                then
+                    alive=1
+                    break
+                fi
+            done
+
+            if [[ ${alive} -eq 0 ]]
+            then
+                break
+            fi
+
+            if [[ ${force_kill_after} =~ ^[0-9]+$ ]] && [[ ${force_kill_after} -gt 0 ]] && [[ ${force_sent} -eq 0 ]] && [[ $((SECONDS - start_wait)) -ge ${force_kill_after} ]]
+            then
+                echo "[WARN] benchmon-stop: processes still alive after ${force_kill_after}s, sending SIGKILL to ${pids[*]}"
+                kill -KILL "${pids[@]}" 2>/dev/null || true
+                force_sent=1
+            fi
+
+            sleep 1
+        done
+    fi
+
     rm -v ${benchmon_pid_file}
 fi
 
-traces_repo=$save_dir/benchmon_traces_$(hostname)
+traces_repo=$(find "$save_dir" -maxdepth 1 -type d -name 'benchmon_traces_*' | sort | head -n 1)
+if [[ -z "$traces_repo" ]]
+then
+    traces_repo=$save_dir/benchmon_traces_$(hostname)
+fi
+visu_repo=$save_dir
 benchmon_visu=$(dirname $0)/benchmon-visu
 benchmon_report=$(dirname $0)/benchmon-report
 benchmon_template=$(python -c 'import benchmon; print(benchmon.__path__.pop())')/report/template.md
 if [[ $level == 0 ]]; then
-    $benchmon_visu --cpu --mem --net --disk --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo
+    $benchmon_visu --cpu --mem --net --disk --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $visu_repo
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $visu_repo
 
 elif [[ $level == 1 ]]; then
-    $benchmon_visu --cpu --mem --net --disk --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
+    $benchmon_visu --cpu --mem --net --disk --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $visu_repo
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $visu_repo # --pow
 
 
 elif [[ $level == 2 ]]; then
-    $benchmon_visu --cpu --mem --net --disk --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
+    $benchmon_visu --cpu --mem --net --disk --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $visu_repo
+    $benchmon_visu --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $visu_repo # --pow
 fi
 
-$benchmon_report --software-report "$save_dir/swmon_merged.json" --hardware-report "$save_dir/hwmon_merged.json" \
-                 --figure-path "$traces_repo/benchmon_figure_detailed.png"                                       \
-                 --ps-report "$traces_repo/timing_mapping_report.csv"                                            \
-                 --template "$benchmon_template"                                                                 \
-                 --output "$traces_repo/benchmon_report.md"
-python3 -m pandoc read $traces_repo/benchmon_report.md | python -m pandoc write -f html -o $traces_repo/benchmon_report.html
+if [[ -f "$traces_repo/benchmon_figure_detailed.png" ]]
+then
+    if ! $benchmon_report --software-report "$save_dir/swmon_merged.json" --hardware-report "$save_dir/hwmon_merged.json" \
+                          --figure-path "$traces_repo/benchmon_figure_detailed.png"                                       \
+                          --ps-report "$traces_repo/timing_mapping_report.csv"                                            \
+                          --template "$benchmon_template"                                                                 \
+                          --output "$traces_repo/benchmon_report.md"
+    then
+        echo "[WARN] benchmon-stop: markdown report generation failed"
+    fi
+else
+    echo "[WARN] benchmon-stop: skipping markdown report because figure is missing: $traces_repo/benchmon_figure_detailed.png"
+fi
+
+if [[ -f "$traces_repo/benchmon_report.md" ]]
+then
+    if command -v pandoc >/dev/null 2>&1
+    then
+        if ! python3 -m pandoc read $traces_repo/benchmon_report.md | python -m pandoc write -f html -o $traces_repo/benchmon_report.html
+        then
+            echo "[WARN] benchmon-stop: HTML report conversion failed"
+        fi
+    else
+        echo "[WARN] benchmon-stop: pandoc not found, skipping HTML report conversion"
+    fi
+fi

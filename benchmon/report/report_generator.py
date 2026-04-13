@@ -70,12 +70,15 @@ def spack_description(data):
     Returns:
         str: Markdown description of the package.
     """
-    name = data["name"]
-    version = data["version"]
-    platform = data["arch"]["platform"]
-    os = data["arch"]["platform_os"]
-    cpu_arch = data["arch"]["target"]
-    compiler = data["compiler"]["name"] + "/" + data["compiler"]["version"]
+    arch = data.get("arch") or {}
+    compiler_data = data.get("compiler") or {}
+
+    name = data.get("name", "unknown")
+    version = data.get("version", "unknown")
+    platform = arch.get("platform", "unknown")
+    os = arch.get("platform_os", "unknown")
+    cpu_arch = arch.get("target", "unknown")
+    compiler = compiler_data.get("name", "unknown") + "/" + compiler_data.get("version", "unknown")
 
     if not (type(cpu_arch) is str):
         cpu_arch = cpu_arch["name"]
