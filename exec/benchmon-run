@@ -160,6 +160,7 @@ def main():
         args_str += f"\t--{key.replace('_', '-')} {value}\n"
     logger.debug(f"benchmon-run arguments: \n{args_str}")
 
+    RunUtils.get_benchmon_pid(logger)
     runmonitor = RunMonitor(args, logger)
     runmonitor.run(timeout=args.test_timeout)
 

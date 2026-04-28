@@ -41,42 +41,21 @@ args="$args --save-dir $save_dir_arg"
 mkdir -p "$save_dir_arg"
 
 if [[ $level == 0 ]]; then
-    $(dirname ${BASH_SOURCE[0]})/benchmon-hardware --save-dir $save_dir_arg
-    $(dirname ${BASH_SOURCE[0]})/benchmon-software --save-dir $save_dir_arg
     args="--sys --sys-freq 1 $args"
-    # Collect data with hpctoolkit only if hpc-exe and hpc-flags have been passed,
-    # (this is not standard for level 0 so there are no defaults)
-    if [[ ${#exe[@]} != 0 && -n "$hpcrun_flags" ]]; then
-        echo "[INFO] benchmon: tracing ${exe[*]} with \"$hpcrun_flags\" in $save_dir_arg"
-        mkdir -p 
-	source $BENCHMON_LIB_PATH/run/tracing_wrappers.sh --save-dir ${save_dir_arg}/hpctoolkit_traces --hpc-flags "$hpcrunf_flags" --hpc-exe ${exe[*]}
-    fi
 
 elif [[ $level == 1 ]]; then
-    $(dirname ${BASH_SOURCE[0]})/benchmon-hardware --save-dir $save_dir_arg
-    $(dirname ${BASH_SOURCE[0]})/benchmon-software --save-dir $save_dir_arg
     # Collect overall performance metrics with hpctoolkit if executables have been passed, otherwise rely on perf
     if [[ ${#exe[@]} != 0 ]]; then
         # Collect overall performance metrics with hpctoolkit, if no hpc-flags have been passed use defaults
-        if [[ -z "$hpcrun_flags" ]]; then
-            hpcrun_flags="-e REALTIME"
-        fi
-        source $BENCHMON_LIB_PATH/run/tracing_wrappers.sh --save-dir ${save_dir_arg}/hpctoolkit_traces --hpc-flags "$hpcrun_flags" --hpc-exe ${exe[*]}
         args="--sys --sys-freq 5 $args" # --pow --pow-freq 10
     else
         args="--sys --sys-freq 5 --call --call-prof-freq 1 $args" # --pow --pow-freq 10
     fi
 
 elif [[ $level == 2 ]]; then
-    $(dirname ${BASH_SOURCE[0]})/benchmon-hardware --save-dir $save_dir_arg
-    $(dirname ${BASH_SOURCE[0]})/benchmon-software --save-dir $save_dir_arg
     # Collect execution traces with hpctoolkit if executables have been passed, otherwise rely on perf
     if [[ ${#exe[@]} != 0 ]]; then
         # if no hpc-flags have been passed use defaults
-        if [[ -z "$hpcrun_flags" ]]; then
-	    hpcrun_flags="-e cycles -t"
-        fi
-        source $BENCHMON_LIB_PATH/run/tracing_wrappers.sh --save-dir ${save_dir_arg}/hpctoolkit_traces --hpc-flags "$hpcrun_flags" --hpc-exe ${exe[*]}
         args="--sys --sys-freq 100 $args" # --pow --pow-freq 10
     else
         args="--sys --sys-freq 100 --call --call-prof-freq 50 $args" # --pow --pow-freq 10

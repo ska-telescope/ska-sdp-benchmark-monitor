@@ -1,0 +1,80 @@
+#!/usr/bin/bash
+# Carries out offline pre-run operations: 
+# - checking conditions for the operation of benchmon
+# - characterising the software and hardware contexts
+# - generating wrappers to executables to be traced with hpctoolkit (if active).
+
+args=""
+save_dir_arg="./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"
+hpcrun_flags=""
+index=0
+# Load environment variables exported by the Python benchmon-config script
+eval "$($(dirname ${BASH_SOURCE[0]})/benchmon-config)"
+
+# # If the BENCHMON_PARAM environment variable let its content override command line arguments
+# if [[ -z "$BENCHMON_PARAM" ]]; then
+#     set -- "$BENCHMON_PARAM"
+# fi
+
+# Handle arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        "-l" | "--level")
+            level=$2
+            shift 2
+            ;;
+        "-d" | "--save-dir")
+            save_dir_arg=$2
+            shift 2
+            ;;
+	"-e" | "--hpc-exe")
+            while [[ $2 != "-"* && -n $2 ]]; do
+                exe[((index++))]=$2
+                shift 1
+            done
+            shift 1
+            ;;
+	"-f" | "--hpc-flags")
+            hpcrun_flags=$2
+	    shift 2
+	    ;;
+        *)
+            args="$args $1"
+            shift 1
+            ;;
+    esac
+done
+
+args="$args --save-dir $save_dir_arg"
+
+# Run benchmon-check to assess conditions in which we are operating
+$(dirname ${BASH_SOURCE[0]})/benchmon-check
+
+# Create the target directory
+mkdir -p "$save_dir_arg"
+
+# Carry out software and hardware characterisation
+$(dirname ${BASH_SOURCE[0]})/benchmon-hardware --save-dir $save_dir_arg
+$(dirname ${BASH_SOURCE[0]})/benchmon-software --save-dir $save_dir_arg
+
+# Set up collection of data with hpctoolkit if hpc-exe is not empty
+# (for level 0 collection is disabled otherwise and for higher levels
+# trace collection is carried out via perf instead)
+if [[ ${#exe[@]} != 0 ]]; then
+    if [[ -z "$hpcrun_flags" ]]; then
+# Use defaults based on level if no hpcrun_flags were passed
+         if [[ $level == 2 ]]; then
+# Collect metrics and traces for detailed monitoring
+            hpcrun_flags="-e cycles -t"
+         else
+# Only collect metrics for lower overhead at other levels
+	    hpcrun_flags="-e REALTIME"
+	 fi
+    fi
+
+    echo "[INFO] benchmon: hpctoolkit tracing ${exe[*]} with \"$hpcrun_flags\" in $save_dir_arg"
+    source $BENCHMON_LIB_PATH/run/tracing_wrappers.sh --save-dir ${save_dir_arg}/hpctoolkit_traces --hpc-flags "$hpcrun_flags" --hpc-exe ${exe[*]}
+fi
+
+# In case this file was sourced, unset all local variables
+unset args save_dir_arg hpcrun_flags index level exe 

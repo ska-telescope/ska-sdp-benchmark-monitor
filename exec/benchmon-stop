@@ -1,61 +1,15 @@
 #!/usr/bin/bash
-
-args=""
-save_dir="./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        "-l" | "--level")
-            level=$2
-            shift 2
-            ;;
-        "-d" | "--save-dir")
-            save_dir=$2
-            shift 2
-            ;;
-        *)
-            args="$args $1"
-            shift 1
-            ;;
-    esac
-done
-
+# Sends SIGUSR1 (not SIGTERM) so that benchmon-run is not accidentally stopped
+# by SLURM's end-of-job SIGTERM — only an explicit call to benchmon-stop can stop benchmon-run
+#   and the user can be sure that when they call benchmon-stop, benchmon-run will be stopped.
 benchmon_pid_file=./.benchmon-run_pid_${OAR_JOB_ID}${SLURM_JOB_ID}_$(hostname)
 if [[ -f ${benchmon_pid_file} ]]
 then
-    pids=$(tr ',' ' ' < ${benchmon_pid_file})
-    xargs -d',' -a ${benchmon_pid_file} kill -2
-    while kill -0 "${pids[@]}" 2>/dev/null; do sleep 1; done
+    pid=$(cat ${benchmon_pid_file})
+    kill -USR1 ${pid}
+    while [ -e /proc/${pid} ]; do
+        sleep 0.1;
+    done
     rm -v ${benchmon_pid_file}
 fi
 
-traces_repo=$save_dir #/benchmon_traces_$(hostname)
-benchmon_visu=$(dirname $0)/benchmon-visu
-annotations_args=""
-events_file="$traces_repo/events.csv"
-if [[ -f "$events_file" ]]; then
-    annotations_args="--annotate-with-log $events_file"
-fi
-if [[ $level == 0 ]]; then
-    $benchmon_visu --recursive --cpu --mem --net --disk --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo
-    # Only call benchmon-visu with annotation if annotation arguments are set
-    # (i.e., events.csv exists), to avoid generating duplicate non-annotated plots
-    if [[ -n "$annotations_args" ]]; then
-        $benchmon_visu --recursive --cpu --mem --net --disk --fig-fmt png,svg --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
-        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-fmt png,svg --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo
-    fi
-elif [[ $level == 1 ]]; then
-    $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
-    if [[ -n "$annotations_args" ]]; then
-        $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --fig-fmt png,svg --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
-        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --fig-fmt png,svg --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo # --pow
-    fi
-elif [[ $level == 2 ]]; then
-    $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
-    if [[ -n "$annotations_args" ]]; then
-        $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
-        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png,svg --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo # --pow
-    fi
-fi
