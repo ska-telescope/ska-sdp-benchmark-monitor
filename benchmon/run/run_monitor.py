@@ -86,8 +86,10 @@ class RunMonitor:
         slurm_check = os.environ.get("SLURM_NODEID") == "0" or os.environ.get("SLURM_NODEID") is None
         self.is_benchmon_control_node = True if oar_check or slurm_check else False
 
-        # Setup SIGTERM handler for graceful termination
-        signal.signal(signal.SIGTERM, self.terminate)
+        # SIGTERM (sent by SLURM at end-of-job) is ignored.
+        # Only SIGUSR1 (sent by benchmon-stop) can stop the monitoring.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGUSR1, self.terminate)
 
         # Init process variables
         self.sys_process = []
@@ -160,18 +162,14 @@ class RunMonitor:
         if self.is_call:
             self.run_perf_call()
 
-        # --- FIX: Replace blocking wait() with a main loop ---
+        # Block until benchmon-stop sends SIGUSR1 (or timeout in test mode)
         if timeout:
             self.logger.info(f"Running for a fixed duration of {timeout} seconds.")
             time.sleep(timeout)
         else:
-            self.logger.info("Monitoring started. Press Ctrl+C to stop.")
-            try:
-                while self.should_run:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                self.logger.info("Ctrl+C received, initiating termination.")
-                self.should_run = False
+            self.logger.info("Monitoring started.")
+            while self.should_run:
+                time.sleep(1)
 
         self._shutdown()
 
@@ -368,9 +366,10 @@ class RunMonitor:
 
     def terminate(self, signum=None, frame=None):
         """
-        Terminate background process after catching term signal
+        Terminate background process after catching SIGUSR1 signal from benchmon-stop.
+        SIGTERM is ignored — only benchmon-stop can stop the monitoring.
         """
-        # This method is now only for signal handling
+
         self.logger.info(f"Signal {signum} received, initiating termination.")
         self.should_run = False
 
@@ -430,10 +429,14 @@ class RunMonitor:
 
         # Kill sys processes
         for process in self.sys_process:
-            process.terminate()
-            process_stdout = process.stdout.read()
-
-            self.logger.debug(f"Terminated system monitoring with stdout: {process_stdout}")
+            try:
+                process.terminate()
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+            except Exception:
+                pass
 
         # Perform post-processing after all processes are terminated
         self.post_process()
