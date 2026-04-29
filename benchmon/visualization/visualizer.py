@@ -531,6 +531,8 @@ class BenchmonVisualizer:
                     self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
                     ax = plt.gca()
                     ax_last = plt.gca()
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages)
                     if self.annotation_stages:
                         plot_stage_markers(
                             self.annotation_stages,
@@ -550,6 +552,8 @@ class BenchmonVisualizer:
                         sbp += 1
                         self.system_metrics.plot_cpu(number=core_number,
                                                      annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages)
                     if self.annotation_stages:
                         plot_stage_markers(
                             self.annotation_stages,
@@ -568,6 +572,8 @@ class BenchmonVisualizer:
                     self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
                                                           cores_out=self.args.cpu_cores_out,
                                                           annotate_with_cmds=annotate_with_cmds)
+                    if self.ical_stages:
+                        plot_ical_stages(self.ical_stages)
                     if self.annotation_stages:
                         plot_stage_markers(self.annotation_stages,
                                            ax_top=ax_pipeline,
