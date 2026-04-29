@@ -12,6 +12,10 @@ while [[ $# -gt 0 ]]; do
             save_dir=$2
             shift 2
             ;;
+        "--report-template")
+            report_template=$2
+            shift 2
+            ;;
         *)
             args="$args $1"
             shift 1
@@ -75,14 +79,23 @@ hardware_report="${hardware_report[0]:-}"
 
 # report template
 eval "$($(dirname ${BASH_SOURCE[0]})/benchmon-config)"
-template="$BENCHMON_LIB_PATH/report/template.md"
-echo "BENCHMON_LIB_PATH=$BENCHMON_LIB_PATH"
-echo "template=$template"
+report_template="${report_template:-$BENCHMON_LIB_PATH/report/template.md}"
 
+if [[ -f "$report_template" ]]; then
+    template_arg=(--template "$report_template")
+else
+    echo "warning: template not found ($report_template), using default ($BENCHMON_LIB_PATH/report/template.md)" >&2
+    template_arg=(--template "$BENCHMON_LIB_PATH/report/template.md")
+fi
+
+# figure path for report
 figure_path="$traces_repo/benchmon_traces_$(hostname)/benchmon_figure_detailed.png"
-
+if [[ ! -f "$figure_path" ]]; then
+    echo "warning: figure not found ($figure_path), report will be generated without image" >&2
+fi
+figure_arg=(--figure-path "$figure_path")
 # optional ps-report
-ps_report="$traces_repo/timing_mapping_report.csv"
+ps_report="$traces_repo/benchmon_traces_$(hostname)/timing_mapping_report.csv"
 
 if [[ -f "$ps_report" ]]; then
     ps_arg=(--ps-report "$ps_report")
@@ -95,9 +108,9 @@ fi
 benchmon-report \
     --software-report "$software_report" \
     --hardware-report "$hardware_report" \
-    --figure-path "$figure_path" \
+    "${figure_arg[@]}" \
     "${ps_arg[@]}" \
-    --template "$template" \
+    "${template_arg[@]}" \
     --output "$traces_repo/benchmon_report.md"
 
 # convert to HTML
