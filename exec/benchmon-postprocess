@@ -20,6 +20,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 traces_repo=$save_dir #/benchmon_traces_$(hostname)
+
+# ------------------------------
+# Postprocessing: Benchmon Visualisation
+# ------------------------------
+
 benchmon_visu=$(dirname $0)/benchmon-visu
 annotations_args=""
 events_file="$traces_repo/events.csv"
@@ -51,11 +56,59 @@ elif [[ $level == 2 ]]; then
     fi
 fi
 
-# $benchmon_report --software-report "$save_dir/swmon-$(hostname).json" --hardware-report "$save_dir/hwmon-$(hostname).json" \
-#                  --figure-path "$traces_repo/benchmon_figure_detailed.png"                                                 \
-#                  --template "/home/hchouh/src/ska-sdp-benchmark-monitor/benchmon/report/template.md"                       \
-#                  --output "$traces_repo/benchmon_report.md"
-# python3 -m pandoc read $traces_repo/benchmon_report.md | python -m pandoc write -f html -o $traces_repo/benchmon_report.html
+# ------------------------------
+# Postprocessing: Benchmon report
+# ------------------------------
+
+# software/hardware report file
+software_report=()
+for f in "$save_dir"/swmon*.json; do
+    software_report+=("$f")
+done
+software_report="${software_report[0]:-}"
+
+hardware_report=()
+for f in "$save_dir"/hwmon*.json; do
+    hardware_report+=("$f")
+done
+hardware_report="${hardware_report[0]:-}"
+
+# report template
+eval "$($(dirname ${BASH_SOURCE[0]})/benchmon-config)"
+template="$BENCHMON_LIB_PATH/report/template.md"
+echo "BENCHMON_LIB_PATH=$BENCHMON_LIB_PATH"
+echo "template=$template"
+
+figure_path="$traces_repo/benchmon_traces_$(hostname)/benchmon_figure_detailed.png"
+
+# optional ps-report
+ps_report="$traces_repo/timing_mapping_report.csv"
+
+if [[ -f "$ps_report" ]]; then
+    ps_arg=(--ps-report "$ps_report")
+else
+    echo "warning: timing_mapping_report.csv not found, skipping --ps-report" >&2
+    ps_arg=()
+fi
+
+# run benchmon report
+benchmon-report \
+    --software-report "$software_report" \
+    --hardware-report "$hardware_report" \
+    --figure-path "$figure_path" \
+    "${ps_arg[@]}" \
+    --template "$template" \
+    --output "$traces_repo/benchmon_report.md"
+
+# convert to HTML
+if command -v pandoc >/dev/null 2>&1 && [[ -f "$traces_repo/benchmon_report.md" ]]; then
+    pandoc "$traces_repo/benchmon_report.md" -f markdown -t html \
+        -o "$traces_repo/benchmon_report.html"
+fi
+
+# ------------------------------
+# Postprocessing: HPCtoolkit outputs
+# ------------------------------
 
 # Loop on the directories to produce the HPCtoolkit outputs
 traces=($save_dir/hpctoolkit_traces/hpctoolkit_*/)
