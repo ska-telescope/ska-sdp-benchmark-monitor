@@ -699,7 +699,7 @@ class BenchmonVisualizer:
 
                 if annotate_with_cmds:
                     annotate_with_cmds(ymax=max(powmax))
-                if self.annotation_stages:
+                if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=max(powmax))
 
                 plt.xticks(*self.xticks)
