@@ -105,18 +105,23 @@ else
 fi
 
 # run benchmon report
+report_dir="$traces_repo/benchmon_traces_$(hostname)"
+report_md="$report_dir/benchmon_report.md"
+report_html="$report_dir/benchmon_report.html"
+
+# run benchmon report
 benchmon-report \
     --software-report "$software_report" \
     --hardware-report "$hardware_report" \
     "${figure_arg[@]}" \
     "${ps_arg[@]}" \
     "${template_arg[@]}" \
-    --output "$traces_repo/benchmon_report.md"
+    --output "$report_md"
 
 # convert to HTML
-if command -v pandoc >/dev/null 2>&1 && [[ -f "$traces_repo/benchmon_report.md" ]]; then
-    pandoc "$traces_repo/benchmon_report.md" -f markdown -t html \
-        -o "$traces_repo/benchmon_report.html"
+if command -v pandoc >/dev/null 2>&1 && [[ -f "$report_md" ]]; then
+    pandoc "$report_md" -f markdown -t html \
+        -o "$report_html"
 fi
 
 # ------------------------------
