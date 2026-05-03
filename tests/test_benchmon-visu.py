@@ -54,39 +54,39 @@ def test_unit_benchmon_visu():
 
 
 def test_influxdb_mode_creates_output_directory(tmp_path, monkeypatch):
-       """InfluxDB mode should treat the positional argument as an output directory."""
-       script_path = os.path.join(os.path.dirname(__file__), "..", "exec", "benchmon-visu")
-       loader = importlib.machinery.SourceFileLoader("benchmon_visu_script", script_path)
-       spec = importlib.util.spec_from_loader(loader.name, loader)
-       module = importlib.util.module_from_spec(spec)
-       loader.exec_module(module)
+    """InfluxDB mode should treat the positional argument as an output directory."""
+    script_path = os.path.join(os.path.dirname(__file__), "..", "exec", "benchmon-visu")
+    loader = importlib.machinery.SourceFileLoader("benchmon_visu_script", script_path)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
 
-       output_dir = tmp_path / "benchmon_influx_figures"
+    output_dir = tmp_path / "benchmon_influx_figures"
 
-       class DummyVisualizer:
-              def __init__(self, args, logger, traces_repo):
-                     assert traces_repo == str(output_dir)
-                     assert output_dir.exists()
+    class DummyVisualizer:
+        def __init__(self, args, logger, traces_repo):
+            assert traces_repo == str(output_dir)
+            assert output_dir.exists()
 
-              def run_plots(self):
-                     return None
+        def run_plots(self):
+            return None
 
-       fake_module = types.ModuleType("benchmon.visualization.visualizer_influxdb")
-       fake_module.BenchmonInfluxDBVisualizer = DummyVisualizer
+    fake_module = types.ModuleType("benchmon.visualization.visualizer_influxdb")
+    fake_module.BenchmonInfluxDBVisualizer = DummyVisualizer
 
-       monkeypatch.setitem(sys.modules, "benchmon.visualization.visualizer_influxdb", fake_module)
-       monkeypatch.setattr(
-              sys,
-              "argv",
-              [
-                     script_path,
-                     str(output_dir),
-                     "--influxdb",
-                     "--influxdb-url",
-                     "http://localhost:8181",
-                     "--cpu",
-              ],
-       )
+    monkeypatch.setitem(sys.modules, "benchmon.visualization.visualizer_influxdb", fake_module)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            script_path,
+            str(output_dir),
+            "--influxdb",
+            "--influxdb-url",
+            "http://localhost:8181",
+            "--cpu",
+        ],
+    )
 
-       assert module.main() == 0
-       assert output_dir.exists()
+    assert module.main() == 0
+    assert output_dir.exists()
