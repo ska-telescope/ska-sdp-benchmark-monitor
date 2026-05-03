@@ -229,6 +229,72 @@ Open browser and visit: http://localhost:3000
 
 Packaged dashboards live in `<install-dir>/grafana/dashboards`. `benchmon-start-grafana` deploys every JSON file in that directory automatically, providing CPU, memory, network, disk, and InfiniBand (when available) views with real-time refresh.
 
+## Create Standard PNG/SVG Benchmon Plots for Offline Access
+
+Benchmon can run in offline mode (without `--grafana`) and record metrics to local CSV files. You can later import these CSV traces into InfluxDB and generate the standard benchmon PNG/SVG plots for offline access, archiving, and report sharing.
+
+The importer utility is located at `benchmon/run/csv_importer.py`.
+
+### Import Offline CSV Traces into InfluxDB
+
+#### Basic Usage
+
+If your trace directory includes `grafana-data/connection.json`, run:
+
+```bash
+python3 benchmon/run/csv_importer.py --dir /path/to/trace_folder/benchmon_traces_hostname
+```
+
+#### Manual Connection Settings
+
+If `connection.json` is missing, or you want another InfluxDB target:
+
+```bash
+python3 benchmon/run/csv_importer.py \
+  --dir /path/to/traces \
+  --grafana-influxdb-url "http://localhost:8181" \
+  --workers 8
+```
+
+#### CSV Importer Options
+
+| Argument | Description | Default |
+| :--- | :--- | :--- |
+| `--dir` | **(Required)** Path to folder containing CSV files such as `cpu_report.csv`. | - |
+| `--grafana-influxdb-url`| InfluxDB URL v3. Overrides `connection.json`. | http://localhost:8181 |
+| `--grafana-token` | InfluxDB token. Overrides `connection.json`. | (Empty) |
+| `--database` | Target bucket/database name. | `metrics` |
+| `--org` | InfluxDB organization (optional). | (Empty) |
+| `--batch-size` | Number of points per write request. | 5000 |
+| `--workers` | Number of concurrent write threads. | 4 |
+
+### Generate Benchmon Figures from Imported Data
+
+After CSV import, generate benchmon-style figures directly from InfluxDB:
+
+Compared to the standard CSV-based `benchmon-visu` usage, where the positional argument is the trace directory, InfluxDB mode needs extra arguments so benchmon knows to query the database instead of reading local files. In practice, the extra required arguments are `--influxdb` and `--influxdb-url`, and you will typically also provide `--start-time` and `--end-time` to select the imported run window. `--influxdb-database` is additionally required when your database is not the default `metrics` bucket.
+
+```bash
+benchmon-visu ./benchmon_influx_figures \
+  --influxdb \
+  --influxdb-url http://localhost:8181 \
+  --influxdb-database metrics \
+  --start-time 2026-02-04T21:48:20 \
+  --end-time 2026-02-04T22:03:20 \
+  --sys \
+  --recursive \
+  --fig-fmt png \
+  --fig-name benchmon_influx_overview
+```
+
+Notes:
+- The positional argument is the output directory for generated figures and logs.
+- If `--influxdb-hostname` is omitted, benchmon discovers all hostnames in the selected time range and generates one figure set per host.
+- `--recursive` also creates `multi-node_sync.<fmt>` for synchronized multi-node view.
+- `--resolution auto` chooses a coarser time bucket for long windows. You can force fixed resolution such as `--resolution 1m`.
+- `--start-time` and `--end-time` use local wall-clock time in format `YYYY-MM-DDTHH:MM:SS`.
+- InfluxDB visualization currently supports system plots only: `--cpu`, `--cpu-all`, `--cpu-freq`, `--mem`, `--net`, `--disk`, `--ib`, and `--sys`.
+
 ## Troubleshooting
 
 | Symptom | Resolution |

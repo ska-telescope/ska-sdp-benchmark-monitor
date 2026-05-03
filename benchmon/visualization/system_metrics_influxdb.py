@@ -65,6 +65,19 @@ def normalize_query_rows(result: Any) -> list[dict[str, Any]]:
         return rows
     if hasattr(result, "read_all"):
         return normalize_query_rows(result.read_all())
+    if hasattr(result, "column_names") and hasattr(result, "column"):
+        column_names = list(result.column_names)
+        if not column_names:
+            return []
+        columns = [result.column(name) for name in column_names]
+        nrows = len(columns[0]) if columns else 0
+        rows = []
+        for idx in range(nrows):
+            row = {}
+            for name, column in zip(column_names, columns):
+                row[name] = column[idx]
+            rows.append(row)
+        return rows
     if hasattr(result, "to_pylist"):
         return list(result.to_pylist())
     if hasattr(result, "to_pydict"):
@@ -85,6 +98,10 @@ def parse_query_timestamp(value: Any) -> float:
     """Convert query timestamp-like values to epoch seconds."""
     if value is None:
         return 0.0
+    if hasattr(value, "value"):
+        raw_value = value.value
+        if isinstance(raw_value, (int, np.integer)):
+            return int(raw_value) / 1e9
     if hasattr(value, "to_pydatetime") and not isinstance(value, datetime):
         value = value.to_pydatetime()
     if isinstance(value, datetime):

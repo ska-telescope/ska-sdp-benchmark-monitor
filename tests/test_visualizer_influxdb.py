@@ -601,6 +601,25 @@ def test_parse_query_timestamp_normalizes_datetime_like_values():
     assert parse_query_timestamp(DummyTimestamp(naive)) == expected
 
 
+def test_parse_query_timestamp_accepts_arrow_nanosecond_scalars():
+    pyarrow = pytest.importorskip("pyarrow")
+
+    from benchmon.visualization.system_metrics_influxdb import normalize_query_rows, parse_query_timestamp
+
+    ns_value = 1_777_451_685_893_529_344
+    table = pyarrow.table(
+        {
+            "time": pyarrow.array([ns_value], type=pyarrow.timestamp("ns")),
+            "hostname": pyarrow.array([HOSTNAME]),
+        }
+    )
+
+    rows = normalize_query_rows(table)
+
+    assert rows[0]["hostname"].as_py() == HOSTNAME
+    assert parse_query_timestamp(rows[0]["time"]) == pytest.approx(ns_value / 1e9)
+
+
 def test_influxdb_visualizer_rejects_unsupported_flags(tmp_path, logger, monkeypatch):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",

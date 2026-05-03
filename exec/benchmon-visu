@@ -127,7 +127,9 @@ def main():
     args = parsing()
     traces_repo = args.traces_repo
 
-    if not os.path.exists(traces_repo):
+    if args.influxdb:
+        os.makedirs(traces_repo, exist_ok=True)
+    elif not os.path.exists(traces_repo):
         print(f"Input trace directory {traces_repo} not found. Exiting.")
         return -1
 
