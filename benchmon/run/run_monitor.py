@@ -430,7 +430,7 @@ class RunMonitor:
         # Kill sys processes
         for process in self.sys_process:
             try:
-                process.terminate()
+                process.send_signal(signal.SIGUSR1)
                 process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
