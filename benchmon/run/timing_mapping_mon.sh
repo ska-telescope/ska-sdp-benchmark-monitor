@@ -9,10 +9,21 @@ node=$(hostname)
 if [ "$3" = 'no-mapping' ]; then
     ps_fields="ppid,pid,tid,etimes,lstart,cmd";
     awk_fields='$1, $2, $3'
+    lst_start=5
 else
     ps_fields="ppid,pid,tid,cpuid,etimes,lstart,cmd"
     awk_fields='$1, $2, $3, $4'
+    lst_start=6
 fi
+
+# Use a wrapper function to format ps's output: change lstart to seconds since the Epoch
+# (1970-01-01 00:00 UTC) since the "-D %s" argument is not standard across systems
+ps_reformat () {
+   local ps_in ps_out lstart_iso lstart_s
+   ps_in=$(eval ps "$@")
+   ps_out=$(awk -vlst_start=$lst_start '{for (i=1; i<=NF; i++) if (i==lst_start) {date_cmd="date --date=\"" $i" "$(i+1)" "$(i+2)" "$(i+3)" "$(i+4) "\" '\''+%s'\''"; date_cmd | getline date_res; close(date_cmd); printf "%s ", date_res; i=lst_start+4;} else {if (i!=NF) printf "%s ", $i;else printf "%s\n", $i}}' <(echo "$ps_in"))
+   echo "$ps_out"   
+}
 
 # Manage termination: add the header, sort entries in the journal variable and write to the output file
 trap 'printf "%s\n%s" "timestamp,pipeline,stage,event,node,process,source,message,core" "$journal" > ${output}; exit 0' SIGTERM
@@ -33,7 +44,7 @@ skip_pid=$$
 # processes have tid matching pid, with -T threads have their parent PID shown, use ww and place cmd
 # last to have them untruncated
 # ps's native sorting does not seem compatible with listing threads: revert to sort on tid
-psfull="ps --no-header -D %s -eTwwo $ps_fields | sort -nk3"
+psfull="ps_reformat --no-header -eTwwo $ps_fields | sort -nk3"
 
 # Recursively search for child processes and threads with awk
 psold_full="$(eval $psfull | awk -vpp=$root_pid -vp=$skip_pid 'function r(s,e){if(s!=e) {print ps_string[s];s=child_id[s];while(s){sub(",","",s);t=s;sub(",.*","",t);sub("[0-9]+","",s);r(t,e)}}}{child_id[$1]=child_id[$1]","$3;ps_string[$3]=$0}END{r(pp,p)}')"
@@ -60,9 +71,6 @@ do
     # (sort based on tid: all records except for the last correspond to mapping to different cores,
     # and the last to completion).
     
-    # NEW LINES SHOULD LEAD TO START WHILE DELETED LINES SHOULD LEAD TO STOP
-    # CHANGED LINES CORRESPOND TO CHANGE OF CORE
-
     newlines=$(awk 'BEGIN{i=1; j=1} (FILENAME==ARGV[1] && /^[0-9,]+[cd][0-9,]+/) {split($0, a, "[cd]"); n=split(a[1], b, ","); if(n==1) {b[2]=b[1]}; for(k=b[1];k<=b[2];k++) {line[i++]=k}; next} FILENAME==ARGV[2]{psfull[j++]=$0; next} END{for(k=1;k<i;k++) {print psfull[line[k]]}}' <(echo "$difflines") <(echo "$psold_full"))
 
     # If something is returned by awk, append to the journal variable with a final new line
