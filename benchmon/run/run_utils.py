@@ -48,8 +48,8 @@ class RunUtils:
 
         parser.add_argument(
             "--sys-freq",
-            type=int,
-            default=10,
+            type=float,
+            default=1,
             help="System monitoring frequency. Default: 10 Hz"
         )
 
