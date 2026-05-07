@@ -5,18 +5,12 @@
 # - generating wrappers to executables to be traced with hpctoolkit (if active).
 
 args=""
-save_dir_arg="./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"
 hpcrun_flags=""
 index=0
 # Load environment variables exported by the Python benchmon-config script
 eval "$($(dirname ${BASH_SOURCE[0]})/benchmon-config)"
 
-# # If the BENCHMON_PARAM environment variable let its content override command line arguments
-# if [[ -z "$BENCHMON_PARAM" ]]; then
-#     set -- "$BENCHMON_PARAM"
-# fi
-
-# Handle arguments
+# Priority 2: parse command line args
 while [[ $# -gt 0 ]]; do
     case $1 in
         "-l" | "--level")
@@ -45,7 +39,36 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Priority 1: BENCHMON_ARGS overrides level, save-dir, verbose only
+if [[ -n "${BENCHMON_ARGS}" ]]; then
+    echo "[INFO]: BENCHMON_ARGS is set, overriding matching arguments." >&2
+    eval set -- "$BENCHMON_ARGS"
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            "-l" | "--level")
+                level=$2
+                shift 2
+                ;;
+            "-d" | "--save-dir")
+                save_dir_arg=$2
+                shift 2
+                ;;
+            "-v" | "--verbose")
+                args="$args --verbose"
+                shift 1
+                ;;
+            *)
+                shift 1  # ignore other args (belong to benchmon-start)
+                ;;
+        esac
+    done
+fi
+
+# Priority 3: defaults
+level=${level:-0}
+save_dir_arg="${save_dir_arg:-./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}}"
 args="$args --save-dir $save_dir_arg"
+echo "[INFO]: benchmon-setup level=$level save-dir=$save_dir_arg" >&2
 
 # Run benchmon-check to assess conditions in which we are operating
 $(dirname ${BASH_SOURCE[0]})/benchmon-check

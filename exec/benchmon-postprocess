@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 args=""
-save_dir="./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"
+# Priority 2: parse command line args
 while [[ $# -gt 0 ]]; do
     case $1 in
         "-l" | "--level")
@@ -13,7 +13,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         "--report-template")
-            report_template=$2
+            report_template=$2  # belongs to user only, never overridden by BENCHMON_ARGS
             shift 2
             ;;
         *)
@@ -22,6 +22,36 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Priority 1: BENCHMON_ARGS overrides level, save-dir, verbose only
+if [[ -n "${BENCHMON_ARGS}" ]]; then
+    echo "[INFO]: BENCHMON_ARGS is set, overriding matching arguments." >&2
+    eval set -- "$BENCHMON_ARGS"
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            "-l" | "--level")
+                level=$2
+                shift 2
+                ;;
+            "-d" | "--save-dir")
+                save_dir=$2
+                shift 2
+                ;;
+            "-v" | "--verbose")
+                args="$args --verbose"
+                shift 1
+                ;;
+            *)
+                shift 1  # ignore other args (belong to benchmon-start)
+                ;;
+        esac
+    done
+fi
+
+# Priority 3: defaults if nothing set
+level=${level:-0}
+save_dir="${save_dir:-./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}}"
+echo "[INFO]: benchmon-postprocess --level $level --save-dir $save_dir${report_template:+ --report-template $report_template} $args" >&2
 
 traces_repo=$save_dir #/benchmon_traces_$(hostname)
 
