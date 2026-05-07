@@ -32,12 +32,13 @@ to generate software performance metrics or collect execution traces, HPCToolkit
 ```bash
 benchmon-check
 ```
+`benchmon-check` is also called automatically by `benchmon-setup` as part of the pre-run validation step.
 
 # Basic procedure
 To monitor an application with benchmon, follow these four main steps:
 1. **Start benchmon** using `benchmon-start` (or `benchmon-multinode-start` for multi-node setups). benchmon runs in the background and does not block subsequent executions. The type and frequency of monitoring can be configured by passing various arguments. A subdirectory is created to store all trace files.
 2. **Run the target applications** as usual. benchmon performs all enabled types of monitoring in the background while the applications are running.
-3. **Stop benchmon** with `benchmon-stop` (or `benchmon-multinode-stop`). This finalizes and terminates benchmon background processes, and post-processes the trace files. The traces are saved in the directory specified in step 1.
+3. **Stop benchmon** with `benchmon-stop` (or `benchmon-multinode-stop`). This finalizes and terminates benchmon background processes.
 4. **Visualize the trace files** using `benchmon-visu`. This generates plots and figures for all collected metrics. Visualization can be customized by passing different arguments to select which metrics to display.
 
 Example workflow with benchmon:
@@ -59,7 +60,16 @@ benchmon-visu --cpu --mem --recursive ./traces
 ```
 The number of steps can be reduced to 3 by using the `--level` option. This option specifies a pre-defined set of monitoring options, which is useful for common benchmarking scenarios. See [Pre-defined Benchmarking Levels](#pre-defined-benchmarking-levels) for more details.
 
----
+5. Use `benchmon-setup` before starting to perform pre-run validation, environment checks, and hardware/software characterisation. Use `benchmon-postprocess` after stopping to generate visualizations, produce a report, and run HPCToolkit post-processing if applicable. See [Argument Priority System](#argument-priority-system) for more details on how arguments are resolved.
+
+```bash
+# Example: standardised benchmarking workflow
+benchmon-setup                # pre-run validation and environment characterisation
+benchmon-start                # start monitoring
+./my_app                      # target app
+benchmon-stop                 # stop monitoring
+benchmon-postprocess          # visualizations, report and HPCToolkit post-processing
+```
 
 # Monitoring options and flags
 benchmon offers a set of options for customizing monitoring. Specific types of monitoring can be enabled or disabled, sampling frequencies adjusted, and system resources or metrics selected for tracking. This flexibility allows the monitoring process to be tailored to the application's requirements and the desired level of detail for analysis.
@@ -67,7 +77,7 @@ benchmon offers a set of options for customizing monitoring. Specific types of m
 ### `benchmon-start` and `benchmon-multinode-start`
 
 ##### General Options
-- `-d`, `--save-dir`: Directory to save traces (default: `./save_dir_<JobId>/`).
+- `-d`, `--save-dir`: Directory to save traces (default: `./benchmon_savedir_<JobId>/`).
 - `-v`, `--verbose`: Enable verbose output.
 - `-b`, `--backend`: Backend for multi-node monitoring (`mpi`, `ssh`; default: `mpi`).
 ##### Resource Usage
@@ -92,9 +102,27 @@ benchmon offers a set of options for customizing monitoring. Specific types of m
 
 ***
 ### `benchmon-stop` and `benchmon-multinode-stop`
-These commands stop the monitoring process and post-process the trace files. For `benchmon-multinode-stop`, the flag `-b | --backend` can be used to specify the backend to spread the stop command to all nodes. Possible values are `mpi` and `ssh` (default: `mpi`).
+These commands stop the monitoring process. For `benchmon-multinode-stop`, the flag `-b | --backend` can be used to specify the backend to spread the stop command to all nodes. Possible values are `mpi` and `ssh` (default: `mpi`).
 
+### `benchmon-setup`
+Performs pre-run validation, hardware/software characterisation, and optional HPCToolkit configuration.
 
+- `-l`, `--level`: Pre-defined benchmarking level (`0`, `1`, `2`; default: `0`).
+- `-d`, `--save-dir`: Directory to save traces (default: `./benchmon_savedir_<JobId>/`).
+- `-v`, `--verbose`: Enable verbose output.
+- `-e`, `--hpc-exe`: Executables to be wrapped with HPCToolkit.
+- `-f`, `--hpc-flags`: Flags passed to `hpcrun` for configuring data collection.
+
+***
+### `benchmon-postprocess`
+Generates visualizations, produces a report, and runs HPCToolkit post-processing if applicable.
+
+- `-l`, `--level`: Pre-defined benchmarking level (`0`, `1`, `2`; default: `0`).
+- `-d`, `--save-dir`: Directory where traces are stored (default: `./benchmon_savedir_<JobId>/`).
+- `-v`, `--verbose`: Enable verbose output.
+- `--report-template`: Path to a custom Markdown template for report generation.
+
+***
 ### `benchmon-visu`
 The `benchmon-visu` tool provides detailed visualization of collected metrics, supporting both partial and comprehensive displays of resource usage, power consumption, and call tracing data. It enables selection of specific metrics for plotting, supports multi-node synchronized visualization, and offers options for interactive or figure generation. Output formats and figure quality can be customized for reporting or analysis.
 
@@ -154,7 +182,7 @@ Available options:
 - `--fig-height-unit`: Figure subplot height in inches (default: 3).
 - `--fig-xrange`: Number of ticks on the x-axis (default: 25).
 - `--fig-yrange`: Number of ticks on the y-axis (default: 11).
-**
+***
 
 # SW/HW contexts
 benchmon can automatically generate detailed files describing both the software and hardware contexts of the current benchmark. The `benchmon-hardware` command produces a JSON file containing information such as CPU details, memory configuration, disk data, network interfaces, accelerator information, system topology, and operating system data. Similarly, the `benchmon-software` command generates a JSON file that includes environment variables, Spack dependencies, Python environment details, and loaded modules. Both commands accept the `--save-dir` option to specify the path where the JSON files will be generated. These JSON files can be visualized in graph mode using tools like JSON Crack for easier inspection and analysis.
@@ -162,37 +190,73 @@ benchmon can automatically generate detailed files describing both the software 
 
 # Pre-defined benchmarking levels
 
-benchmon provides pre-defined levels to simplify common benchmarking scenarios. Each level enables a specific set of monitoring and tracing options, as well as visualization options. When the `--level` flag is used, benchmon automatically configures metric collection, and at stop time (`benchmon-stop`), it calls `benchmon-visu` with the associated visualization options for that level. Software execution is traced either using `perf` or `hpctoolkit` for level 1 and above. `perf` will trace all software activity at a frequency increasing with the level. Conversely, `hpctoolkit` will only record information for the executables passed as arguments, performance metrics are produced for level 1 and execution traces for level 2. The save directory can also be specified with `--save-dir` to control where traces and figures are stored.
+benchmon provides pre-defined levels to simplify common benchmarking scenarios. Each level enables a specific set of monitoring and tracing options, as well as visualization options. When the `--level` flag is used, benchmon automatically configures metric collection, after stopping (`benchmon-stop`), `benchmon-postprocess` calls `benchmon-visu` to generate the visualizations with the associated visualization options for that level. Software execution is traced either using `perf` or `hpctoolkit` for level 1 and above. `perf` will trace all software activity at a frequency increasing with the level. Conversely, `hpctoolkit` will only record information for the executables passed as arguments, performance metrics are produced for level 1 and execution traces for level 2. The save directory can also be specified with `--save-dir` to control where traces and figures are stored.
 
-For each benchmarking level, `benchmon-visu` automatically generates two figures: an _overview_ figure and a _detailed_ figure, and both figures are produced in `svg` and `png` formats.
+For each benchmarking level, `benchmon-visu` automatically generates two figures: an _overview_ figure and a _detailed_ figure, and both figures are produced in `svg` and `png` formats. If an `events.csv` file is found in the trace directory, annotated versions of both figures are also generated automatically.
 
 In addition, when using pre-defined benchmarking levels, benchmon always runs `benchmon-software` and `benchmon-hardware` to capture the software and hardware contexts of the benchmark.
 
 |    Level    | Monitoring options enabled                        | Visualization options enabled                                                                            |
 | :---------: | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `--level 0` | `--sys --sys-freq 1`                              | _overview:_ `--cpu --mem --net --disk --fig-name benchmon_figure_overview`                                                                   |
+| `--level 0` | `--sys --sys-freq 0.2`                              | _overview:_ `--cpu --mem --net --disk --fig-name benchmon_figure_overview`                                                                   |
 |             |                                                   | _detailed:_ `--cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-name benchmon_figure_detailed`  |
-| `--level 1` | `--sys --sys-freq 5 --call --call-prof-freq 1` using `perf`   | _overview:_ `<level 0>` + `--inline-call`                                                               |
+| `--level 1` | `--sys --sys-freq 1 --call --call-prof-freq 1` using `perf`   | _overview:_ `<level 0>` + `--inline-call`                                                               |
 |             |                                                   | _detailed:_ `<level 0>` + `--inline-call`                                                                |
-| `--level 1` | `--sys --sys-freq 5 ` requires `--hpc-exe` to use `hpctoolkit`   | _overview:_ `<level 0>`|
+| `--level 1` | `--sys --sys-freq 1 ` requires `--hpc-exe` to use `hpctoolkit`   | _overview:_ `<level 0>`|
 |             |                                                   | _detailed:_ `<level 0>`                                                                       |
-| `--level 2` | `--sys --sys-freq 100 --call --call-prof-freq 50` using `perf | _overview:_ `<level 1>` + `--call --call-depth 4`                                                        |
+| `--level 2` | `--sys --sys-freq 10 --call --call-prof-freq 50` using `perf` | _overview:_ `<level 1>` + `--call --call-depth 4`                                                        |
 |             |                                                   | _detailed:_ `<level 1>` + `--call --call-depth 4`                                                        |
-| `--level 2` | `--sys --sys-freq 100` requires `--hpc-exe` to use `hpctoolkit`| _overview:_ `<level 1>`                                                        |
+| `--level 2` | `--sys --sys-freq 10` requires `--hpc-exe` to use `hpctoolkit`| _overview:_ `<level 1>`                                                        |
 |             |                                                   | _detailed:_ `<level 1>`                                                        |
 
 
 ```bash
 #!/usr/bin/bash
+benchmon-setup --level <level> --save-dir <dir>
 benchmon-start --level <level> --save-dir <dir>
 
 <applications>
 
-benchmon-stop --level <level> --save-dir <dir>
+benchmon-stop
+benchmon-postprocess --level <level> --save-dir <dir>
 ```
 ***
+# Argument Priority System
+Arguments for `benchmon-setup`, `benchmon-start` and `benchmon-postprocess` are resolved following a 3-level priority system:
+
+- **(1) `BENCHMON_ARGS` environment variable** — highest priority:
+```bash
+export BENCHMON_ARGS="--level 1 --save-dir ./my_traces"
+benchmon-setup
+benchmon-start
+./my_app
+benchmon-stop
+benchmon-postprocess
+```
+
+- **(2) Command line arguments** — used as-is if `BENCHMON_ARGS` is not set:
+```bash
+benchmon-setup --level 1 --save-dir ./my_traces
+benchmon-start --level 1 --save-dir ./my_traces
+./my_app
+benchmon-stop
+benchmon-postprocess --level 1 --save-dir ./my_traces
+```
+
+- **(3) Defaults** — if nothing is specified, `level=0` and `save-dir=./benchmon_savedir_JOBID` are used:
+```bash
+benchmon-setup
+benchmon-start
+./my_app
+benchmon-stop
+benchmon-postprocess
+```
+
+> **Note:** `--report-template` is always specified on the command line and is never overridden by `BENCHMON_ARGS`.
 
 # benchmon-report
+
+> **Note:** `benchmon-report` is called automatically by `benchmon-postprocess`. It can also be used standalone.
 
 The `benchmon-report` tool provides a way to automatically extract and summarize parts of the data from the raw output files generated by benchmon. It fills an Markdown file based on a pre-written template. The template can be adapted to the user's needs.
 
