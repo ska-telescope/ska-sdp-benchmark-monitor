@@ -5,15 +5,21 @@ freq=$1
 output=$2
 journal=""
 node=$(hostname)
+ultimate=false
+terminate=false
 
 if [ "$3" = 'no-mapping' ]; then
-    ps_fields="ppid,pid,tid,etimes,lstart,cmd";
+    mapping=false
+    ps_fields="ppid,pid,tid,etimes,lstart,cmd"
     awk_fields='$1, $2, $3'
     lst_start=5
+    cmd_start=6
 else
+    mapping=true
     ps_fields="ppid,pid,tid,cpuid,etimes,lstart,cmd"
     awk_fields='$1, $2, $3, $4'
     lst_start=6
+    cmd_start=7
 fi
 
 # Use a wrapper function to format ps's output: change lstart to seconds since the Epoch
@@ -25,8 +31,8 @@ ps_reformat () {
    echo "$ps_out"   
 }
 
-# Manage termination: add the header, sort entries in the journal variable and write to the output file
-trap 'printf "%s\n%s" "timestamp,pipeline,stage,event,node,process,source,message,core" "$journal" > ${output}; exit 0' SIGTERM
+# Manage termination with one last iteration of the loop
+trap 'ultimate=true' SIGTERM SIGUSR1
 
 # Determine sampling period
 sampl=$(bc <<< "scale=6; 1/$freq")
@@ -39,6 +45,8 @@ skip_pid=$$
 # Get all info from ps to have coherent time stamps
 # Identify what to save to journal with diff (without etime)
 # then save the complete record to have the elapsed time too
+# (note that this is the total time the thread has existed since
+# its creation, not the time it spent on a given core)
 
 # Collect all data with ps to then process it: e all processes, T including threads, o to define output
 # processes have tid matching pid, with -T threads have their parent PID shown, use ww and place cmd
@@ -75,17 +83,36 @@ do
 
     # If something is returned by awk, append to the journal variable with a final new line
     if [ "$newlines" != '' ]; then
-	    stage=$(awk '{for (i=7; i<=NF; i++) printf "%s ", $i}' <(echo "$newlines"))
-            # START line
-	    event=$(awk -vSTAGE="$stage" -vNODE=$node '{printf "%d,THREAD,%s,START,%s,%d,ps,PPID:%d PID:%d,%d", $6, STAGE, NODE, $3, $1, $2, $4}' <(echo "$newlines"))
-	    journal+="$event"; journal+=$'\n'
+	    stages=$(awk -vcmd_start="$cmd_start" '{for (i=cmd_start; i<=NF; i++) if (i!=NF) {printf "%s ", $i;} else {printf "%s\n", $i;}}' <(echo "$newlines"))
+
+	    # START line
+            if [ "$mapping" = true ]; then
+ 		    events=$(awk -vNODE=$node 'NR==FNR {stage_line[FNR]=$0} NR!=FNR {printf "%d,THREAD,%s,START,%s,%d,ps,PPID:%d PID:%d,%d\n", $6, stage_line[FNR], NODE, $3, $1, $2, $4}' <(echo "$stages") <(echo "$newlines"))
+            else
+		    events=$(awk -vNODE=$node 'NR==FNR {stage_line[FNR]=$0} NR!=FNR {printf "%d,THREAD,%s,START,%s,%d,ps,PPID:%d PID:%d,\n", $5, stage_line[FNR], NODE, $3, $1, $2}' <(echo "$stages") <(echo "$newlines"))
+	    fi
+	    journal+="$events"; journal+=$'\n'
 
 	    # STOP line
-	    event=$(awk -vSTAGE="$stage" -vNODE=$node '{printf "%d,THREAD,%s,FINISHED,%s,%d,ps,PPID:%d PID:%d elapsed:%d,%d", $6+$5+1, STAGE, NODE, $3, $1, $2, $5+1, $4}' <(echo "$newlines"))
-	    journal+="$event"; journal+=$'\n'
+	    if [ "$mapping" = true ]; then
+		    events=$(awk -vNODE=$node 'NR==FNR {stage_line[FNR]=$0} NR!=FNR {printf "%d,THREAD,%s,FINISHED,%s,%d,ps,PPID:%d PID:%d elapsed:%d,%d\n", $6+$5+1, stage_line[FNR], NODE, $3, $1, $2, $5+1, $4}' <(echo "$stages") <(echo "$newlines"))
+	    else
+		    events=$(awk -vNODE=$node 'NR==FNR {stage_line[FNR]=$0} NR!=FNR {printf "%d,THREAD,%s,FINISHED,%s,%d,ps,PPID:%d PID:%d elapsed:%d,\n", $5+$4+1, stage_line[FNR], NODE, $3, $1, $2, $4+1}' <(echo "$stages") <(echo "$newlines"))
+            fi
+	    journal+="$events"; journal+=$'\n'
     fi
 
     # Exchange psold and psnew and full entries
     psold=$psnew
     psold_full=$psnew_full
+
+    # Handle termination with one last iteration of the while loop to report the end of subprocesses
+    if [ $terminate = true ]; then
+            printf "%s\n%s" "timestamp,pipeline,stage,event,node,process,source,message,core" "$journal" > ${output}
+	    exit 0
+    fi
+    if [ $ultimate = true ]; then
+	    terminate=true
+    fi
+
 done
