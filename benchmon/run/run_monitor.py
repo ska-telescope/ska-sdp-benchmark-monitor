@@ -431,7 +431,8 @@ class RunMonitor:
         for process in self.sys_process:
             try:
                 process.send_signal(signal.SIGUSR1)
-                timeout = int(2 / self.sys_freq) + 5 # @cs allow enough time for monitoring scripts to terminate and write data
+                # @cs allow enough time for monitoring scripts to terminate and write data
+                timeout = int(2 / self.sys_freq) + 5
                 process_stdout, _ = process.communicate(timeout=timeout)
                 self.logger.debug(f"Terminated system monitoring with stdout: {process_stdout}")
             except subprocess.TimeoutExpired:
