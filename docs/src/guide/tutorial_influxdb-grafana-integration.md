@@ -13,7 +13,7 @@ benchmon-run ──▶ InfluxDB 3 ──▶ Grafana ──▶ Dashboards
 ## Components
 
 - **`benchmon-install-grafana`** – Downloads Grafana `12.1.1` and InfluxDB3 `3.4.2`, prepares data/log directories, enables anonymous Grafana access, and copies packaged dashboards.
-- **`benchmon-start-grafana`** – Launches `influxd run` and `grafana-server`, waits for readiness, configures the datasource, and deploys dashboards.
+- **`benchmon-start-grafana`** – Launches `influxdb3 serve` and `grafana-server`, waits for readiness, configures the datasource, and deploys dashboards.
 - **`benchmon-stop-grafana`** – Shuts down both services using stored PID files.
 - **`benchmon-run`** – Collects metrics, streams them to InfluxDB (optional), and writes CSV artifacts.
 
@@ -70,14 +70,17 @@ Persist them in your shell profile if desired.
 $ benchmon-start-grafana \
   --save-dir /tmp/benchmon-demo \
   --influxdb-port 8181 \
+  --influxdb-query-file-limit 1000 \
   --grafana-port 3000
 ```
 If a requested port is busy, the script automatically increments it until a free port is found and reports the chosen values.
 
+Use `--influxdb-query-file-limit` when you want to allow broader queries against larger databases. The value is a count of parquet files that a single InfluxDB query may scan. Larger values make it possible to run full-database `benchmon-visu --influxdb` queries without adding an explicit time window when one database corresponds to one experiment.
+
 The script:
 
 1. Creates `/tmp/benchmon-demo/grafana-data/…` (logs, PIDs, connection info).
-2. Starts InfluxDB with `influxd run …` and Grafana with `grafana-server …`.
+2. Starts InfluxDB with `influxdb3 serve …` and Grafana with `grafana-server …`.
 3. Waits for Grafana readiness and configures the datasource targeting `http://<hostname>:8181`.
 4. Deploys packaged dashboards.
 5. Records metadata in `pids.json` and `connection.json`.
@@ -120,11 +123,13 @@ First, ensure the monitoring stack is running.
 
 ```bash
 # Start InfluxDB and Grafana in the background
-benchmon-start-grafana --save-dir /tmp/benchmon-demo 
+benchmon-start-grafana --save-dir /tmp/benchmon-demo --influxdb-query-file-limit 1000
 
 # or using default directory
-benchmon-start-grafana
+benchmon-start-grafana --influxdb-query-file-limit 1000
 ```
+
+Use a higher `--influxdb-query-file-limit` when you plan to generate figures from the whole database without `--start-time` and `--end-time`.
 
 **2. Generate Load & Monitor**
 
@@ -194,7 +199,7 @@ pip install .
 benchmon-install-grafana
 
 # Start InfluxDB and Grafana
-benchmon-start-grafana
+benchmon-start-grafana --influxdb-query-file-limit 1000
 
 # Run Benchmark Monitoring (C++ version)
 rt-monitor --sampling-frequency 5 --batch-size 10000  --cpu --grafana http://localhost:8181?db=metrics --log-level debug
@@ -213,7 +218,7 @@ Open browser and visit: http://localhost:3000
 | Command | Key flags | Description |
 |---------|-----------|-------------|
 | `benchmon-install-grafana` | `--install-dir <path>` | Target installation directory (default `~/benchmon-stack`). |
-| `benchmon-start-grafana` | `--save-dir <path>`<br>`--influxdb-port <port>`<br>`--grafana-port <port>`<br>`--dashboard-dir <path>` | Runtime directory for logs/PIDs, preferred InfluxDB port (auto-increments if occupied), preferred Grafana port (auto-increments if occupied), dashboard source override. |
+| `benchmon-start-grafana` | `--save-dir <path>`<br>`--influxdb-port <port>`<br>`--influxdb-query-file-limit <int>`<br>`--grafana-port <port>`<br>`--dashboard-dir <path>` | Runtime directory for logs/PIDs, preferred InfluxDB port (auto-increments if occupied), optional parquet-file scan limit per query, preferred Grafana port (auto-increments if occupied), dashboard source override. |
 | `benchmon-run` | `--save-dir <path>` | Output directory for run artifacts. |
 | | `--system` / `--csv` | Enable system monitoring and CSV dumps. |
 | | `--grafana` | Stream metrics to the Grafana/InfluxDB stack. |
@@ -272,7 +277,7 @@ python3 benchmon/run/csv_importer.py \
 
 After CSV import, generate benchmon-style figures directly from InfluxDB:
 
-Compared to the standard CSV-based `benchmon-visu` usage, where the positional argument is the trace directory, InfluxDB mode needs extra arguments so benchmon knows to query the database instead of reading local files. In practice, the extra required arguments are `--influxdb` and `--influxdb-url`, and you will typically also provide `--start-time` and `--end-time` to select the imported run window. `--influxdb-database` is additionally required when your database is not the default `metrics` bucket.
+Compared to the standard CSV-based `benchmon-visu` usage, where the positional argument is the trace directory, InfluxDB mode needs extra arguments so benchmon knows to query the database instead of reading local files. In practice, the extra required arguments are `--influxdb` and `--influxdb-url`. If `--start-time` and `--end-time` are omitted, benchmon queries all data in the selected database. This is a good fit when one database represents one experiment and the InfluxDB scan budget is large enough. `--influxdb-database` is additionally required when your database is not the default `metrics` bucket.
 
 ```bash
 benchmon-visu ./benchmon_influx_figures \
@@ -293,6 +298,7 @@ Notes:
 - `--recursive` also creates `multi-node_sync.<fmt>` for synchronized multi-node view.
 - `--resolution auto` chooses a coarser time bucket for long windows. You can force fixed resolution such as `--resolution 1m`.
 - `--start-time` and `--end-time` use local wall-clock time in format `YYYY-MM-DDTHH:MM:SS`.
+- If a full-database query hits the InfluxDB backend file-limit, either restart the stack with a larger `--influxdb-query-file-limit` or rerun with both `--start-time` and `--end-time` to narrow the request.
 - InfluxDB visualization currently supports system plots only: `--cpu`, `--cpu-all`, `--cpu-freq`, `--mem`, `--net`, `--disk`, `--ib`, and `--sys`.
 
 ## Troubleshooting
@@ -303,6 +309,7 @@ Notes:
 | `benchmon-start-grafana` cannot find binaries | Re-run the installer or export `BENCHMON_*` paths correctly. |
 | Grafana dashboards missing | Verify `<install-dir>/grafana/dashboards`; reinstall if needed. |
 | InfluxDB rejects writes | Confirm `admin_token.json` exists and port `8181` is free. |
+| `benchmon-visu --influxdb` says the request is too large or exceeds the file limit | Restart the stack with a larger `--influxdb-query-file-limit` or rerun with both `--start-time` and `--end-time`. |
 | Grafana unreachable | Check port usage and inspect logs under `<save-dir>/grafana-data/logs/`. |
 
 ## References

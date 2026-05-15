@@ -116,6 +116,10 @@ If no directory is specified, the current directory (`./`) is used.
 - `--influxdb-hostname`: Optional hostname filter. If omitted, `benchmon-visu` discovers all hostnames that have data in the selected time window.
 - `--resolution`: Query resolution. Supported values are `auto`, `raw`, `1s`, `5s`, `10s`, `30s`, `1m`, `5m`, `15m`, and `1h`.
 
+If `--start-time` and `--end-time` are omitted, InfluxDB mode queries all data in the selected database.
+
+When you run against the local Benchmon stack and expect large full-database scans, start the stack with `benchmon-start-grafana --influxdb-query-file-limit 1000` (or another positive value) to increase the backend scan budget.
+
 In InfluxDB mode, the supported system plots are `--cpu`, `--cpu-all`, `--cpu-freq`, `--mem`, `--net`, `--disk`, `--ib`, and `--sys`. `--sys` expands to `--cpu --cpu-freq --mem --net --disk --ib`.
 
 The output style remains consistent with CSV/BIN visualization:
@@ -125,6 +129,8 @@ The output style remains consistent with CSV/BIN visualization:
 - Very large figure layouts are automatically split into `__partNN` pages.
 
 Time filtering keeps the same interface as the CSV/BIN visualizer: `--start-time` and `--end-time` use the `YYYY-MM-DDTHH:MM:SS` format and are used directly as local wall-clock time on the machine running `benchmon-visu`. No manual UTC conversion is required.
+
+If a full-database query is rejected by the InfluxDB backend because the request is too large, either restart the stack with a larger `--influxdb-query-file-limit` or rerun `benchmon-visu` with both `--start-time` and `--end-time` to narrow the query.
 
 InfluxDB mode does not support `--pow`, `--pow-g5k`, `--call`, `--inline-call`, or `--binary`.
 

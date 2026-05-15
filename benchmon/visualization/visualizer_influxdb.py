@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import numpy as np
 from influxdb_client_3 import InfluxDBClient3
+from influxdb_client_3.exceptions import InfluxDB3ClientQueryError
 import matplotlib.pyplot as plt
 
 from .system_metrics_influxdb import SystemDataInfluxDB, normalize_query_rows, parse_query_timestamp
@@ -143,14 +144,30 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         return self.DPI_MAP[self.args.fig_dpi]
 
     def _query_rows(self, query: str, **params):
-        result = self.client.query(
-            query,
-            language="sql",
-            mode="all",
-            database=self.args.influxdb_database,
-            query_parameters=params or None,
-        )
+        try:
+            result = self.client.query(
+                query,
+                language="sql",
+                mode="all",
+                database=self.args.influxdb_database,
+                query_parameters=params or None,
+            )
+        except InfluxDB3ClientQueryError as exc:
+            if self._requires_explicit_time_range(exc):
+                raise ValueError(
+                    "InfluxDB mode defaults to querying all data in the selected database when "
+                    "--start-time/--end-time are not both provided. This query exceeded backend "
+                    "limits. Rerun benchmon-visu with both --start-time and --end-time to select "
+                    "a smaller time range."
+                ) from exc
+            raise
         return normalize_query_rows(result)
+
+    def _requires_explicit_time_range(self, exc: Exception) -> bool:
+        if self.requested_start_time is not None and self.requested_end_time is not None:
+            return False
+        message = str(exc).lower()
+        return "query would exceed file limit" in message and "smaller time range" in message
 
     def _parse_user_time(self, value: str | None) -> float | None:
         if not value:
