@@ -102,6 +102,10 @@ def parse_query_timestamp(value: Any) -> float:
         raw_value = value.value
         if isinstance(raw_value, (int, np.integer)):
             return int(raw_value) / 1e9
+        if isinstance(raw_value, datetime):
+            value = raw_value
+    if hasattr(value, "as_py") and not isinstance(value, (datetime, int, float, str, np.integer, np.floating)):
+        value = value.as_py()
     if hasattr(value, "to_pydatetime") and not isinstance(value, datetime):
         value = value.to_pydatetime()
     if isinstance(value, datetime):
@@ -140,6 +144,12 @@ def parse_query_timestamp(value: Any) -> float:
         except ValueError:
             return float(value)
     raise TypeError(f"Unsupported timestamp value: {type(value)!r}")
+
+
+def is_missing_measurement_error(exc: Exception) -> bool:
+    """Return True when InfluxDB reports that a queried table does not exist."""
+    message = str(exc).lower()
+    return "table" in message and "not found" in message
 
 
 class SystemDataInfluxDB(SystemData):
@@ -272,36 +282,46 @@ class SystemDataInfluxDB(SystemData):
         )
 
     def _query_rows(self, query: str, **query_parameters: Any) -> list[dict[str, Any]]:
-        result = self.client.query(
-            query,
-            language="sql",
-            mode="all",
-            database=self.database,
-            query_parameters=query_parameters or None,
-        )
+        try:
+            result = self.client.query(
+                query,
+                language="sql",
+                mode="all",
+                database=self.database,
+                query_parameters=query_parameters or None,
+            )
+        except Exception as exc:
+            if is_missing_measurement_error(exc):
+                return []
+            raise
         return normalize_query_rows(result)
 
     def _resolve_resolution(self, requested: str) -> str:
         if requested != "auto":
             return requested
 
-        reference_measurement = self._reference_measurement()
-        if reference_measurement is None:
+        reference_measurements = self._reference_measurements()
+        if not reference_measurements:
             return "raw"
 
-        count_query = (
-            f"SELECT COUNT(DISTINCT time) AS sample_count FROM {reference_measurement} "
-            "WHERE hostname = $hostname AND time >= $start_time AND time < $end_time"
-        )
-        rows = self._query_rows(
-            count_query,
-            hostname=self.hostname,
-            start_time=self._local_time_param(self.start_time),
-            end_time=self._local_time_param(self.end_time),
-        )
         sample_count = 0
-        if rows:
-            sample_count = int(rows[0].get("sample_count") or 0)
+        for reference_measurement in reference_measurements:
+            count_query = (
+                f"SELECT COUNT(DISTINCT time) AS sample_count FROM {reference_measurement} "
+                "WHERE hostname = $hostname AND time >= $start_time AND time < $end_time"
+            )
+            rows = self._query_rows(
+                count_query,
+                hostname=self.hostname,
+                start_time=self._local_time_param(self.start_time),
+                end_time=self._local_time_param(self.end_time),
+            )
+            if not rows:
+                continue
+            candidate_count = int(rows[0].get("sample_count") or 0)
+            if candidate_count:
+                sample_count = candidate_count
+                break
 
         duration = max(self.end_time - self.start_time, 1.0)
         if sample_count and sample_count <= self.target_points:
@@ -314,20 +334,21 @@ class SystemDataInfluxDB(SystemData):
                 return candidate
         return "1h"
 
-    def _reference_measurement(self) -> str | None:
+    def _reference_measurements(self) -> list[str]:
+        measurements = []
         if self.enabled_metrics.get("cpu"):
-            return "cpu_total"
+            measurements.extend(["cpu_total", "cpu_core"])
         if self.enabled_metrics.get("cpufreq"):
-            return "cpu_freq"
+            measurements.append("cpu_freq")
         if self.enabled_metrics.get("mem"):
-            return "memory"
+            measurements.append("memory")
         if self.enabled_metrics.get("net"):
-            return "network_stats"
+            measurements.append("network_stats")
         if self.enabled_metrics.get("disk"):
-            return "disk_stats"
+            measurements.append("disk_stats")
         if self.enabled_metrics.get("ib"):
-            return "infiniband"
-        return None
+            measurements.append("infiniband")
+        return measurements
 
     @staticmethod
     def _local_time_param(timestamp: float) -> str:

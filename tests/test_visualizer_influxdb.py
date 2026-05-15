@@ -362,8 +362,10 @@ DATA = {
 
 
 class FakeInfluxDBClient3:
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, dataset=None, missing_measurements=None, **kwargs):
         self.closed = False
+        self.data = dataset if dataset is not None else DATA
+        self.missing_measurements = set(missing_measurements or [])
 
     def close(self):
         self.closed = True
@@ -381,16 +383,22 @@ class FakeInfluxDBClient3:
         match = re.search(r"FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)", query)
         measurement = match.group(1) if match else None
 
+        if measurement is not None and (measurement in self.missing_measurements or measurement not in self.data):
+            raise RuntimeError(
+                "Error while executing query: Flight returned invalid argument error, with message: "
+                f"Error while planning query: Error during planning: table 'public.iox.{measurement}' not found."
+            )
+
         if "SELECT DISTINCT hostname" in query:
             if measurement is None:
                 return []
-            rows = self._filter_rows(DATA.get(measurement, []), params)
+            rows = self._filter_rows(self.data.get(measurement, []), params)
             return [{"hostname": hostname} for hostname in sorted({row["hostname"] for row in rows})]
 
         if measurement is None:
             return []
 
-        rows = self._filter_rows(DATA[measurement], params)
+        rows = self._filter_rows(self.data[measurement], params)
 
         if measurement == "variable" and "SELECT stamp" in query:
             return [{"stamp": rows[0]["stamp"]}] if rows else []
@@ -620,6 +628,20 @@ def test_parse_query_timestamp_accepts_arrow_nanosecond_scalars():
     assert parse_query_timestamp(rows[0]["time"]) == pytest.approx(ns_value / 1e9)
 
 
+def test_parse_query_timestamp_accepts_arrow_scalars_via_as_py():
+    from benchmon.visualization.system_metrics_influxdb import parse_query_timestamp
+
+    expected = datetime(2026, 5, 14, 16, 10, 0, tzinfo=timezone.utc).timestamp()
+
+    class DummyArrowScalar:
+        value = object()
+
+        def as_py(self):
+            return datetime(2026, 5, 14, 16, 10, 0, tzinfo=timezone.utc)
+
+    assert parse_query_timestamp(DummyArrowScalar()) == expected
+
+
 def test_influxdb_visualizer_rejects_unsupported_flags(tmp_path, logger, monkeypatch):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
@@ -678,6 +700,71 @@ def test_influxdb_visualizer_recursive_mode_also_saves_multi_node_sync(tmp_path,
     assert (tmp_path / f"benchmon_traces_{HOSTNAME}" / "influxdb_recursive.png").exists()
     assert (tmp_path / f"benchmon_traces_{HOSTNAME_2}" / "influxdb_recursive.png").exists()
     assert (tmp_path / "multi-node_sync.png").exists()
+
+
+def test_influxdb_visualizer_skips_missing_measurements_and_renders_available_plots(tmp_path, logger, monkeypatch):
+    monkeypatch.setattr(
+        "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
+        lambda *args, **kwargs: FakeInfluxDBClient3(
+            missing_measurements={"network_stats", "disk_stats", "infiniband"}
+        ),
+    )
+    args = create_args(
+        influxdb_hostname=HOSTNAME,
+        cpu=True,
+        mem=True,
+        net=True,
+        disk=True,
+        ib=True,
+        fig_name="influxdb_missing_tables",
+        fig_fmt="png",
+    )
+
+    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    calls = []
+
+    def fake_render(self, specs, hostname, page_idx=None):
+        calls.append((hostname, [name for name, *_ in specs]))
+
+    monkeypatch.setattr(
+        visualizer,
+        "_render_page",
+        fake_render.__get__(visualizer, BenchmonInfluxDBVisualizer),
+    )
+
+    visualizer.run_plots()
+
+    assert calls == [(HOSTNAME, ["cpu", "mem"])]
+
+
+def test_influxdb_visualizer_falls_back_when_variable_and_cpu_total_are_missing(tmp_path, logger, monkeypatch):
+    monkeypatch.setattr(
+        "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
+        lambda *args, **kwargs: FakeInfluxDBClient3(
+            missing_measurements={"variable", "cpu_total"}
+        ),
+    )
+    args = create_args(
+        cpu=True,
+        fig_name="influxdb_cpu_core_fallback",
+        fig_fmt="png",
+    )
+
+    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    calls = []
+
+    def fake_render(self, specs, hostname, page_idx=None):
+        calls.append((hostname, [name for name, *_ in specs]))
+
+    monkeypatch.setattr(
+        visualizer,
+        "_render_page",
+        fake_render.__get__(visualizer, BenchmonInfluxDBVisualizer),
+    )
+
+    visualizer.run_plots()
+
+    assert calls == [(HOSTNAME, ["cpu"])]
 
 
 def test_influxdb_visualizer_paginates_when_figure_is_too_large(tmp_path, logger, monkeypatch):

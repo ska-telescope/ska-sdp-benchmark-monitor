@@ -132,6 +132,8 @@ Time filtering keeps the same interface as the CSV/BIN visualizer: `--start-time
 
 If a full-database query is rejected by the InfluxDB backend because the request is too large, either restart the stack with a larger `--influxdb-query-file-limit` or rerun `benchmon-visu` with both `--start-time` and `--end-time` to narrow the query.
 
+If some requested InfluxDB measurements are missing from the selected database, benchmon renders the plots backed by the tables that do exist and skips the unavailable plot types.
+
 InfluxDB mode does not support `--pow`, `--pow-g5k`, `--call`, `--inline-call`, or `--binary`.
 
 Example:

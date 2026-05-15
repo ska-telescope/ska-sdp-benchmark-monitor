@@ -92,6 +92,7 @@ Once `benchmon-run` starts, data appears immediately in InfluxDB. Open one of th
 
 *   **System Overview**: CPU, Memory, Network I/O.
 *   **Detailed Views**: Per-core frequency, disk IOPS.
+*   If a measurement table is missing from the database, benchmon skips the corresponding plot instead of failing the entire visualization run.
 
 For a step-by-step guide on setting up the visualization stack, see the [InfluxDB + Grafana Integration Tutorial](tutorial_influxdb-grafana-integration.md).
 

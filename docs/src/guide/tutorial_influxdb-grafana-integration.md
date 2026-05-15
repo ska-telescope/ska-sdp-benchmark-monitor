@@ -298,6 +298,7 @@ Notes:
 - `--recursive` also creates `multi-node_sync.<fmt>` for synchronized multi-node view.
 - `--resolution auto` chooses a coarser time bucket for long windows. You can force fixed resolution such as `--resolution 1m`.
 - `--start-time` and `--end-time` use local wall-clock time in format `YYYY-MM-DDTHH:MM:SS`.
+- If some requested measurements are not present in the selected database, benchmon renders the plots backed by the available tables and skips the missing plot types.
 - If a full-database query hits the InfluxDB backend file-limit, either restart the stack with a larger `--influxdb-query-file-limit` or rerun with both `--start-time` and `--end-time` to narrow the request.
 - InfluxDB visualization currently supports system plots only: `--cpu`, `--cpu-all`, `--cpu-freq`, `--mem`, `--net`, `--disk`, `--ib`, and `--sys`.
 
