@@ -8,6 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
+from .utils import plot_stage_markers, get_stage_color, add_stage_legend
 
 
 class BenchmonMNSyncVisualizer:
@@ -54,44 +55,88 @@ class BenchmonMNSyncVisualizer:
         Args:
             nodes_data (list): list of nodes data
         """
+        # Collect annotation stages from all nodes
+        nodes_annotations = [
+            (nd.hostname, nd.annotation_stages)
+            for nd in nodes_data
+            if getattr(nd, "annotation_stages", None)
+        ]
+        has_annotations = len(nodes_annotations) > 0
+
+        # All stages combined (for vertical markers)
+        all_stages = [s for _, stages in nodes_annotations for s in stages]
         nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net \
             + self.args.ib + self.args.disk  # + (self.args.pow or self.args.pow_g5k)
+        if has_annotations:
+            nsbp += 1
 
         fig, _ = plt.subplots(nsbp, sharex=True)
         fig.set_size_inches(self.args.fig_width, nsbp * self.args.fig_height_unit)
         fig.add_gridspec(nsbp, hspace=0)
 
         sbp = 1
+        ax_pipeline = None
+        ax_last = None
+
+        # --- Annotation subplot ---
+        if has_annotations:
+            ax_pipeline = plt.subplot(nsbp, 1, sbp)
+            sbp += 1
+            self.plot_sync_annotations(nodes_annotations, ax_pipeline)
 
         if self.args.cpu:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_cpu(nodes_data=nodes_data)
+            ax_last = plt.gca()
+            if has_annotations:
+                plot_stage_markers(all_stages, ax_top=ax_pipeline,
+                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.cpu_freq:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_cpufreq(nodes_data=nodes_data)
+            ax_last = plt.gca()
+            if has_annotations:
+                plot_stage_markers(all_stages, ax_top=ax_pipeline,
+                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.mem:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_mem(nodes_data=nodes_data)
+            ax_last = plt.gca()
+            if has_annotations:
+                plot_stage_markers(all_stages, ax_top=ax_pipeline,
+                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.net:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_net(nodes_data=nodes_data)
+            ax_last = plt.gca()
+            if has_annotations:
+                plot_stage_markers(all_stages, ax_top=ax_pipeline,
+                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.ib:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_ib(nodes_data=nodes_data)
+            ax_last = plt.gca()
+            if has_annotations:
+                plot_stage_markers(all_stages, ax_top=ax_pipeline,
+                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.disk:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_disk(nodes_data=nodes_data)
+            ax_last = plt.gca()
+            if has_annotations:
+                plot_stage_markers(all_stages, ax_top=ax_pipeline,
+                                   ax_bottom=ax_last, xlim=self.xlim)
 
         # if self.args.pow or self.args.pow_g5k:
         #     plt.subplot(nsbp, 1, sbp)
@@ -738,6 +783,63 @@ class BenchmonMNSyncVisualizer:
 
         self.set_frame(label="Power (W)")
 
+    def plot_sync_annotations(self, nodes_annotations: list, ax) -> None:
+        """
+        Plot superposed/stacked annotation timelines for all nodes.
+
+        Each node gets its own row in the subplot, stages drawn as horizontal segments.
+
+        Args:
+            nodes_annotations (list): list of (hostname, annotation_stages) tuples
+            ax: matplotlib axis to draw on
+        """
+        if not nodes_annotations:
+            return
+
+        n_nodes = len(nodes_annotations)
+        # One row per node, y in [0, n_nodes]
+        ax.set_ylim(0, n_nodes)
+        ax.set_yticks(np.arange(n_nodes) + 0.5)
+        ax.set_yticklabels([hostname for hostname, _ in nodes_annotations], fontsize=8)
+        ax.set_ylabel("Pipeline Events", fontsize=9)
+
+        if self.xlim:
+            ax.set_xlim(self.xlim)
+
+        cap_height = 0.06
+
+        for row_idx, (hostname, stages) in enumerate(nodes_annotations):
+            y_center = row_idx + 0.5
+            for stage in stages:
+                color = get_stage_color(stage["label"])
+                start = stage["start"]
+                stop = stage["stop"]
+
+                # Horizontal segment
+                ax.hlines(y=y_center, xmin=start, xmax=stop,
+                          linewidth=2.0, color=color)
+                # Start cap
+                ax.vlines(x=start,
+                          ymin=y_center - cap_height,
+                          ymax=y_center + cap_height,
+                          linewidth=2.0, color=color)
+                # Stop cap
+                ax.vlines(x=stop,
+                          ymin=y_center - cap_height,
+                          ymax=y_center + cap_height,
+                          linewidth=2.0, color=color)
+                # Label above segment
+                ax.text(
+                    (start + stop) / 2,
+                    y_center + cap_height * 1.5,
+                    stage["label"],
+                    ha="center", va="bottom",
+                    fontsize=7, fontweight="bold",
+                    color=color,
+                )
+
+        ax.grid(True, axis="x")
+        add_stage_legend(ax)
 
     def sync_metrics(self,
                      ts_list: list, dev_list: list, opt: str = "sum",
