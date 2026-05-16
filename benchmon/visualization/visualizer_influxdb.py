@@ -605,10 +605,11 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         if not self._is_large_figure(len(specs)):
             return [specs]
         per_page = self._max_subplots_per_page()
-        return [
-            specs[idx : idx + per_page]
-            for idx in range(0, len(specs), per_page)
-        ]
+        pages = []
+        for idx in range(0, len(specs), per_page):
+            page_end = idx + per_page
+            pages.append(specs[idx:page_end])
+        return pages
 
     def _render_page(
         self, specs, hostname: str, page_idx: int | None = None

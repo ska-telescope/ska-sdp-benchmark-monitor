@@ -722,9 +722,10 @@ class SystemData:
                 )
 
             self.cpufreq_prof = cpufreq_ts
+            step = self.ncpu_freq
             self.cpufreq_stamps = [
                 float(line[0])
-                for line in cpufreq_report_lines[1 :: self.ncpu_freq]
+                for line in cpufreq_report_lines[1::step]
             ]
 
             self.cpufreq_vals["mean"] = np.zeros_like(self.cpufreq_stamps)
