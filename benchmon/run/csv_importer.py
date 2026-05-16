@@ -3,9 +3,9 @@ import csv
 import json
 import logging
 import os
-import time
-import threading
 import queue
+import threading
+import time
 from pathlib import Path
 
 from influxdb_client_3 import InfluxDBClient3
@@ -41,6 +41,12 @@ def parse_args():
     )
 
     parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for writing to InfluxDB")
+    parser.add_argument(
+        "--max-batch-bytes",
+        type=int,
+        default=8 * 1024 * 1024,
+        help="Maximum serialized batch payload size in bytes before flushing (default: 8 MiB)",
+    )
     parser.add_argument("--workers", type=int, default=4, help="Number of concurrent write workers")
 
     return parser.parse_args()
@@ -282,7 +288,7 @@ def generate_variable(hostname, dir_path, timestamp_holder=None):
     return f"variable,hostname={hostname} stamp={first_timestamp} {first_timestamp}"
 
 
-def worker_write(idx, q, client_config):
+def worker_write(idx, q, client_config, error_queue):
     # Initialize separate client per thread for safety
     try:
         # Clone client config
@@ -297,20 +303,35 @@ def worker_write(idx, q, client_config):
         )
         logger.info(f"Worker {idx}: Started.")
     except Exception as e:
-        logger.error(f"Worker {idx}: Failed to init client: {e}")
+        message = f"Worker {idx}: Failed to init client: {e}"
+        logger.error(message)
+        error_queue.put(message)
         return
 
     while True:
-        batch = q.get()
-        if batch is None:
+        item = q.get()
+        if item is None:
             # Receive stop signal
             q.task_done()
             break
 
+        source_name, batch = item
+
         try:
             client.write(batch)
         except Exception as e:
-            logger.error(f"Worker {idx}: Write failed: {e}")
+            if "request too large" in str(e).lower() and len(batch) > 1:
+                midpoint = max(1, len(batch) // 2)
+                logger.warning(
+                    f"Worker {idx}: Splitting oversized batch for {source_name} "
+                    f"from {len(batch)} to {midpoint} + {len(batch) - midpoint} points."
+                )
+                q.put((source_name, batch[:midpoint]))
+                q.put((source_name, batch[midpoint:]))
+            else:
+                message = f"Worker {idx}: Write failed for {source_name} ({len(batch)} points): {e}"
+                logger.error(message)
+                error_queue.put(message)
 
         q.task_done()
 
@@ -351,11 +372,12 @@ def main():
     # --- Parallel Write Queue Setup ---
     # Maxsize provides backpressure: if workers are slow, main thread reading pauses.
     write_queue = queue.Queue(maxsize=16)
+    error_queue = queue.Queue()
     workers = []
 
     logger.info(f"Starting {args.workers} write workers...")
     for i in range(args.workers):
-        t = threading.Thread(target=worker_write, args=(i, write_queue, client_config))
+        t = threading.Thread(target=worker_write, args=(i, write_queue, client_config, error_queue))
         t.start()
         workers.append(t)
 
@@ -373,19 +395,21 @@ def main():
 
     # Write buffer for main thread
     batch_buffer = []
+    batch_bytes = 0
     total_generated = 0
 
-    def flush_to_queue():
-        nonlocal total_generated
+    def flush_to_queue(source_name):
+        nonlocal batch_bytes, total_generated
         if batch_buffer:
             # Push COPY of buffer (or just reference since we clear original)
             # Actually we must send a new list object because list is mutable
-            write_queue.put(list(batch_buffer))
+            write_queue.put((source_name, list(batch_buffer)))
             total_generated += len(batch_buffer)
             # Log progress based on generation, not writing (writing is async)
             if total_generated % 100000 == 0:
                 logger.info(f"Parsed & Queued {total_generated} points...")
             batch_buffer.clear()
+            batch_bytes = 0
 
     # Iterate through all processors and stream data
     for filename, func in processors.items():
@@ -401,20 +425,29 @@ def main():
                 iterator = func(filepath, hostname)
 
             for point in iterator:
+                point_size = len(point.encode("utf-8")) + 1
+                if batch_buffer and (
+                    len(batch_buffer) >= args.batch_size
+                    or batch_bytes + point_size > args.max_batch_bytes
+                ):
+                    flush_to_queue(filename)
                 batch_buffer.append(point)
+                batch_bytes += point_size
                 count += 1
-                if len(batch_buffer) >= args.batch_size:
-                    flush_to_queue()
+            flush_to_queue(filename)
             logger.info(f"Finished {filename}: {count} points generated.")
         else:
             logger.warning(f"File {filename} not found in {args.dir}")
 
     # Add variable point
     variable_point = generate_variable(hostname, args.dir, timestamp_holder=ctx)
+    if batch_buffer and batch_bytes + len(variable_point.encode("utf-8")) + 1 > args.max_batch_bytes:
+        flush_to_queue('variable')
     batch_buffer.append(variable_point)
+    batch_bytes += len(variable_point.encode("utf-8")) + 1
 
     # Flush remaining
-    flush_to_queue()
+    flush_to_queue('variable')
 
     # Send stop signals
     logger.info("Parsing finished. Waiting for workers to complete writing...")
@@ -424,6 +457,19 @@ def main():
     write_queue.join()
     for t in workers:
         t.join()
+
+    failures = []
+    while not error_queue.empty():
+        failures.append(error_queue.get())
+
+    if failures:
+        preview = "\n".join(failures[:5])
+        if len(failures) > 5:
+            preview += f"\n... and {len(failures) - 5} more failures"
+        raise RuntimeError(
+            "CSV import completed with write failures. "
+            f"Failed batches: {len(failures)}\n{preview}"
+        )
 
     logger.info("Import finished.")
 
