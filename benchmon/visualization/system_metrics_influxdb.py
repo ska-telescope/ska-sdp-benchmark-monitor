@@ -1,14 +1,13 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import datetime
-import logging
 from typing import Any
 
 import numpy as np
 
 from .system_metrics import SystemData
-
 
 MEMORY_FIELD_ALIASES = {
     "MemTotal": ("MemTotal", "memtotal"),
@@ -104,7 +103,9 @@ def parse_query_timestamp(value: Any) -> float:
             return int(raw_value) / 1e9
         if isinstance(raw_value, datetime):
             value = raw_value
-    if hasattr(value, "as_py") and not isinstance(value, (datetime, int, float, str, np.integer, np.floating)):
+    if hasattr(value, "as_py") and not isinstance(
+        value, (datetime, int, float, str, np.integer, np.floating)
+    ):
         value = value.as_py()
     if hasattr(value, "to_pydatetime") and not isinstance(value, datetime):
         value = value.to_pydatetime()
@@ -281,7 +282,9 @@ class SystemDataInfluxDB(SystemData):
             )
         )
 
-    def _query_rows(self, query: str, **query_parameters: Any) -> list[dict[str, Any]]:
+    def _query_rows(
+        self, query: str, **query_parameters: Any
+    ) -> list[dict[str, Any]]:
         try:
             result = self.client.query(
                 query,
@@ -330,7 +333,10 @@ class SystemDataInfluxDB(SystemData):
             return "raw"
 
         for candidate in RESOLUTION_ORDER[1:]:
-            if duration / RESOLUTION_TO_SECONDS[candidate] <= self.target_points:
+            if (
+                duration / RESOLUTION_TO_SECONDS[candidate]
+                <= self.target_points
+            ):
                 return candidate
         return "1h"
 
@@ -355,13 +361,17 @@ class SystemDataInfluxDB(SystemData):
         return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%dT%H:%M:%S")
 
     @staticmethod
-    def _extract_field(row: dict[str, Any], *keys: str, default: float = 0.0) -> float:
+    def _extract_field(
+        row: dict[str, Any], *keys: str, default: float = 0.0
+    ) -> float:
         for key in keys:
             if key in row and row[key] is not None:
                 return float(row[key])
         return float(default)
 
-    def _normalize_memory_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, float]]:
+    def _normalize_memory_rows(
+        self, rows: list[dict[str, Any]]
+    ) -> list[dict[str, float]]:
         normalized = []
         for row in rows:
             timestamp_value = row.get("timestamp", row.get("time"))
@@ -374,7 +384,9 @@ class SystemDataInfluxDB(SystemData):
         normalized.sort(key=lambda item: item["timestamp"])
         return normalized
 
-    def _bucket_gauge_rows(self, rows: list[dict[str, float]], fields: list[str]) -> list[dict[str, float]]:
+    def _bucket_gauge_rows(
+        self, rows: list[dict[str, float]], fields: list[str]
+    ) -> list[dict[str, float]]:
         if self.actual_resolution == "raw":
             return rows
 
@@ -384,20 +396,28 @@ class SystemDataInfluxDB(SystemData):
 
         grouped = defaultdict(list)
         for row in rows:
-            bucket_start = float(int(row["timestamp"] // bucket_seconds) * bucket_seconds)
+            bucket_start = float(
+                int(row["timestamp"] // bucket_seconds) * bucket_seconds
+            )
             grouped[bucket_start].append(row)
 
         output = []
         for bucket_time, entries in sorted(grouped.items()):
             sample = {"timestamp": bucket_time}
             for field in fields:
-                sample[field] = float(np.mean([entry[field] for entry in entries]))
+                sample[field] = float(
+                    np.mean([entry[field] for entry in entries])
+                )
             output.append(sample)
         return output
 
     def _load_cpu(self) -> None:
-        total_profiles, total_stamps = self._load_cpu_measurement("cpu_total", None)
-        core_profiles, core_stamps = self._load_cpu_measurement("cpu_core", "cpu")
+        total_profiles, total_stamps = self._load_cpu_measurement(
+            "cpu_total", None
+        )
+        core_profiles, core_stamps = self._load_cpu_measurement(
+            "cpu_core", "cpu"
+        )
 
         self.cpu_prof = {}
         if total_profiles:
@@ -409,13 +429,24 @@ class SystemDataInfluxDB(SystemData):
             self.cpu_prof["cpu"] = {}
             for field in CPU_FIELDS:
                 self.cpu_prof["cpu"][field] = np.mean(
-                    np.vstack([profile[field] for profile in core_profiles.values()]), axis=0
+                    np.vstack(
+                        [profile[field] for profile in core_profiles.values()]
+                    ),
+                    axis=0,
                 )
 
         self.cpu_stamps = total_stamps if len(total_stamps) else core_stamps
-        self.ncpu = len([key for key in self.cpu_prof if key.startswith("cpu") and key != "cpu"])
+        self.ncpu = len(
+            [
+                key
+                for key in self.cpu_prof
+                if key.startswith("cpu") and key != "cpu"
+            ]
+        )
         self.cpus = ["cpu"] + [f"cpu{idx}" for idx in range(self.ncpu)]
-        self.cpu_profile_valid = len(self.cpu_stamps) > 0 and "cpu" in self.cpu_prof
+        self.cpu_profile_valid = (
+            len(self.cpu_stamps) > 0 and "cpu" in self.cpu_prof
+        )
 
     def _load_cpu_measurement(
         self,
@@ -438,7 +469,11 @@ class SystemDataInfluxDB(SystemData):
             )
             return self._build_cpu_profiles_from_raw(rows, tag_key)
 
-        partition = f"PARTITION BY {tag_key} ORDER BY time" if tag_key else "ORDER BY time"
+        partition = (
+            f"PARTITION BY {tag_key} ORDER BY time"
+            if tag_key
+            else "ORDER BY time"
+        )
         group_by = f", {tag_key}" if tag_key else ""
         bucket_query = f"""
             SELECT bucket_time AS time{extra_select},
@@ -513,22 +548,39 @@ class SystemDataInfluxDB(SystemData):
         stamps_ref = np.array([])
         for label, entries in grouped.items():
             entries.sort(key=lambda item: parse_query_timestamp(item["time"]))
-            times = np.array([parse_query_timestamp(item["time"]) for item in entries], dtype=float)
+            times = np.array(
+                [parse_query_timestamp(item["time"]) for item in entries],
+                dtype=float,
+            )
             if len(times) < 2:
                 continue
 
             field_values = {
                 field: np.array(
-                    [self._extract_field(item, field, field.replace("guestnice", "guest_nice")) for item in entries],
+                    [
+                        self._extract_field(
+                            item,
+                            field,
+                            field.replace("guestnice", "guest_nice"),
+                        )
+                        for item in entries
+                    ],
                     dtype=float,
                 )
                 for field in CPU_FIELDS
             }
             stamps = (times[1:] + times[:-1]) / 2.0
-            series = {field: np.zeros(len(stamps), dtype=float) for field in CPU_FIELDS}
+            series = {
+                field: np.zeros(len(stamps), dtype=float)
+                for field in CPU_FIELDS
+            }
 
             for idx in range(len(stamps)):
-                deltas = {field: field_values[field][idx + 1] - field_values[field][idx] for field in CPU_FIELDS}
+                deltas = {
+                    field: field_values[field][idx + 1]
+                    - field_values[field][idx]
+                    for field in CPU_FIELDS
+                }
                 total_delta = sum(deltas.values())
                 if total_delta <= 0:
                     continue
@@ -556,9 +608,15 @@ class SystemDataInfluxDB(SystemData):
         stamps_ref = np.array([])
         for label, entries in grouped.items():
             entries.sort(key=lambda item: parse_query_timestamp(item["time"]))
-            stamps = np.array([parse_query_timestamp(item["time"]) for item in entries], dtype=float)
+            stamps = np.array(
+                [parse_query_timestamp(item["time"]) for item in entries],
+                dtype=float,
+            )
             profiles[label] = {
-                field: np.array([self._extract_field(item, field) for item in entries], dtype=float)
+                field: np.array(
+                    [self._extract_field(item, field) for item in entries],
+                    dtype=float,
+                )
                 for field in CPU_FIELDS
             }
             if len(stamps_ref) == 0:
@@ -596,20 +654,37 @@ class SystemDataInfluxDB(SystemData):
         self.cpufreq_stamps = np.array([])
         for cpu, entries in grouped.items():
             entries.sort(key=lambda item: parse_query_timestamp(item["time"]))
-            stamps = np.array([parse_query_timestamp(item["time"]) for item in entries], dtype=float)
-            values = np.array([self._extract_field(item, "value") for item in entries], dtype=float) / 1e6
+            stamps = np.array(
+                [parse_query_timestamp(item["time"]) for item in entries],
+                dtype=float,
+            )
+            values = (
+                np.array(
+                    [self._extract_field(item, "value") for item in entries],
+                    dtype=float,
+                )
+                / 1e6
+            )
             self.cpufreq_prof[cpu] = values
             if len(self.cpufreq_stamps) == 0:
                 self.cpufreq_stamps = stamps
 
         self.ncpu_freq = len(self.cpufreq_prof)
-        self.cpufreq_profile_valid = self.ncpu_freq > 0 and len(self.cpufreq_stamps) > 0
+        self.cpufreq_profile_valid = (
+            self.ncpu_freq > 0 and len(self.cpufreq_stamps) > 0
+        )
         if not self.cpufreq_profile_valid:
             return
 
-        self.cpufreq_vals["mean"] = np.mean(np.vstack(list(self.cpufreq_prof.values())), axis=0)
-        observed_min = min(float(np.min(values)) for values in self.cpufreq_prof.values())
-        observed_max = max(float(np.max(values)) for values in self.cpufreq_prof.values())
+        self.cpufreq_vals["mean"] = np.mean(
+            np.vstack(list(self.cpufreq_prof.values())), axis=0
+        )
+        observed_min = min(
+            float(np.min(values)) for values in self.cpufreq_prof.values()
+        )
+        observed_max = max(
+            float(np.max(values)) for values in self.cpufreq_prof.values()
+        )
         self.cpufreq_min = observed_min * 1e6
         self.cpufreq_max = observed_max * 1e6
         self.cpufreq_vals["min"] = self.cpufreq_min
@@ -631,15 +706,21 @@ class SystemDataInfluxDB(SystemData):
             return
 
         normalized_rows = self._normalize_memory_rows(rows)
-        normalized_rows = self._bucket_gauge_rows(normalized_rows, MEMORY_FIELDS)
+        normalized_rows = self._bucket_gauge_rows(
+            normalized_rows, MEMORY_FIELDS
+        )
         if not normalized_rows:
             return
 
         self.mem_prof = {
-            "timestamp": np.array([row["timestamp"] for row in normalized_rows], dtype=float)
+            "timestamp": np.array(
+                [row["timestamp"] for row in normalized_rows], dtype=float
+            )
         }
         for field in MEMORY_FIELDS:
-            self.mem_prof[field] = np.array([row[field] for row in normalized_rows], dtype=float)
+            self.mem_prof[field] = np.array(
+                [row[field] for row in normalized_rows], dtype=float
+            )
         self.mem_stamps = self.mem_prof["timestamp"]
         self.mem_profile_valid = len(self.mem_stamps) > 0
 
@@ -667,9 +748,23 @@ class SystemDataInfluxDB(SystemData):
             scale=512.0 / (1000**2),
         )
         disk_defaults = [
-            "#rd-cd", "#rd-md", "sect-rd", "time-rd", "#wr-cd", "#wr-md", "sect-wr",
-            "time-wr", "#io-ip", "time-io", "time-wei-io", "#disc-cd", "#disc-md", "sect-disc",
-            "time-disc", "#flush-req", "time-flush",
+            "#rd-cd",
+            "#rd-md",
+            "sect-rd",
+            "time-rd",
+            "#wr-cd",
+            "#wr-md",
+            "sect-wr",
+            "time-wr",
+            "#io-ip",
+            "time-io",
+            "time-wei-io",
+            "#disc-cd",
+            "#disc-md",
+            "sect-disc",
+            "time-disc",
+            "#flush-req",
+            "time-flush",
         ]
         self.disk_prof = {}
         self.disk_data = {}
@@ -678,11 +773,18 @@ class SystemDataInfluxDB(SystemData):
             self.disk_stamps = next(iter(rows.values()))["timestamp"]
         for blk, profile in rows.items():
             self.maj_blks_sects[blk] = 512
-            self.disk_prof[blk] = {field: np.zeros(len(self.disk_stamps), dtype=float) for field in disk_defaults}
+            self.disk_prof[blk] = {
+                field: np.zeros(len(self.disk_stamps), dtype=float)
+                for field in disk_defaults
+            }
             self.disk_prof[blk]["major"] = 0
             self.disk_prof[blk]["minor"] = 0
-            self.disk_prof[blk]["sect-rd"] = profile.get("sect-rd", np.zeros(len(self.disk_stamps)))
-            self.disk_prof[blk]["sect-wr"] = profile.get("sect-wr", np.zeros(len(self.disk_stamps)))
+            self.disk_prof[blk]["sect-rd"] = profile.get(
+                "sect-rd", np.zeros(len(self.disk_stamps))
+            )
+            self.disk_prof[blk]["sect-wr"] = profile.get(
+                "sect-wr", np.zeros(len(self.disk_stamps))
+            )
             self.disk_data[blk] = {field: 0 for field in disk_defaults}
             self.disk_data[blk]["sect-rd"] = totals[blk].get("sect-rd", 0)
             self.disk_data[blk]["sect-wr"] = totals[blk].get("sect-wr", 0)
@@ -692,7 +794,10 @@ class SystemDataInfluxDB(SystemData):
         rows, totals = self._load_rate_metric(
             measurement="infiniband",
             tag_key="device",
-            fields={"port_rcv_data": "port_rcv_data", "port_xmit_data": "port_xmit_data"},
+            fields={
+                "port_rcv_data": "port_rcv_data",
+                "port_xmit_data": "port_xmit_data",
+            },
             scale=4.0 / (1000**2),
         )
         self.ib_prof = {}
@@ -702,8 +807,12 @@ class SystemDataInfluxDB(SystemData):
             self.ib_stamps = next(iter(rows.values()))["timestamp"]
         for interf, profile in rows.items():
             self.ib_prof[interf] = {
-                "port_rcv_data": profile.get("port_rcv_data", np.zeros(len(self.ib_stamps))),
-                "port_xmit_data": profile.get("port_xmit_data", np.zeros(len(self.ib_stamps))),
+                "port_rcv_data": profile.get(
+                    "port_rcv_data", np.zeros(len(self.ib_stamps))
+                ),
+                "port_xmit_data": profile.get(
+                    "port_xmit_data", np.zeros(len(self.ib_stamps))
+                ),
             }
         self.ib_profile_valid = len(self.ib_stamps) > 0
 
@@ -727,7 +836,9 @@ class SystemDataInfluxDB(SystemData):
                 f"WHERE hostname = $hostname AND time >= $start_time AND time < $end_time ORDER BY time, {tag_key}",
                 **base_params,
             )
-            return self._build_rate_profiles_from_raw(rows, tag_key, fields, scale)
+            return self._build_rate_profiles_from_raw(
+                rows, tag_key, fields, scale
+            )
 
         rate_exprs = []
         for display_key in fields:
@@ -768,7 +879,9 @@ class SystemDataInfluxDB(SystemData):
             f"GROUP BY {tag_key} ORDER BY {tag_key}",
             **base_params,
         )
-        return self._build_rate_profiles_from_bucket(rows, totals, tag_key, fields)
+        return self._build_rate_profiles_from_bucket(
+            rows, totals, tag_key, fields
+        )
 
     def _build_rate_profiles_from_raw(
         self,
@@ -787,19 +900,38 @@ class SystemDataInfluxDB(SystemData):
             if tag_key == "interface" and not label.endswith(":"):
                 label = f"{label}:"
             entries.sort(key=lambda item: parse_query_timestamp(item["time"]))
-            times = np.array([parse_query_timestamp(item["time"]) for item in entries], dtype=float)
+            times = np.array(
+                [parse_query_timestamp(item["time"]) for item in entries],
+                dtype=float,
+            )
             if len(times) < 2:
                 continue
             timestamps = (times[1:] + times[:-1]) / 2.0
             profile = {"timestamp": timestamps}
             data = {}
             for display_key, source_key in fields.items():
-                values = np.array([self._extract_field(item, source_key) for item in entries], dtype=float)
+                values = np.array(
+                    [
+                        self._extract_field(item, source_key)
+                        for item in entries
+                    ],
+                    dtype=float,
+                )
                 deltas = np.maximum(values[1:] - values[:-1], 0.0)
                 delta_t = times[1:] - times[:-1]
-                rate = np.divide(deltas, delta_t, out=np.zeros_like(deltas), where=delta_t > 0) * scale
+                rate = (
+                    np.divide(
+                        deltas,
+                        delta_t,
+                        out=np.zeros_like(deltas),
+                        where=delta_t > 0,
+                    )
+                    * scale
+                )
                 profile[display_key] = rate
-                data[display_key] = int(max(float(np.max(values) - np.min(values)), 0.0) * scale)
+                data[display_key] = int(
+                    max(float(np.max(values) - np.min(values)), 0.0) * scale
+                )
             profiles[label] = profile
             totals[label] = data
         return profiles, totals
@@ -841,5 +973,7 @@ class SystemDataInfluxDB(SystemData):
             totals[label] = {}
             for display_key in fields:
                 alias = display_key.replace("-", "_total")
-                totals[label][display_key] = int(self._extract_field(row, alias))
+                totals[label][display_key] = int(
+                    self._extract_field(row, alias)
+                )
         return profiles, totals

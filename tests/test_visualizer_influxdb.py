@@ -1,13 +1,15 @@
 import argparse
-from datetime import datetime, timezone
 import logging
 import re
+from datetime import datetime, timezone
 
+import matplotlib.pyplot as plt
 import pytest
 
 from benchmon.visualization.system_metrics_influxdb import SystemDataInfluxDB
-from benchmon.visualization.visualizer_influxdb import BenchmonInfluxDBVisualizer
-
+from benchmon.visualization.visualizer_influxdb import (
+    BenchmonInfluxDBVisualizer,
+)
 
 BASE_TS = 1_700_000_000
 HOSTNAME = "test-host-a"
@@ -19,7 +21,9 @@ def ts(offset: int) -> datetime:
 
 
 def ts_text(offset: int) -> str:
-    return datetime.fromtimestamp(BASE_TS + offset).strftime("%Y-%m-%dT%H:%M:%S")
+    return datetime.fromtimestamp(BASE_TS + offset).strftime(
+        "%Y-%m-%dT%H:%M:%S"
+    )
 
 
 DATA = {
@@ -214,12 +218,42 @@ DATA = {
         },
     ],
     "cpu_freq": [
-        {"hostname": HOSTNAME, "cpu": "cpu0", "time": ts(0), "value": 2_000_000},
-        {"hostname": HOSTNAME, "cpu": "cpu1", "time": ts(0), "value": 1_800_000},
-        {"hostname": HOSTNAME, "cpu": "cpu0", "time": ts(60), "value": 2_100_000},
-        {"hostname": HOSTNAME, "cpu": "cpu1", "time": ts(60), "value": 1_900_000},
-        {"hostname": HOSTNAME, "cpu": "cpu0", "time": ts(120), "value": 2_200_000},
-        {"hostname": HOSTNAME, "cpu": "cpu1", "time": ts(120), "value": 2_000_000},
+        {
+            "hostname": HOSTNAME,
+            "cpu": "cpu0",
+            "time": ts(0),
+            "value": 2_000_000,
+        },
+        {
+            "hostname": HOSTNAME,
+            "cpu": "cpu1",
+            "time": ts(0),
+            "value": 1_800_000,
+        },
+        {
+            "hostname": HOSTNAME,
+            "cpu": "cpu0",
+            "time": ts(60),
+            "value": 2_100_000,
+        },
+        {
+            "hostname": HOSTNAME,
+            "cpu": "cpu1",
+            "time": ts(60),
+            "value": 1_900_000,
+        },
+        {
+            "hostname": HOSTNAME,
+            "cpu": "cpu0",
+            "time": ts(120),
+            "value": 2_200_000,
+        },
+        {
+            "hostname": HOSTNAME,
+            "cpu": "cpu1",
+            "time": ts(120),
+            "value": 2_000_000,
+        },
     ],
     "memory": [
         {
@@ -296,7 +330,13 @@ DATA = {
         },
     ],
     "network_stats": [
-        {"hostname": HOSTNAME, "interface": "eth0", "time": ts(0), "rx_bytes": 0, "tx_bytes": 0},
+        {
+            "hostname": HOSTNAME,
+            "interface": "eth0",
+            "time": ts(0),
+            "rx_bytes": 0,
+            "tx_bytes": 0,
+        },
         {
             "hostname": HOSTNAME,
             "interface": "eth0",
@@ -362,7 +402,9 @@ DATA = {
 
 
 class FakeInfluxDBClient3:
-    def __init__(self, *args, dataset=None, missing_measurements=None, **kwargs):
+    def __init__(
+        self, *args, dataset=None, missing_measurements=None, **kwargs
+    ):
         self.closed = False
         self.data = dataset if dataset is not None else DATA
         self.missing_measurements = set(missing_measurements or [])
@@ -383,7 +425,10 @@ class FakeInfluxDBClient3:
         match = re.search(r"FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)", query)
         measurement = match.group(1) if match else None
 
-        if measurement is not None and (measurement in self.missing_measurements or measurement not in self.data):
+        if measurement is not None and (
+            measurement in self.missing_measurements
+            or measurement not in self.data
+        ):
             raise RuntimeError(
                 "Error while executing query: Flight returned invalid argument error, with message: "
                 f"Error while planning query: Error during planning: table 'public.iox.{measurement}' not found."
@@ -393,7 +438,10 @@ class FakeInfluxDBClient3:
             if measurement is None:
                 return []
             rows = self._filter_rows(self.data.get(measurement, []), params)
-            return [{"hostname": hostname} for hostname in sorted({row["hostname"] for row in rows})]
+            return [
+                {"hostname": hostname}
+                for hostname in sorted({row["hostname"] for row in rows})
+            ]
 
         if measurement is None:
             return []
@@ -412,7 +460,10 @@ class FakeInfluxDBClient3:
             times = [row["time"] for row in rows]
             return [{"min_time": min(times), "max_time": max(times)}]
 
-        if measurement in ("network_stats", "disk_stats", "infiniband") and "MAX(" in query:
+        if (
+            measurement in ("network_stats", "disk_stats", "infiniband")
+            and "MAX(" in query
+        ):
             return self._metric_totals(rows, measurement)
 
         return [dict(row) for row in rows]
@@ -446,9 +497,18 @@ class FakeInfluxDBClient3:
             "infiniband": "device",
         }[measurement]
         fields = {
-            "network_stats": [("rx_bytes", "rx_bytes_total"), ("tx_bytes", "tx_bytes_total")],
-            "disk_stats": [("sectors_read", "sect_rd_total"), ("sectors_written", "sect_wr_total")],
-            "infiniband": [("port_rcv_data", "port_rcv_data_total"), ("port_xmit_data", "port_xmit_data_total")],
+            "network_stats": [
+                ("rx_bytes", "rx_bytes_total"),
+                ("tx_bytes", "tx_bytes_total"),
+            ],
+            "disk_stats": [
+                ("sectors_read", "sect_rd_total"),
+                ("sectors_written", "sect_wr_total"),
+            ],
+            "infiniband": [
+                ("port_rcv_data", "port_rcv_data_total"),
+                ("port_xmit_data", "port_xmit_data_total"),
+            ],
         }[measurement]
         grouped = {}
         for row in rows:
@@ -530,7 +590,9 @@ def logger():
     return test_logger
 
 
-def test_system_data_influxdb_builds_profiles_with_runtime_memory_fields(logger):
+def test_system_data_influxdb_builds_profiles_with_runtime_memory_fields(
+    logger,
+):
     client = FakeInfluxDBClient3()
     metrics = SystemDataInfluxDB(
         logger=logger,
@@ -603,7 +665,9 @@ def test_parse_query_timestamp_normalizes_datetime_like_values():
     naive = datetime(2026, 2, 4, 21, 48, 20)
     expected = naive.timestamp()
 
-    from benchmon.visualization.system_metrics_influxdb import parse_query_timestamp
+    from benchmon.visualization.system_metrics_influxdb import (
+        parse_query_timestamp,
+    )
 
     assert parse_query_timestamp(naive) == expected
     assert parse_query_timestamp(DummyTimestamp(naive)) == expected
@@ -612,7 +676,10 @@ def test_parse_query_timestamp_normalizes_datetime_like_values():
 def test_parse_query_timestamp_accepts_arrow_nanosecond_scalars():
     pyarrow = pytest.importorskip("pyarrow")
 
-    from benchmon.visualization.system_metrics_influxdb import normalize_query_rows, parse_query_timestamp
+    from benchmon.visualization.system_metrics_influxdb import (
+        normalize_query_rows,
+        parse_query_timestamp,
+    )
 
     ns_value = 1_777_451_685_893_529_344
     table = pyarrow.table(
@@ -625,13 +692,19 @@ def test_parse_query_timestamp_accepts_arrow_nanosecond_scalars():
     rows = normalize_query_rows(table)
 
     assert rows[0]["hostname"].as_py() == HOSTNAME
-    assert parse_query_timestamp(rows[0]["time"]) == pytest.approx(ns_value / 1e9)
+    assert parse_query_timestamp(rows[0]["time"]) == pytest.approx(
+        ns_value / 1e9
+    )
 
 
 def test_parse_query_timestamp_accepts_arrow_scalars_via_as_py():
-    from benchmon.visualization.system_metrics_influxdb import parse_query_timestamp
+    from benchmon.visualization.system_metrics_influxdb import (
+        parse_query_timestamp,
+    )
 
-    expected = datetime(2026, 5, 14, 16, 10, 0, tzinfo=timezone.utc).timestamp()
+    expected = datetime(
+        2026, 5, 14, 16, 10, 0, tzinfo=timezone.utc
+    ).timestamp()
 
     class DummyArrowScalar:
         value = object()
@@ -642,31 +715,109 @@ def test_parse_query_timestamp_accepts_arrow_scalars_via_as_py():
     assert parse_query_timestamp(DummyArrowScalar()) == expected
 
 
-def test_influxdb_visualizer_rejects_unsupported_flags(tmp_path, logger, monkeypatch):
+def test_plot_disk_renders_low_bandwidth_influx_data(logger):
+    client = FakeInfluxDBClient3(
+        dataset={
+            "disk_stats": [
+                {
+                    "hostname": HOSTNAME,
+                    "device": "sda",
+                    "time": ts(0),
+                    "sectors_read": 0,
+                    "sectors_written": 0,
+                },
+                {
+                    "hostname": HOSTNAME,
+                    "device": "sda",
+                    "time": ts(300),
+                    "sectors_read": 50,
+                    "sectors_written": 100,
+                },
+                {
+                    "hostname": HOSTNAME,
+                    "device": "sda",
+                    "time": ts(600),
+                    "sectors_read": 100,
+                    "sectors_written": 200,
+                },
+            ]
+        }
+    )
+
+    metrics = SystemDataInfluxDB(
+        logger=logger,
+        client=client,
+        database="metrics",
+        hostname=HOSTNAME,
+        start_time=ts(0).timestamp(),
+        end_time=ts(900).timestamp(),
+        enabled_metrics={
+            "cpu": False,
+            "cpufreq": False,
+            "mem": False,
+            "net": False,
+            "disk": True,
+            "ib": False,
+        },
+        resolution="raw",
+        target_points=100,
+    )
+
+    metrics.yrange = 11
+    metrics.xticks = ([], [])
+    metrics.xlim = (metrics.disk_stamps[0], metrics.disk_stamps[-1])
+
+    plt.figure()
+    diskmax = metrics.plot_disk()
+    _, labels = plt.gca().get_legend_handles_labels()
+    plt.close()
+
+    assert metrics.disk_profile_valid is True
+    assert diskmax > 0
+    assert any(label.startswith("rd:sda") for label in labels)
+
+
+def test_influxdb_visualizer_rejects_unsupported_flags(
+    tmp_path, logger, monkeypatch
+):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
         FakeInfluxDBClient3,
     )
     args = create_args(pow=True, cpu=True)
     with pytest.raises(ValueError):
-        BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+        BenchmonInfluxDBVisualizer(
+            args=args, logger=logger, traces_repo=str(tmp_path)
+        )
 
 
-def test_influxdb_visualizer_discovers_hosts_and_saves_one_figure_set_per_host(tmp_path, logger, monkeypatch):
+def test_influxdb_visualizer_discovers_hosts_and_saves_one_figure_set_per_host(
+    tmp_path, logger, monkeypatch
+):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
         FakeInfluxDBClient3,
     )
-    args = create_args(cpu=True, mem=True, fig_name="influxdb_hosts", fig_fmt="png")
+    args = create_args(
+        cpu=True, mem=True, fig_name="influxdb_hosts", fig_fmt="png"
+    )
 
-    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
     visualizer.run_plots()
 
-    assert (tmp_path / f"benchmon_traces_{HOSTNAME}" / "influxdb_hosts.png").exists()
-    assert (tmp_path / f"benchmon_traces_{HOSTNAME_2}" / "influxdb_hosts.png").exists()
+    assert (
+        tmp_path / f"benchmon_traces_{HOSTNAME}" / "influxdb_hosts.png"
+    ).exists()
+    assert (
+        tmp_path / f"benchmon_traces_{HOSTNAME_2}" / "influxdb_hosts.png"
+    ).exists()
 
 
-def test_influxdb_visualizer_discovers_only_hosts_in_requested_time_window(tmp_path, logger, monkeypatch):
+def test_influxdb_visualizer_discovers_only_hosts_in_requested_time_window(
+    tmp_path, logger, monkeypatch
+):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
         FakeInfluxDBClient3,
@@ -680,29 +831,49 @@ def test_influxdb_visualizer_discovers_only_hosts_in_requested_time_window(tmp_p
         end_time=ts_text(180),
     )
 
-    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
     visualizer.run_plots()
 
-    assert (tmp_path / f"benchmon_traces_{HOSTNAME}" / "influxdb_time_window.png").exists()
+    assert (
+        tmp_path / f"benchmon_traces_{HOSTNAME}" / "influxdb_time_window.png"
+    ).exists()
     assert not (tmp_path / f"benchmon_traces_{HOSTNAME_2}").exists()
 
 
-def test_influxdb_visualizer_recursive_mode_also_saves_multi_node_sync(tmp_path, logger, monkeypatch):
+def test_influxdb_visualizer_recursive_mode_also_saves_multi_node_sync(
+    tmp_path, logger, monkeypatch
+):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
         FakeInfluxDBClient3,
     )
-    args = create_args(recursive=True, cpu=True, mem=True, fig_name="influxdb_recursive", fig_fmt="png")
+    args = create_args(
+        recursive=True,
+        cpu=True,
+        mem=True,
+        fig_name="influxdb_recursive",
+        fig_fmt="png",
+    )
 
-    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
     visualizer.run_plots()
 
-    assert (tmp_path / f"benchmon_traces_{HOSTNAME}" / "influxdb_recursive.png").exists()
-    assert (tmp_path / f"benchmon_traces_{HOSTNAME_2}" / "influxdb_recursive.png").exists()
+    assert (
+        tmp_path / f"benchmon_traces_{HOSTNAME}" / "influxdb_recursive.png"
+    ).exists()
+    assert (
+        tmp_path / f"benchmon_traces_{HOSTNAME_2}" / "influxdb_recursive.png"
+    ).exists()
     assert (tmp_path / "multi-node_sync.png").exists()
 
 
-def test_influxdb_visualizer_skips_missing_measurements_and_renders_available_plots(tmp_path, logger, monkeypatch):
+def test_influxdb_visualizer_skips_missing_measurements_and_renders_available_plots(
+    tmp_path, logger, monkeypatch
+):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
         lambda *args, **kwargs: FakeInfluxDBClient3(
@@ -720,7 +891,9 @@ def test_influxdb_visualizer_skips_missing_measurements_and_renders_available_pl
         fig_fmt="png",
     )
 
-    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
     calls = []
 
     def fake_render(self, specs, hostname, page_idx=None):
@@ -737,7 +910,9 @@ def test_influxdb_visualizer_skips_missing_measurements_and_renders_available_pl
     assert calls == [(HOSTNAME, ["cpu", "mem"])]
 
 
-def test_influxdb_visualizer_falls_back_when_variable_and_cpu_total_are_missing(tmp_path, logger, monkeypatch):
+def test_influxdb_visualizer_falls_back_when_variable_and_cpu_total_are_missing(
+    tmp_path, logger, monkeypatch
+):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
         lambda *args, **kwargs: FakeInfluxDBClient3(
@@ -750,7 +925,9 @@ def test_influxdb_visualizer_falls_back_when_variable_and_cpu_total_are_missing(
         fig_fmt="png",
     )
 
-    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
     calls = []
 
     def fake_render(self, specs, hostname, page_idx=None):
@@ -767,7 +944,9 @@ def test_influxdb_visualizer_falls_back_when_variable_and_cpu_total_are_missing(
     assert calls == [(HOSTNAME, ["cpu"])]
 
 
-def test_influxdb_visualizer_paginates_when_figure_is_too_large(tmp_path, logger, monkeypatch):
+def test_influxdb_visualizer_paginates_when_figure_is_too_large(
+    tmp_path, logger, monkeypatch
+):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
         FakeInfluxDBClient3,
@@ -789,13 +968,21 @@ def test_influxdb_visualizer_paginates_when_figure_is_too_large(tmp_path, logger
         fig_height_unit=3,
     )
 
-    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
     visualizer.run_plots()
 
-    assert (tmp_path / f"benchmon_traces_{HOSTNAME}" / "influxdb_paginated__part01.png").exists()
+    assert (
+        tmp_path
+        / f"benchmon_traces_{HOSTNAME}"
+        / "influxdb_paginated__part01.png"
+    ).exists()
 
 
-def test_influxdb_visualizer_falls_back_to_single_subplot_pages_on_render_failure(tmp_path, logger, monkeypatch):
+def test_influxdb_visualizer_falls_back_to_single_subplot_pages_on_render_failure(
+    tmp_path, logger, monkeypatch
+):
     monkeypatch.setattr(
         "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
         FakeInfluxDBClient3,
@@ -809,7 +996,9 @@ def test_influxdb_visualizer_falls_back_to_single_subplot_pages_on_render_failur
         fig_fmt="png",
     )
 
-    visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=str(tmp_path))
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
     calls = []
 
     def fake_render(self, specs, hostname, page_idx=None):

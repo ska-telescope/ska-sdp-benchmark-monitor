@@ -75,16 +75,16 @@ graph TD
 
 ```bash
 # 1. Start the stack (InfluxDB + Grafana) with a specified directory
-benchmon-start-grafana --save-dir /tmp/demo --influxdb-query-file-limit 1000
+benchmon-start-grafana --save-dir /tmp/demo --influxdb-query-file-limit 2000
 
 # or use default data storage directory (./benchmon_traces_)
-benchmon-start-grafana --influxdb-query-file-limit 1000
+benchmon-start-grafana --influxdb-query-file-limit 2000
 
 # 2. Run Benchmon (Stream to InfluxDB)
 benchmon-run --system --grafana --save-dir /tmp/demo/run1
 ```
 
-`--influxdb-query-file-limit` is the number of parquet files that a single InfluxDB query may scan. Increase it when you plan to visualize all data in a large database without providing `--start-time` and `--end-time`.
+`--influxdb-query-file-limit` is the number of parquet files that a single InfluxDB query may scan. Increase it when you plan to visualize all data in a large database without providing `--start-time` and `--end-time`. A value of `1000` can still be too small for large single-run databases; `2000` is a practical next step before moving to a narrower time window. The value is applied when `benchmon-start-grafana` launches InfluxDB, so you must restart the stack after changing it. This flag affects query/read limits only; it does not change import or write batching.
 
 ### Visualizing Data
 

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import logging
 import os
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
+import matplotlib.pyplot as plt
 import numpy as np
 from influxdb_client_3 import InfluxDBClient3
-import matplotlib.pyplot as plt
 
 from .system_metrics_influxdb import (
     SystemDataInfluxDB,
@@ -35,7 +35,12 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         "inline_call": "--inline-call",
     }
 
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger, traces_repo: str) -> None:
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        logger: logging.Logger,
+        traces_repo: str,
+    ) -> None:
         self.args = args
         self.logger = logger
         self.traces_repo = traces_repo
@@ -74,7 +79,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         )
         self.requested_start_time = self._parse_user_time(self.args.start_time)
         self.requested_end_time = self._parse_user_time(self.args.end_time)
-        self.discovery_start_time, self.discovery_end_time = self._resolve_discovery_time_range()
+        self.discovery_start_time, self.discovery_end_time = (
+            self._resolve_discovery_time_range()
+        )
         self.discovered_hostnames = self._discover_hostnames()
 
     def _validate_args(self) -> None:
@@ -86,7 +93,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                 raise ValueError(f"InfluxDB mode does not support {flag}")
 
         if self.args.inline_call_cmd:
-            raise ValueError("InfluxDB mode does not support --inline-call-cmd")
+            raise ValueError(
+                "InfluxDB mode does not support --inline-call-cmd"
+            )
 
         if self.args.recursive:
             self.logger.info(
@@ -98,7 +107,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         is_net = self.args.net or self.args.net_all or self.args.net_data
         is_disk = self.args.disk or self.args.disk_iops or self.args.disk_data
         enabled = {
-            "cpu": self.args.cpu or self.args.cpu_all or bool(self.args.cpu_cores_full),
+            "cpu": self.args.cpu
+            or self.args.cpu_all
+            or bool(self.args.cpu_cores_full),
             "cpufreq": self.args.cpu_freq,
             "mem": self.args.mem,
             "net": is_net,
@@ -106,7 +117,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
             "ib": self.args.ib,
         }
         if not any(enabled.values()):
-            raise ValueError("InfluxDB mode requires at least one supported system metric flag")
+            raise ValueError(
+                "InfluxDB mode requires at least one supported system metric flag"
+            )
         return enabled
 
     def _enabled_measurements(self) -> list[str]:
@@ -142,15 +155,27 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         return measurements
 
     def _count_subplots(self) -> int:
-        extra_cpu = len(self.args.cpu_cores_full.split(",")) if self.args.cpu_cores_full else 0
+        extra_cpu = (
+            len(self.args.cpu_cores_full.split(","))
+            if self.args.cpu_cores_full
+            else 0
+        )
         return (
             int(bool(self.args.cpu))
             + int(bool(self.args.cpu_all))
             + int(bool(self.args.cpu_freq))
             + extra_cpu
             + int(bool(self.args.mem))
-            + int(bool(self.args.net or self.args.net_all or self.args.net_data))
-            + int(bool(self.args.disk or self.args.disk_iops or self.args.disk_data))
+            + int(
+                bool(self.args.net or self.args.net_all or self.args.net_data)
+            )
+            + int(
+                bool(
+                    self.args.disk
+                    or self.args.disk_iops
+                    or self.args.disk_data
+                )
+            )
             + int(bool(self.args.ib))
         )
 
@@ -186,10 +211,16 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         return normalize_query_rows(result)
 
     def _requires_explicit_time_range(self, exc: Exception) -> bool:
-        if self.requested_start_time is not None and self.requested_end_time is not None:
+        if (
+            self.requested_start_time is not None
+            and self.requested_end_time is not None
+        ):
             return False
         message = str(exc).lower()
-        return "query would exceed file limit" in message and "smaller time range" in message
+        return (
+            "query would exceed file limit" in message
+            and "smaller time range" in message
+        )
 
     def _parse_user_time(self, value: str | None) -> float | None:
         if not value:
@@ -222,7 +253,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         if end_time is not None:
             conditions.append("time < $end_time")
             params["end_time"] = self._local_time_param(end_time)
-        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        where_clause = (
+            f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        )
         rows = self._query_rows(
             f"SELECT MIN(time) AS min_time, MAX(time) AS max_time FROM {measurement}{where_clause}",
             **params,
@@ -240,7 +273,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         hostname_scope = self.args.influxdb_hostname or None
 
         if start_time is None:
-            variable_min, _ = self._query_bounds("variable", hostname=hostname_scope, end_time=end_time)
+            variable_min, _ = self._query_bounds(
+                "variable", hostname=hostname_scope, end_time=end_time
+            )
             if variable_min is not None:
                 start_time = variable_min
 
@@ -258,14 +293,18 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                 ref_max = candidate_max
                 break
         if ref_max is None:
-            raise ValueError("No data found in the requested InfluxDB measurements for the requested time range")
+            raise ValueError(
+                "No data found in the requested InfluxDB measurements for the requested time range"
+            )
 
         if start_time is None:
             start_time = ref_min
         if end_time is None:
             end_time = ref_max + 1.0
         if start_time is None or end_time <= start_time:
-            raise ValueError("InfluxDB mode requires end time to be greater than start time")
+            raise ValueError(
+                "InfluxDB mode requires end time to be greater than start time"
+            )
         return start_time, end_time
 
     def _discover_hostnames(self) -> list[str]:
@@ -289,7 +328,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                     hostnames.add(str(hostname))
 
         if not hostnames:
-            raise ValueError("No hostnames found in InfluxDB for the requested time range")
+            raise ValueError(
+                "No hostnames found in InfluxDB for the requested time range"
+            )
         return sorted(hostnames)
 
     def _resolve_host_time_range(self, hostname: str) -> tuple[float, float]:
@@ -297,7 +338,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         end_time = self.requested_end_time
 
         if start_time is None:
-            variable_min, _ = self._query_bounds("variable", hostname=hostname, end_time=end_time)
+            variable_min, _ = self._query_bounds(
+                "variable", hostname=hostname, end_time=end_time
+            )
             if variable_min is not None:
                 start_time = variable_min
 
@@ -315,19 +358,31 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                 ref_max = candidate_max
                 break
         if ref_max is None:
-            raise ValueError(f"No data found in the requested InfluxDB measurements for host {hostname}")
+            raise ValueError(
+                f"No data found in the requested InfluxDB measurements for host {hostname}"
+            )
 
         if start_time is None:
             start_time = ref_min
         if end_time is None:
             end_time = ref_max + 1.0
         if start_time is None or end_time <= start_time:
-            raise ValueError(f"InfluxDB mode requires a valid time range for host {hostname}")
+            raise ValueError(
+                f"InfluxDB mode requires a valid time range for host {hostname}"
+            )
         return start_time, end_time
 
     def _build_sync_xaxis(self, xmargin: float = 0.0):
-        t0 = self.requested_start_time if self.requested_start_time is not None else self.discovery_start_time
-        tf = self.requested_end_time if self.requested_end_time is not None else self.discovery_end_time
+        t0 = (
+            self.requested_start_time
+            if self.requested_start_time is not None
+            else self.discovery_start_time
+        )
+        tf = (
+            self.requested_end_time
+            if self.requested_end_time is not None
+            else self.discovery_end_time
+        )
         if t0 is None or tf is None or tf <= t0:
             return [], []
 
@@ -338,17 +393,23 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         inbetween_labels = []
         days = [t0_fmt.split("\n")[1].split("-")[1]]
         for stamp in xticks_val[1:-1]:
-            inbetween_labels.append(time.strftime("%H:%M:%S", time.localtime(stamp)))
+            inbetween_labels.append(
+                time.strftime("%H:%M:%S", time.localtime(stamp))
+            )
             days.append(time.strftime("%d", time.localtime(stamp)))
             if days[-1] != days[-2]:
-                inbetween_labels[-1] += "\n" + time.strftime("%b-%d", time.localtime(stamp))
+                inbetween_labels[-1] += "\n" + time.strftime(
+                    "%b-%d", time.localtime(stamp)
+                )
         xticks = (xticks_val, [t0_fmt] + inbetween_labels + [tf_fmt])
 
         dx = (tf - t0) * xmargin
         xlim = [t0 - dx, tf + dx]
         return xticks, xlim
 
-    def _build_node_view(self, hostname: str, system_metrics: SystemDataInfluxDB, xticks, xlim):
+    def _build_node_view(
+        self, hostname: str, system_metrics: SystemDataInfluxDB, xticks, xlim
+    ):
         return SimpleNamespace(
             hostname=hostname,
             system_metrics=system_metrics,
@@ -358,7 +419,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
             xlim=xlim,
         )
 
-    def _run_recursive_sync_plots(self, node_views: list[SimpleNamespace]) -> None:
+    def _run_recursive_sync_plots(
+        self, node_views: list[SimpleNamespace]
+    ) -> None:
         if not self.args.recursive or not node_views:
             return
         from .multi_node_visualizer import BenchmonMNSyncVisualizer
@@ -385,66 +448,106 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
     def _plot_specs(self):
         specs = []
 
-        cpu_available = self.system_metrics is not None and self.system_metrics.cpu_profile_valid
-        cpufreq_available = self.system_metrics is not None and self.system_metrics.cpufreq_profile_valid
-        mem_available = self.system_metrics is not None and self.system_metrics.mem_profile_valid
-        net_available = self.system_metrics is not None and self.system_metrics.net_profile_valid
-        disk_available = self.system_metrics is not None and self.system_metrics.disk_profile_valid
-        ib_available = self.system_metrics is not None and self.system_metrics.ib_profile_valid
+        cpu_available = (
+            self.system_metrics is not None
+            and self.system_metrics.cpu_profile_valid
+        )
+        cpufreq_available = (
+            self.system_metrics is not None
+            and self.system_metrics.cpufreq_profile_valid
+        )
+        mem_available = (
+            self.system_metrics is not None
+            and self.system_metrics.mem_profile_valid
+        )
+        net_available = (
+            self.system_metrics is not None
+            and self.system_metrics.net_profile_valid
+        )
+        disk_available = (
+            self.system_metrics is not None
+            and self.system_metrics.disk_profile_valid
+        )
+        ib_available = (
+            self.system_metrics is not None
+            and self.system_metrics.ib_profile_valid
+        )
 
         if self.args.cpu and cpu_available:
             specs.append(("cpu", lambda: self.system_metrics.plot_cpu(), 100))
 
         if self.args.cpu_cores_full and cpu_available:
             for core in self.args.cpu_cores_full.split(","):
-                specs.append((f"cpu-core-{core}", lambda core=core: self.system_metrics.plot_cpu(number=core), 100))
+                specs.append(
+                    (
+                        f"cpu-core-{core}",
+                        lambda core=core: self.system_metrics.plot_cpu(
+                            number=core
+                        ),
+                        100,
+                    )
+                )
 
         if self.args.cpu_all and cpu_available:
-            specs.append((
-                "cpu-all",
-                lambda: self.system_metrics.plot_cpu_per_core(
-                    cores_in=self.args.cpu_cores_in,
-                    cores_out=self.args.cpu_cores_out,
-                ),
-                100,
-            ))
+            specs.append(
+                (
+                    "cpu-all",
+                    lambda: self.system_metrics.plot_cpu_per_core(
+                        cores_in=self.args.cpu_cores_in,
+                        cores_out=self.args.cpu_cores_out,
+                    ),
+                    100,
+                )
+            )
 
         if self.args.cpu_freq and cpufreq_available:
-            specs.append((
-                "cpu-freq",
-                lambda: self.system_metrics.plot_cpufreq(
-                    cores_in=self.args.cpu_cores_in,
-                    cores_out=self.args.cpu_cores_out,
-                ),
-                None,
-            ))
+            specs.append(
+                (
+                    "cpu-freq",
+                    lambda: self.system_metrics.plot_cpufreq(
+                        cores_in=self.args.cpu_cores_in,
+                        cores_out=self.args.cpu_cores_out,
+                    ),
+                    None,
+                )
+            )
 
         if self.args.mem and mem_available:
-            specs.append(("mem", lambda: self.system_metrics.plot_memory_usage(), None))
+            specs.append(
+                ("mem", lambda: self.system_metrics.plot_memory_usage(), None)
+            )
 
-        if (self.args.net or self.args.net_all or self.args.net_data) and net_available:
-            specs.append((
-                "net",
-                lambda: self.system_metrics.plot_network(
-                    all_interfaces=self.args.net_all,
-                    is_rx_only=self.args.net_rx_only,
-                    is_tx_only=self.args.net_tx_only,
-                    is_netdata_label=self.args.net_data,
-                ),
-                None,
-            ))
+        if (
+            self.args.net or self.args.net_all or self.args.net_data
+        ) and net_available:
+            specs.append(
+                (
+                    "net",
+                    lambda: self.system_metrics.plot_network(
+                        all_interfaces=self.args.net_all,
+                        is_rx_only=self.args.net_rx_only,
+                        is_tx_only=self.args.net_tx_only,
+                        is_netdata_label=self.args.net_data,
+                    ),
+                    None,
+                )
+            )
 
-        if (self.args.disk or self.args.disk_iops or self.args.disk_data) and disk_available:
-            specs.append((
-                "disk",
-                lambda: self.system_metrics.plot_disk(
-                    is_with_iops=self.args.disk_iops,
-                    is_rd_only=self.args.disk_rd_only,
-                    is_wr_only=self.args.disk_wr_only,
-                    is_diskdata_label=self.args.disk_data,
-                ),
-                None,
-            ))
+        if (
+            self.args.disk or self.args.disk_iops or self.args.disk_data
+        ) and disk_available:
+            specs.append(
+                (
+                    "disk",
+                    lambda: self.system_metrics.plot_disk(
+                        is_with_iops=self.args.disk_iops,
+                        is_rd_only=self.args.disk_rd_only,
+                        is_wr_only=self.args.disk_wr_only,
+                        is_diskdata_label=self.args.disk_data,
+                    ),
+                    None,
+                )
+            )
 
         if self.args.ib and ib_available:
             specs.append(("ib", lambda: self.system_metrics.plot_ib(), None))
@@ -452,14 +555,27 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         return specs
 
     def _host_output_dir(self, hostname: str) -> str:
-        root = self.traces_repo if self.args.fig_path is None else self.args.fig_path
-        if self.args.fig_path is not None and len(self.discovered_hostnames) == 1:
+        root = (
+            self.traces_repo
+            if self.args.fig_path is None
+            else self.args.fig_path
+        )
+        if (
+            self.args.fig_path is not None
+            and len(self.discovered_hostnames) == 1
+        ):
             return root
         safe_hostname = hostname.replace(os.sep, "_")
         return os.path.join(root, f"benchmon_traces_{safe_hostname}")
 
-    def _save_paths(self, hostname: str, page_idx: int | None = None) -> list[tuple[str, str | int]]:
-        dpi = "figure" if self.args.fig_dpi == "unset" else self.DPI_MAP[self.args.fig_dpi]
+    def _save_paths(
+        self, hostname: str, page_idx: int | None = None
+    ) -> list[tuple[str, str | int]]:
+        dpi = (
+            "figure"
+            if self.args.fig_dpi == "unset"
+            else self.DPI_MAP[self.args.fig_dpi]
+        )
         figpath = self._host_output_dir(hostname)
         os.makedirs(figpath, exist_ok=True)
         outputs = []
@@ -489,17 +605,28 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         if not self._is_large_figure(len(specs)):
             return [specs]
         per_page = self._max_subplots_per_page()
-        return [specs[idx: idx + per_page] for idx in range(0, len(specs), per_page)]
+        return [
+            specs[idx : idx + per_page]
+            for idx in range(0, len(specs), per_page)
+        ]
 
-    def _render_page(self, specs, hostname: str, page_idx: int | None = None) -> None:
+    def _render_page(
+        self, specs, hostname: str, page_idx: int | None = None
+    ) -> None:
         fig, _ = plt.subplots(len(specs), sharex=True)
-        fig.set_size_inches(self.args.fig_width, len(specs) * self.args.fig_height_unit)
+        fig.set_size_inches(
+            self.args.fig_width, len(specs) * self.args.fig_height_unit
+        )
         fig.add_gridspec(len(specs), hspace=0)
 
         for sbp, (_, plotter, default_ymax) in enumerate(specs, start=1):
             plt.subplot(len(specs), 1, sbp)
             ymax = plotter()
-            ymax = default_ymax if ymax in (-1, 0) and default_ymax is not None else ymax
+            ymax = (
+                default_ymax
+                if ymax in (-1, 0) and default_ymax is not None
+                else ymax
+            )
             if self.ical_stages:
                 kwargs = {"ymax": ymax} if ymax not in (None, -1) else {}
                 plot_ical_stages(self.ical_stages, **kwargs)
@@ -519,7 +646,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
     def _render_host_plots(self, hostname: str) -> bool:
         specs = self._plot_specs()
         if not specs:
-            self.logger.warning(f"No requested InfluxDB plots have data available for host {hostname}")
+            self.logger.warning(
+                f"No requested InfluxDB plots have data available for host {hostname}"
+            )
             return False
 
         pages = self._split_pages(specs)
@@ -537,7 +666,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         except (MemoryError, RuntimeError, ValueError) as exc:
             if len(specs) == 1:
                 raise
-            self.logger.warning(f"Single-figure save failed for host {hostname}, retrying with pagination: {exc}")
+            self.logger.warning(
+                f"Single-figure save failed for host {hostname}, retrying with pagination: {exc}"
+            )
             for idx, spec in enumerate(specs, start=1):
                 self._render_page([spec], hostname, page_idx=idx)
         return True
@@ -559,7 +690,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                     continue
 
                 if not system_metrics.has_any_data():
-                    self.logger.warning(f"No valid InfluxDB data found for host {hostname}")
+                    self.logger.warning(
+                        f"No valid InfluxDB data found for host {hostname}"
+                    )
                     continue
 
                 self.hostname = hostname
@@ -578,7 +711,9 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                     )
 
             if saved_hosts == 0:
-                raise ValueError("No valid InfluxDB data found for any discovered host")
+                raise ValueError(
+                    "No valid InfluxDB data found for any discovered host"
+                )
 
             self._run_recursive_sync_plots(node_views)
         finally:

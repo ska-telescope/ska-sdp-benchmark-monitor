@@ -6,30 +6,38 @@ import os
 import queue
 import threading
 import time
+from collections import defaultdict
 from pathlib import Path
 
 from influxdb_client_3 import InfluxDBClient3
 
-
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Import Benchmon CSV traces into InfluxDB 3")
-    parser.add_argument("--dir", required=True, help="Directory containing benchmon traces (CSV files)")
+    parser = argparse.ArgumentParser(
+        description="Import Benchmon CSV traces into InfluxDB 3"
+    )
+    parser.add_argument(
+        "--dir",
+        required=True,
+        help="Directory containing benchmon traces (CSV files)",
+    )
 
     # Matching benchmon-run argument style
     parser.add_argument(
         "--grafana-influxdb-url",
         default=None,  # Will try to load from connection.json file if None
-        help="InfluxDB URL. If not provided, tries to load from connection.json"
+        help="InfluxDB URL. If not provided, tries to load from connection.json",
     )
     parser.add_argument(
         "--grafana-token",
         default=None,
-        help="InfluxDB Token. If not provided, tries to load from connection.json"
+        help="InfluxDB Token. If not provided, tries to load from connection.json",
     )
 
     # Extra args usually not present in benchmon-run but needed for Client3
@@ -37,17 +45,27 @@ def parse_args():
     parser.add_argument(
         "--database",
         default="metrics",
-        help="InfluxDB Database/Bucket (default: metrics)"
+        help="InfluxDB Database/Bucket (default: metrics)",
     )
 
-    parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for writing to InfluxDB")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=5000,
+        help="Batch size for writing to InfluxDB",
+    )
     parser.add_argument(
         "--max-batch-bytes",
         type=int,
         default=8 * 1024 * 1024,
         help="Maximum serialized batch payload size in bytes before flushing (default: 8 MiB)",
     )
-    parser.add_argument("--workers", type=int, default=4, help="Number of concurrent write workers")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of concurrent write workers",
+    )
 
     return parser.parse_args()
 
@@ -63,12 +81,14 @@ def load_connection_info(trace_dir):
         candidate = current / "grafana-data" / "connection.json"
         if candidate.is_file():
             try:
-                with open(candidate, 'r') as f:
+                with open(candidate, "r") as f:
                     data = json.load(f)
                     logger.info(f"Loaded connection info from {candidate}")
                     return data
             except Exception as e:
-                logger.warning(f"Found connection.json at {candidate} but failed to read: {e}")
+                logger.warning(
+                    f"Found connection.json at {candidate} but failed to read: {e}"
+                )
 
         if current.parent == current:  # Reached root
             break
@@ -94,22 +114,26 @@ def to_nanos(timestamp_str):
 
 
 def process_cpu(filepath, hostname, timestamp_holder=None):
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         reader = csv.DictReader(f)
         first_row = True
         for row in reader:
             try:
-                ts = to_nanos(row['timestamp'])
+                ts = to_nanos(row["timestamp"])
 
                 # Capture first timestamp for variable generation later
-                if first_row and timestamp_holder is not None and timestamp_holder.get('first_ts') is None:
-                    timestamp_holder['first_ts'] = ts
+                if (
+                    first_row
+                    and timestamp_holder is not None
+                    and timestamp_holder.get("first_ts") is None
+                ):
+                    timestamp_holder["first_ts"] = ts
                     first_row = False
 
-                cpu_core = row['cpu_core']
+                cpu_core = row["cpu_core"]
 
                 tags = f"hostname={hostname}"
-                if cpu_core != 'cpu':
+                if cpu_core != "cpu":
                     tags += f",cpu={cpu_core}"
                     measurement = "cpu_core"
                 else:
@@ -119,15 +143,23 @@ def process_cpu(filepath, hostname, timestamp_holder=None):
                 # user,nice,system,idle,iowait,irq,softirq,steal,guest,guestnice
                 # MAPPING: guestnice (CSV) -> guest_nice (LP) to match hp_collector.py
                 field_list = [
-                    'user', 'nice', 'system', 'idle', 'iowait',
-                    'irq', 'softirq', 'steal', 'guest', 'guestnice'
+                    "user",
+                    "nice",
+                    "system",
+                    "idle",
+                    "iowait",
+                    "irq",
+                    "softirq",
+                    "steal",
+                    "guest",
+                    "guestnice",
                 ]
                 for field in field_list:
                     if field in row and row[field]:
                         # Map guestnice to guest_nice
                         lp_key = field
-                        if field == 'guestnice':
-                            lp_key = 'guest_nice'
+                        if field == "guestnice":
+                            lp_key = "guest_nice"
 
                         fields.append(f"{lp_key}={row[field]}i")
 
@@ -138,12 +170,12 @@ def process_cpu(filepath, hostname, timestamp_holder=None):
 
 
 def process_cpufreq(filepath, hostname):
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         reader = csv.DictReader(f)
         freq_key = None
         if reader.fieldnames:
             for key in reader.fieldnames:
-                if key.startswith('frequency'):
+                if key.startswith("frequency"):
                     freq_key = key
                     break
 
@@ -153,8 +185,8 @@ def process_cpufreq(filepath, hostname):
 
         for row in reader:
             try:
-                ts = to_nanos(row['timestamp'])
-                cpu_core = row['cpu_core']
+                ts = to_nanos(row["timestamp"])
+                cpu_core = row["cpu_core"]
                 value = row[freq_key]
 
                 yield f"cpu_freq,hostname={hostname},cpu={cpu_core} value={value}i {ts}"
@@ -163,14 +195,14 @@ def process_cpufreq(filepath, hostname):
 
 
 def process_mem(filepath, hostname):
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         reader = csv.DictReader(f)
         for row in reader:
             try:
-                ts = to_nanos(row['timestamp'])
+                ts = to_nanos(row["timestamp"])
                 fields = []
                 for k, v in row.items():
-                    if k == 'timestamp':
+                    if k == "timestamp":
                         continue
                     if v:
                         fields.append(f"{k.lower()}={v}i")
@@ -182,18 +214,18 @@ def process_mem(filepath, hostname):
 
 
 def process_net(filepath, hostname):
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         reader = csv.DictReader(f)
         for row in reader:
             try:
-                ts = to_nanos(row['timestamp'])
-                iface = row['interface'].strip(':')  # clean colon if present
+                ts = to_nanos(row["timestamp"])
+                iface = row["interface"].strip(":")  # clean colon if present
 
                 fields = []
                 for k, v in row.items():
-                    if k in ['timestamp', 'interface']:
+                    if k in ["timestamp", "interface"]:
                         continue
-                    clean_key = k.replace('-', '_')
+                    clean_key = k.replace("-", "_")
                     fields.append(f"{clean_key}={v}i")
 
                 if fields:
@@ -205,7 +237,7 @@ def process_net(filepath, hostname):
 def process_disk(filepath, hostname):
     header_found = False
 
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         # Scan for header line efficiently
         while True:
             # Save position to rewind if this is the start of data/header
@@ -213,7 +245,7 @@ def process_disk(filepath, hostname):
             line = f.readline()
             if not line:
                 break
-            if line.startswith('timestamp'):
+            if line.startswith("timestamp"):
                 f.seek(pos)
                 header_found = True
                 break
@@ -226,11 +258,11 @@ def process_disk(filepath, hostname):
 
         for row in reader:
             try:
-                ts = to_nanos(row['timestamp'])
-                device = row['device']
+                ts = to_nanos(row["timestamp"])
+                device = row["device"]
 
-                s_read = row.get('sect-rd', '0')
-                s_write = row.get('sect-wr', '0')
+                s_read = row.get("sect-rd", "0")
+                s_write = row.get("sect-wr", "0")
 
                 lp = (
                     f"disk_stats,hostname={hostname},device={device} "
@@ -242,21 +274,21 @@ def process_disk(filepath, hostname):
 
 
 def process_ib(filepath, hostname):
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         reader = csv.DictReader(f)
         for row in reader:
             try:
-                ts = to_nanos(row['timestamp'])
-                dev_port = row['ib-interf:port']
+                ts = to_nanos(row["timestamp"])
+                dev_port = row["ib-interf:port"]
                 # hp_collector uses just the device name (e.g., mlx5_0), not with :port
                 # Try to clean it up to match if separated by colon
-                if ':' in dev_port:
-                    device = dev_port.split(':')[0]
+                if ":" in dev_port:
+                    device = dev_port.split(":")[0]
                 else:
                     device = dev_port
 
-                metric_key = row['metric-key'].replace('-', '_')
-                metric_value = row['metric-value']
+                metric_key = row["metric-key"].replace("-", "_")
+                metric_value = row["metric-value"]
 
                 yield f"infiniband,hostname={hostname},device={device} {metric_key}={metric_value}i {ts}"
             except Exception as e:
@@ -267,18 +299,18 @@ def generate_variable(hostname, dir_path, timestamp_holder=None):
     first_timestamp = None
 
     # Try to use cached timestamp
-    if timestamp_holder and timestamp_holder.get('first_ts'):
-        first_timestamp = timestamp_holder['first_ts']
+    if timestamp_holder and timestamp_holder.get("first_ts"):
+        first_timestamp = timestamp_holder["first_ts"]
 
     # Fallback to reading file if not captured
     if first_timestamp is None:
-        cpu_report = os.path.join(dir_path, 'cpu_report.csv')
+        cpu_report = os.path.join(dir_path, "cpu_report.csv")
         if os.path.exists(cpu_report):
             try:
-                with open(cpu_report, 'r') as f:
+                with open(cpu_report, "r") as f:
                     reader = csv.DictReader(f)
                     row = next(reader)
-                    first_timestamp = to_nanos(row['timestamp'])
+                    first_timestamp = to_nanos(row["timestamp"])
             except Exception:
                 pass
 
@@ -296,10 +328,10 @@ def worker_write(idx, q, client_config, error_queue):
 
         # Explicit synchronous client (no WriteOptions)
         client = InfluxDBClient3(
-            host=config['host'],
-            token=config['token'],
-            org=config['org'],
-            database=config['database']
+            host=config["host"],
+            token=config["token"],
+            org=config["org"],
+            database=config["database"],
         )
         logger.info(f"Worker {idx}: Started.")
     except Exception as e:
@@ -366,7 +398,7 @@ def main():
         "host": url,
         "token": token,
         "org": args.org,
-        "database": args.database
+        "database": args.database,
     }
 
     # --- Parallel Write Queue Setup ---
@@ -377,37 +409,46 @@ def main():
 
     logger.info(f"Starting {args.workers} write workers...")
     for i in range(args.workers):
-        t = threading.Thread(target=worker_write, args=(i, write_queue, client_config, error_queue))
+        t = threading.Thread(
+            target=worker_write,
+            args=(i, write_queue, client_config, error_queue),
+        )
         t.start()
         workers.append(t)
 
     processors = {
-        'cpu_report.csv': process_cpu,
-        'cpufreq_report.csv': process_cpufreq,
-        'mem_report.csv': process_mem,
-        'net_report.csv': process_net,
-        'disk_report.csv': process_disk,
-        'ib_report.csv': process_ib
+        "cpu_report.csv": process_cpu,
+        "cpufreq_report.csv": process_cpufreq,
+        "mem_report.csv": process_mem,
+        "net_report.csv": process_net,
+        "disk_report.csv": process_disk,
+        "ib_report.csv": process_ib,
     }
 
     # Context object to share data between processors and main
-    ctx = {'first_ts': None}
+    ctx = {"first_ts": None}
 
     # Write buffer for main thread
     batch_buffer = []
     batch_bytes = 0
     total_generated = 0
+    queued_counts = defaultdict(int)
 
     def flush_to_queue(source_name):
         nonlocal batch_bytes, total_generated
         if batch_buffer:
             # Push COPY of buffer (or just reference since we clear original)
             # Actually we must send a new list object because list is mutable
-            write_queue.put((source_name, list(batch_buffer)))
-            total_generated += len(batch_buffer)
-            # Log progress based on generation, not writing (writing is async)
-            if total_generated % 100000 == 0:
-                logger.info(f"Parsed & Queued {total_generated} points...")
+            queued_batch = list(batch_buffer)
+            write_queue.put((source_name, queued_batch))
+            batch_len = len(queued_batch)
+            total_generated += batch_len
+            queued_counts[source_name] += batch_len
+            # Log progress per source file so each measurement reports consistently.
+            if queued_counts[source_name] % 100000 == 0:
+                logger.info(
+                    f"Queued {queued_counts[source_name]} points from {source_name}..."
+                )
             batch_buffer.clear()
             batch_bytes = 0
 
@@ -435,19 +476,31 @@ def main():
                 batch_bytes += point_size
                 count += 1
             flush_to_queue(filename)
-            logger.info(f"Finished {filename}: {count} points generated.")
+            logger.info(
+                f"Finished {filename}: {count} points generated and "
+                f"{queued_counts[filename]} points queued."
+            )
         else:
             logger.warning(f"File {filename} not found in {args.dir}")
 
     # Add variable point
-    variable_point = generate_variable(hostname, args.dir, timestamp_holder=ctx)
-    if batch_buffer and batch_bytes + len(variable_point.encode("utf-8")) + 1 > args.max_batch_bytes:
-        flush_to_queue('variable')
+    variable_point = generate_variable(
+        hostname, args.dir, timestamp_holder=ctx
+    )
+    if (
+        batch_buffer
+        and batch_bytes + len(variable_point.encode("utf-8")) + 1
+        > args.max_batch_bytes
+    ):
+        flush_to_queue("variable")
     batch_buffer.append(variable_point)
     batch_bytes += len(variable_point.encode("utf-8")) + 1
 
     # Flush remaining
-    flush_to_queue('variable')
+    flush_to_queue("variable")
+    logger.info(
+        f"Finished variable: 1 point generated and {queued_counts['variable']} point queued."
+    )
 
     # Send stop signals
     logger.info("Parsing finished. Waiting for workers to complete writing...")

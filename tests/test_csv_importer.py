@@ -136,7 +136,9 @@ def test_csv_importer_splits_oversized_batches_on_413(monkeypatch, tmp_path):
     )
 
     monkeypatch.setattr(csv_importer, "parse_args", lambda: args)
-    monkeypatch.setattr(csv_importer, "InfluxDBClient3", SplitOnLargeBatchClient)
+    monkeypatch.setattr(
+        csv_importer, "InfluxDBClient3", SplitOnLargeBatchClient
+    )
     monkeypatch.setattr(csv_importer, "load_connection_info", lambda _: {})
 
     csv_importer.main()
