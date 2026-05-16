@@ -244,7 +244,6 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
             if variable_min is not None:
                 start_time = variable_min
 
-        ref_measurement = None
         ref_min = None
         ref_max = None
         for candidate in self._reference_measurements():
@@ -255,7 +254,6 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                 end_time=end_time,
             )
             if candidate_max is not None:
-                ref_measurement = candidate
                 ref_min = candidate_min
                 ref_max = candidate_max
                 break
@@ -303,7 +301,6 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
             if variable_min is not None:
                 start_time = variable_min
 
-        ref_measurement = None
         ref_min = None
         ref_max = None
         for candidate in self._reference_measurements():
@@ -314,7 +311,6 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
                 end_time=end_time,
             )
             if candidate_max is not None:
-                ref_measurement = candidate
                 ref_min = candidate_min
                 ref_max = candidate_max
                 break
