@@ -6,6 +6,7 @@ import re
 import json
 import html
 
+
 def fill_template(template: str, values: dict):
     """
     Replaces <key> placeholders in a string with values from a dictionary.
@@ -51,11 +52,13 @@ def generate_hidden(title: str, content: str):
     """Generate an HTML <details> block. Title is escaped, content is expected to be HTML."""
     return f"<details>\n<summary>{html.escape(title)}</summary>\n{content}\n</details>\n"
 
+
 def _html_ul(items):
     """Render a simple HTML unordered list from already-escaped items."""
     if not items:
         return ""
     return "<ul>\n" + "\n".join(f"<li>{item}</li>" for item in items) + "\n</ul>\n"
+
 
 def spack_description(data):
     """HTML description for a Spack package (returns a <details> block)."""
@@ -69,7 +72,9 @@ def spack_description(data):
     if not isinstance(cpu_arch, str):
         cpu_arch = cpu_arch.get("name", "")
     cpu_arch = html.escape(str(cpu_arch))
-    compiler = html.escape(str(data.get("compiler", {}).get("name", ""))) + "/" + html.escape(str(data.get("compiler", {}).get("version", "")))
+    compiler_name = str(data.get("compiler", {}).get("name", ""))
+    compiler_version = str(data.get("compiler", {}).get("version", ""))
+    compiler = f"{html.escape(compiler_name)}/{html.escape(compiler_version)}"
 
     infos = [
         f"<strong>Version</strong>: {version}",
@@ -79,6 +84,7 @@ def spack_description(data):
         f"<strong>Compiler</strong>: {compiler}",
     ]
     return generate_hidden(name or "spack package", _html_ul(infos))
+
 
 def spack_env_description(spack_data):
     """Generate a Markdown description of a Spack environment from a JSON description.
@@ -108,6 +114,7 @@ def python_env_description(data):
         items.append(html.escape(item.get("name", "")) + " / " + html.escape(item.get("version", "")))
     return generate_hidden(f"Name: {env_name}", _html_ul(items))
 
+
 def escaped_markdown(text: str) -> str:
     """Escape Markdown special characters by prefixing them with a backslash.
     Returns empty string for None input.
@@ -118,6 +125,7 @@ def escaped_markdown(text: str) -> str:
     s = str(text)
     return "".join(f"\\{c}" if c in to_escape else c for c in s)
 
+
 def env_description(data):
     """Return shell environment variables as an HTML unordered list."""
     if data is None:
@@ -126,6 +134,7 @@ def env_description(data):
     for key, val in data.items():
         items.append(f"{html.escape(str(key))}: {html.escape(str(val))}")
     return _html_ul(items)
+
 
 def hardware_description(hw_data):
     """Return HTML content (no outer <details>) describing hardware as an unordered list."""
@@ -138,11 +147,13 @@ def hardware_description(hw_data):
         cpu_data.get("Sockets", 1) * cpu_data.get("Cores_per_socket", 1)
     )
     swap_gib = hw_data["memory"]["swap"]["total"] / (1024 * 1024 * 1024)
+    sockets = html.escape(str(cpu_data.get("Sockets", "")))
+    numa_nodes = html.escape(str(cpu_data.get("NUMA_nodes", "")))
     items = [
         f"<strong>Model name</strong>: {html.escape(str(cpu_data.get('CPU_Model','')))}",
         f"<strong>Number of cores</strong>: {html.escape(str(cpu_data.get('Cores_per_socket','')))}",
         f"<strong>Threads per core</strong>: {html.escape(str(cpu_data.get('Threads_per_core','')))}",
-        f"<strong>Sockets and NUMA organisation</strong>: {html.escape(str(cpu_data.get('Sockets','')))} socket(s), {html.escape(str(cpu_data.get('NUMA_nodes','')))} NUMA nodes",
+        f"<strong>Sockets and NUMA organisation</strong>: {sockets} socket(s)<br/>{numa_nodes} NUMA nodes",
         f"<strong>Min frequency</strong>: {html.escape(str(cpu_data.get('CPU_Min_Speed_MHz','N/A')))} MHz",
         f"<strong>Max frequency</strong>: {html.escape(str(cpu_data.get('CPU_Max_Speed_MHz','N/A')))} MHz",
         f"<strong>L1d cache</strong>: {html.escape(str(cpu_data.get('L1d_cache','')))} per socket",
@@ -153,6 +164,7 @@ def hardware_description(hw_data):
         f"<strong>Swap</strong>: {round(swap_gib,2)} GiB",
     ]
     return _html_ul(items)
+
 
 def read_ps_data(file):
     """
@@ -248,18 +260,21 @@ def process_data(ps_data):
 
     return result
 
+
 def _escape_table_cell(s: str) -> str:
     """Escape table-breaking chars for Markdown cells."""
     if s is None:
         return ""
     return str(s).replace("|", "\\|").replace("\n", " ").replace("\r", "")
 
+
 def ps_entry_to_line(pid, process_info):
     """Return one summary table row computed from finished occurrences (elapsed>0)."""
 
     cmd = process_info.get("CMD", "") or ""
     ppid = process_info.get("PPID", "")
-    cpus = ", ".join(map(str, sorted(process_info.get("CPUID", []), key=lambda x: int(x) if isinstance(x, (str, int)) and str(x).isdigit() else x)))
+    cpuid_vals = process_info.get("CPUID", [])
+    cpus = ", ".join(map(str, sorted(cpuid_vals, key=lambda x: int(x) if str(x).isdigit() else x)))
     elapsed_list = process_info.get("ELAPSED_LIST", [])
     finished = [e for e, _, _, _ in elapsed_list if e > 0.0]
     count_finished = len(finished)
@@ -275,14 +290,24 @@ def ps_description(ps_data):
     processed = process_data(ps_data)
 
     # summary HTML table
+    header = (
+        "<thead><tr>"
+        "<th>Command</th>"
+        "<th>PID</th>"
+        "<th>PPID</th>"
+        "<th>Stats (max/sum/avg/(occ))</th>"
+        "<th>CPUs</th>"
+        "</tr></thead>"
+    )
     summary_rows = []
     summary_rows.append("<table>")
-    summary_rows.append("<thead><tr><th>Command</th><th>PID</th><th>PPID</th><th>Stats (max/sum/avg/(occ))</th><th>CPUs</th></tr></thead>")
+    summary_rows.append(header)
     summary_rows.append("<tbody>")
     for pid, info in sorted(processed.items(), key=lambda item: item[1].get("ELAPSED", 0.0), reverse=True):
-        cmd = html.escape(info.get("CMD","") or "")
-        ppid = html.escape(str(info.get("PPID","")))
-        cpus = ", ".join(map(str, sorted(info.get("CPUID", []), key=lambda x: int(x) if isinstance(x, (str, int)) and str(x).isdigit() else x)))
+        cmd = html.escape(info.get("CMD", "") or "")
+        ppid = html.escape(str(info.get("PPID", "")))
+        cpuid_vals = info.get("CPUID", [])
+        cpus = ", ".join(map(str, sorted(cpuid_vals, key=lambda x: int(x) if str(x).isdigit() else x)))
         elapsed_list = info.get("ELAPSED_LIST", [])
         finished = [e for e, _, _, _ in elapsed_list if e > 0.0]
         count_finished = len(finished)
@@ -290,7 +315,17 @@ def ps_description(ps_data):
         maximum = max(finished) if finished else 0.0
         avg = (total / count_finished) if count_finished else 0.0
         summary = f"max={maximum:.2f}s sum={total:.2f}s avg={avg:.2f}s ({count_finished})"
-        summary_rows.append(f"<tr><td>{cmd}</td><td>{pid}</td><td>{ppid}</td><td>{html.escape(summary)}</td><td>{html.escape(cpus)}</td></tr>")
+        # build summary row in short parts to satisfy E501
+        row_cells = [
+            "<tr>",
+            f"<td>{cmd}</td>",
+            f"<td>{pid}</td>",
+            f"<td>{ppid}</td>",
+            f"<td>{html.escape(summary)}</td>",
+            f"<td>{html.escape(cpus)}</td>",
+            "</tr>",
+        ]
+        summary_rows.append("".join(row_cells))
     summary_rows.append("</tbody></table>")
 
     parts = ["\n".join(summary_rows)]
@@ -306,7 +341,16 @@ def ps_description(ps_data):
         rows.append("<thead><tr><th>elapsed (s)</th><th>core</th><th>timestamp</th><th>stage</th></tr></thead>")
         rows.append("<tbody>")
         for elapsed_val, core, ts, stage in finished_events:
-            rows.append(f"<tr><td>{elapsed_val:.2f}</td><td>{html.escape(str(core or '-'))}</td><td>{html.escape(str(ts or '-'))}</td><td>{html.escape(stage or '-')}</td></tr>")
+            # build details
+            detail_cells = [
+                "<tr>",
+                f"<td>{elapsed_val:.2f}</td>",
+                f"<td>{html.escape(str(core or '-'))}</td>",
+                f"<td>{html.escape(str(ts or '-'))}</td>",
+                f"<td>{html.escape(str(stage or '-'))}</td>",
+                "</tr>",
+            ]
+            rows.append("".join(detail_cells))
         rows.append("</tbody></table>")
         title = f"Details for PID {pid} (PPID {info.get('PPID','')})"
         parts.append(generate_hidden(title, "\n".join(rows)))
