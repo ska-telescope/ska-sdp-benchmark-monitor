@@ -654,6 +654,42 @@ def test_system_data_influxdb_auto_resolution_buckets_memory(logger):
     assert metrics.mem_prof["MemTotal"][0] > 0
 
 
+def test_plot_network_renders_influx_data_in_mb_per_second(logger):
+    client = FakeInfluxDBClient3()
+    metrics = SystemDataInfluxDB(
+        logger=logger,
+        client=client,
+        database="metrics",
+        hostname=HOSTNAME,
+        start_time=ts(0).timestamp(),
+        end_time=ts(180).timestamp(),
+        enabled_metrics={
+            "cpu": False,
+            "cpufreq": False,
+            "mem": False,
+            "net": True,
+            "disk": False,
+            "ib": False,
+        },
+        resolution="raw",
+        target_points=100,
+    )
+
+    metrics.yrange = 11
+    metrics.xticks = ([], [])
+    metrics.xlim = (metrics.net_stamps[0], metrics.net_stamps[-1])
+
+    plt.figure()
+    netmax = metrics.plot_network()
+    _, labels = plt.gca().get_legend_handles_labels()
+    plt.close()
+
+    assert metrics.net_profile_valid is True
+    assert netmax == pytest.approx(2.0)
+    assert "rx:total (120 MB)" in labels
+    assert "tx:total (180 MB)" in labels
+
+
 def test_parse_query_timestamp_normalizes_datetime_like_values():
     class DummyTimestamp:
         def __init__(self, dt):

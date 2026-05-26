@@ -729,7 +729,7 @@ class SystemDataInfluxDB(SystemData):
             measurement="network_stats",
             tag_key="interface",
             fields={"rx-bytes": "rx_bytes", "tx-bytes": "tx_bytes"},
-            scale=1.0 / (1000**2),
+            scale=1.0,
         )
         self.net_prof = rows
         self.net_data = totals
