@@ -1,25 +1,26 @@
-<h1>Benchmark report</h1>
-<h2>Test data description</h2>
+# Benchmark report
+## Test data description
 
-<h2>Pipeline description</h2>
+## Pipeline description
 
-<h2>Execution context</h2>
-<h3>Hardware description</h3>
+
+## Execution context
+### Hardware description
 <hardware_description>
 
-<h3>Software description</h3>
-<h4>Environment variables</h4>
+### Software description
+#### Environment variables
 <environment_variables>
 
-<h4>Spack environment</h4>
+#### Spack environment
 <spack_dependencies>
 
-<h4>Python environment</h4>
+#### Python environment
 <python_environment>
 
-<h2>Pipeline performance</h2>
-<h3>Process timings</h3>
+## Pipeline performance
+### Process timings
 <ps_data>
 
-<h3>Resource usage</h3>
+### Resource usage
 <benchmon_plot>
