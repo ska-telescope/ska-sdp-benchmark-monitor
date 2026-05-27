@@ -124,6 +124,7 @@ if [[ ! -f "$figure_path" ]]; then
     echo "warning: figure not found ($figure_path), report will be generated without image" >&2
 fi
 figure_arg=(--figure-path "$figure_path")
+
 # optional ps-report
 ps_report="$traces_repo/benchmon_traces_$(hostname)/timing_mapping_report.csv"
 
@@ -140,6 +141,7 @@ report_md="$report_dir/benchmon_report.md"
 report_html="$report_dir/benchmon_report.html"
 
 # run benchmon report
+echo "[INFO]: running benchmon-report (cwd=$(pwd)) -> $report_md" >&2
 benchmon-report \
     --software-report "$software_report" \
     --hardware-report "$hardware_report" \
