@@ -153,6 +153,12 @@ def is_missing_measurement_error(exc: Exception) -> bool:
     return "table" in message and "not found" in message
 
 
+def is_missing_field_error(exc: Exception, field: str) -> bool:
+    """Return True when InfluxDB reports that a queried field does not exist."""
+    message = str(exc).lower()
+    return f"no field named {field.lower()}" in message
+
+
 class SystemDataInfluxDB(SystemData):
     """InfluxDB-backed system metrics adapter that reuses SystemData plotting methods."""
 
@@ -741,11 +747,12 @@ class SystemDataInfluxDB(SystemData):
         self.net_profile_valid = len(self.net_stamps) > 0
 
     def _load_disk(self) -> None:
+        sector_sizes = self._load_disk_sector_sizes()
         rows, totals = self._load_rate_metric(
             measurement="disk_stats",
             tag_key="device",
             fields={"sect-rd": "sectors_read", "sect-wr": "sectors_written"},
-            scale=512.0 / (1000**2),
+            scale=1.0,
         )
         disk_defaults = [
             "#rd-cd",
@@ -772,7 +779,11 @@ class SystemDataInfluxDB(SystemData):
         if rows:
             self.disk_stamps = next(iter(rows.values()))["timestamp"]
         for blk, profile in rows.items():
-            self.maj_blks_sects[blk] = 512
+            sector_size = self._resolve_disk_sector_size(blk, sector_sizes)
+            scale = sector_size / (1000**2)
+            device_totals = totals.get(blk, {})
+
+            self.maj_blks_sects[blk] = sector_size
             self.disk_prof[blk] = {
                 field: np.zeros(len(self.disk_stamps), dtype=float)
                 for field in disk_defaults
@@ -781,14 +792,61 @@ class SystemDataInfluxDB(SystemData):
             self.disk_prof[blk]["minor"] = 0
             self.disk_prof[blk]["sect-rd"] = profile.get(
                 "sect-rd", np.zeros(len(self.disk_stamps))
-            )
+            ) * scale
             self.disk_prof[blk]["sect-wr"] = profile.get(
                 "sect-wr", np.zeros(len(self.disk_stamps))
-            )
+            ) * scale
             self.disk_data[blk] = {field: 0 for field in disk_defaults}
-            self.disk_data[blk]["sect-rd"] = totals[blk].get("sect-rd", 0)
-            self.disk_data[blk]["sect-wr"] = totals[blk].get("sect-wr", 0)
+            self.disk_data[blk]["sect-rd"] = int(
+                device_totals.get("sect-rd", 0) * scale
+            )
+            self.disk_data[blk]["sect-wr"] = int(
+                device_totals.get("sect-wr", 0) * scale
+            )
         self.disk_profile_valid = len(self.disk_stamps) > 0
+
+    def _load_disk_sector_sizes(self) -> dict[str, int]:
+        base_params = {
+            "hostname": self.hostname,
+            "start_time": self._local_time_param(self.start_time),
+            "end_time": self._local_time_param(self.end_time),
+        }
+        query = (
+            "SELECT device, MAX(sector_size) AS sector_size FROM disk_stats "
+            "WHERE hostname = $hostname AND time >= $start_time AND time < $end_time "
+            "GROUP BY device ORDER BY device"
+        )
+        try:
+            rows = self._query_rows(query, **base_params)
+        except Exception as exc:
+            if is_missing_field_error(exc, "sector_size"):
+                self.logger.warning(
+                    "InfluxDB disk_stats has no sector_size field for host %s; "
+                    "defaulting disk plots to 512 bytes/sector.",
+                    self.hostname,
+                )
+                return {}
+            raise
+
+        sector_sizes = {}
+        for row in rows:
+            device = str(row["device"])
+            sector_size = int(self._extract_field(row, "sector_size"))
+            if sector_size > 0:
+                sector_sizes[device] = sector_size
+        return sector_sizes
+
+    @staticmethod
+    def _resolve_disk_sector_size(
+        device: str, sector_sizes: dict[str, int]
+    ) -> int:
+        if device in sector_sizes:
+            return sector_sizes[device]
+
+        matches = [name for name in sector_sizes if device.startswith(name)]
+        if matches:
+            return sector_sizes[max(matches, key=len)]
+        return 512
 
     def _load_ib(self) -> None:
         rows, totals = self._load_rate_metric(

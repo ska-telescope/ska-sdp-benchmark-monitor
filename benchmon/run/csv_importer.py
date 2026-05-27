@@ -234,8 +234,45 @@ def process_net(filepath, hostname):
                 logger.error(f"Error parsing line in net_report: {e}")
 
 
+def _parse_disk_sector_sizes(line, filepath):
+    values = [value.strip() for value in line.split(",") if value.strip()]
+    if len(values) % 2 != 0:
+        logger.warning(
+            "Malformed disk sector-size metadata in %s: %s",
+            filepath,
+            line,
+        )
+        values = values[:-1]
+
+    sector_sizes = {}
+    for idx in range(0, len(values), 2):
+        device = values[idx]
+        try:
+            sector_sizes[device] = int(values[idx + 1])
+        except ValueError:
+            logger.warning(
+                "Invalid disk sector-size %r for %s in %s",
+                values[idx + 1],
+                device,
+                filepath,
+            )
+    return sector_sizes
+
+
+def _resolve_disk_sector_size(device, sector_sizes):
+    if device in sector_sizes:
+        return sector_sizes[device]
+
+    matches = [name for name in sector_sizes if device.startswith(name)]
+    if not matches:
+        return None
+    return sector_sizes[max(matches, key=len)]
+
+
 def process_disk(filepath, hostname):
     header_found = False
+    sector_sizes = {}
+    metadata_line = None
 
     with open(filepath, "r") as f:
         # Scan for header line efficiently
@@ -245,14 +282,20 @@ def process_disk(filepath, hostname):
             line = f.readline()
             if not line:
                 break
+            stripped = line.strip()
             if line.startswith("timestamp"):
                 f.seek(pos)
                 header_found = True
                 break
+            if "," in stripped:
+                metadata_line = stripped
 
         if not header_found:
             logger.error("Could not find header in disk_report.csv")
             return
+
+        if metadata_line:
+            sector_sizes = _parse_disk_sector_sizes(metadata_line, filepath)
 
         reader = csv.DictReader(f)
 
@@ -263,10 +306,18 @@ def process_disk(filepath, hostname):
 
                 s_read = row.get("sect-rd", "0")
                 s_write = row.get("sect-wr", "0")
+                sector_size = _resolve_disk_sector_size(device, sector_sizes)
+
+                fields = [
+                    f"sectors_read={s_read}i",
+                    f"sectors_written={s_write}i",
+                ]
+                if sector_size is not None:
+                    fields.append(f"sector_size={sector_size}i")
 
                 lp = (
                     f"disk_stats,hostname={hostname},device={device} "
-                    f"sectors_read={s_read}i,sectors_written={s_write}i {ts}"
+                    f"{','.join(fields)} {ts}"
                 )
                 yield lp
             except Exception as e:

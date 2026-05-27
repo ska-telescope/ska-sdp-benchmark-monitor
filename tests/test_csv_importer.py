@@ -148,3 +148,22 @@ def test_csv_importer_splits_oversized_batches_on_413(monkeypatch, tmp_path):
         written_batches.extend(client.batches)
 
     assert sorted(len(batch) for batch in written_batches) == [1, 2, 2]
+
+
+def test_process_disk_preserves_sector_size_for_partitions(tmp_path):
+    report = tmp_path / "disk_report.csv"
+    report.write_text(
+        "2\n"
+        "4\n"
+        "sda,512,nvme0n1,4096\n"
+        "timestamp,device,sect-rd,sect-wr\n"
+        "1745860070.500401679,nvme0n1p1,8,16\n"
+    )
+
+    lines = list(csv_importer.process_disk(str(report), "test-host"))
+
+    assert lines == [
+        "disk_stats,hostname=test-host,device=nvme0n1p1 "
+        "sectors_read=8i,sectors_written=16i,sector_size=4096i "
+        "1745860070500401664"
+    ]

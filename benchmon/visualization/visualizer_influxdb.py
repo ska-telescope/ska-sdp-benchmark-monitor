@@ -445,6 +445,41 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
             target_points=self.target_points,
         )
 
+    def _warn_missing_requested_metrics(
+        self, available_metrics: dict[str, bool]
+    ) -> None:
+        host = self.hostname or "<unknown>"
+        requested_metrics = (
+            (
+                self.args.cpu
+                or self.args.cpu_all
+                or bool(self.args.cpu_cores_full),
+                "cpu",
+                "CPU",
+            ),
+            (self.args.cpu_freq, "cpufreq", "CPU frequency"),
+            (self.args.mem, "mem", "memory"),
+            (
+                self.args.net or self.args.net_all or self.args.net_data,
+                "net",
+                "network",
+            ),
+            (
+                self.args.disk or self.args.disk_iops or self.args.disk_data,
+                "disk",
+                "disk",
+            ),
+            (self.args.ib, "ib", "InfiniBand"),
+        )
+
+        for is_requested, key, label in requested_metrics:
+            if is_requested and not available_metrics[key]:
+                self.logger.warning(
+                    "Requested InfluxDB %s data is unavailable for host %s, skipping plot.",
+                    label,
+                    host,
+                )
+
     def _plot_specs(self):
         specs = []
 
@@ -472,6 +507,16 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
             self.system_metrics is not None
             and self.system_metrics.ib_profile_valid
         )
+
+        available_metrics = {
+            "cpu": cpu_available,
+            "cpufreq": cpufreq_available,
+            "mem": mem_available,
+            "net": net_available,
+            "disk": disk_available,
+            "ib": ib_available,
+        }
+        self._warn_missing_requested_metrics(available_metrics)
 
         if self.args.cpu and cpu_available:
             specs.append(("cpu", lambda: self.system_metrics.plot_cpu(), 100))

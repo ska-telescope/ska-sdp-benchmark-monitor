@@ -460,6 +460,9 @@ class FakeInfluxDBClient3:
             times = [row["time"] for row in rows]
             return [{"min_time": min(times), "max_time": max(times)}]
 
+        if measurement == "disk_stats" and "MAX(sector_size)" in query:
+            return self._disk_sector_sizes(rows)
+
         if (
             measurement in ("network_stats", "disk_stats", "infiniband")
             and "MAX(" in query
@@ -521,6 +524,27 @@ class FakeInfluxDBClient3:
                 item[alias] = max(values) - min(values)
             output.append(item)
         return output
+
+    @staticmethod
+    def _disk_sector_sizes(rows):
+        if rows and not any("sector_size" in row for row in rows):
+            raise RuntimeError(
+                "Error while executing query: Flight returned invalid argument error, with message: "
+                "Error while planning query: Schema error: No field named sector_size. "
+                "Valid fields are disk_stats.device, disk_stats.hostname, "
+                "disk_stats.sectors_read, disk_stats.sectors_written, disk_stats.time."
+            )
+
+        grouped = {}
+        for row in rows:
+            if "sector_size" not in row or row["sector_size"] is None:
+                continue
+            grouped.setdefault(row["device"], []).append(row["sector_size"])
+
+        return [
+            {"device": device, "sector_size": max(values)}
+            for device, values in sorted(grouped.items())
+        ]
 
 
 def create_args(**overrides):
@@ -809,8 +833,78 @@ def test_plot_disk_renders_low_bandwidth_influx_data(logger):
     plt.close()
 
     assert metrics.disk_profile_valid is True
+    assert metrics.maj_blks_sects["sda"] == 512
     assert diskmax > 0
     assert any(label.startswith("rd:sda") for label in labels)
+
+
+def test_plot_disk_uses_real_sector_size_from_influxdb(logger):
+    client = FakeInfluxDBClient3(
+        dataset={
+            "disk_stats": [
+                {
+                    "hostname": HOSTNAME,
+                    "device": "sda",
+                    "time": ts(0),
+                    "sectors_read": 0,
+                    "sectors_written": 0,
+                    "sector_size": 4096,
+                },
+                {
+                    "hostname": HOSTNAME,
+                    "device": "sda",
+                    "time": ts(60),
+                    "sectors_read": 60_000,
+                    "sectors_written": 30_000,
+                    "sector_size": 4096,
+                },
+                {
+                    "hostname": HOSTNAME,
+                    "device": "sda",
+                    "time": ts(120),
+                    "sectors_read": 120_000,
+                    "sectors_written": 45_000,
+                    "sector_size": 4096,
+                },
+            ]
+        }
+    )
+
+    metrics = SystemDataInfluxDB(
+        logger=logger,
+        client=client,
+        database="metrics",
+        hostname=HOSTNAME,
+        start_time=ts(0).timestamp(),
+        end_time=ts(180).timestamp(),
+        enabled_metrics={
+            "cpu": False,
+            "cpufreq": False,
+            "mem": False,
+            "net": False,
+            "disk": True,
+            "ib": False,
+        },
+        resolution="raw",
+        target_points=100,
+    )
+
+    metrics.yrange = 11
+    metrics.xticks = ([], [])
+    metrics.xlim = (metrics.disk_stamps[0], metrics.disk_stamps[-1])
+
+    plt.figure()
+    diskmax = metrics.plot_disk()
+    _, labels = plt.gca().get_legend_handles_labels()
+    plt.close()
+
+    assert metrics.disk_profile_valid is True
+    assert metrics.maj_blks_sects["sda"] == 4096
+    assert metrics.disk_data["sda"]["sect-rd"] == 491
+    assert metrics.disk_data["sda"]["sect-wr"] == 184
+    assert diskmax == pytest.approx(4.096)
+    assert "rd:sda (491 MB)" in labels
+    assert "wr:sda (184 MB)" in labels
 
 
 def test_influxdb_visualizer_rejects_unsupported_flags(
@@ -944,6 +1038,137 @@ def test_influxdb_visualizer_skips_missing_measurements_and_renders_available_pl
     visualizer.run_plots()
 
     assert calls == [(HOSTNAME, ["cpu", "mem"])]
+
+
+def test_influxdb_visualizer_warns_when_requested_plots_are_missing(
+    tmp_path, logger, monkeypatch, caplog
+):
+    monkeypatch.setattr(
+        "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
+        lambda *args, **kwargs: FakeInfluxDBClient3(
+            missing_measurements={"cpu_freq", "infiniband"}
+        ),
+    )
+    args = create_args(
+        influxdb_hostname=HOSTNAME,
+        cpu=True,
+        cpu_freq=True,
+        ib=True,
+        fig_name="influxdb_missing_cpu_freq_ib",
+        fig_fmt="png",
+    )
+
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
+    calls = []
+
+    def fake_render(self, specs, hostname, page_idx=None):
+        calls.append((hostname, [name for name, *_ in specs]))
+
+    monkeypatch.setattr(
+        visualizer,
+        "_render_page",
+        fake_render.__get__(visualizer, BenchmonInfluxDBVisualizer),
+    )
+
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        visualizer.run_plots()
+
+    assert calls == [(HOSTNAME, ["cpu"])]
+    assert (
+        "Requested InfluxDB CPU frequency data is unavailable "
+        f"for host {HOSTNAME}, skipping plot."
+    ) in caplog.text
+    assert (
+        "Requested InfluxDB InfiniBand data is unavailable "
+        f"for host {HOSTNAME}, skipping plot."
+    ) in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("missing_measurements", "arg_overrides", "expected_specs", "expected_warning"),
+    [
+        (
+            {"cpu_total", "cpu_core"},
+            {"cpu": True, "mem": True},
+            ["mem"],
+            f"Requested InfluxDB CPU data is unavailable for host {HOSTNAME}, skipping plot.",
+        ),
+        (
+            {"cpu_freq"},
+            {"cpu": True, "cpu_freq": True},
+            ["cpu"],
+            f"Requested InfluxDB CPU frequency data is unavailable for host {HOSTNAME}, skipping plot.",
+        ),
+        (
+            {"memory"},
+            {"cpu": True, "mem": True},
+            ["cpu"],
+            f"Requested InfluxDB memory data is unavailable for host {HOSTNAME}, skipping plot.",
+        ),
+        (
+            {"network_stats"},
+            {"cpu": True, "net": True},
+            ["cpu"],
+            f"Requested InfluxDB network data is unavailable for host {HOSTNAME}, skipping plot.",
+        ),
+        (
+            {"disk_stats"},
+            {"cpu": True, "disk": True},
+            ["cpu"],
+            f"Requested InfluxDB disk data is unavailable for host {HOSTNAME}, skipping plot.",
+        ),
+        (
+            {"infiniband"},
+            {"cpu": True, "ib": True},
+            ["cpu"],
+            f"Requested InfluxDB InfiniBand data is unavailable for host {HOSTNAME}, skipping plot.",
+        ),
+    ],
+)
+def test_influxdb_visualizer_warns_for_any_missing_requested_metric(
+    tmp_path,
+    logger,
+    monkeypatch,
+    caplog,
+    missing_measurements,
+    arg_overrides,
+    expected_specs,
+    expected_warning,
+):
+    monkeypatch.setattr(
+        "benchmon.visualization.visualizer_influxdb.InfluxDBClient3",
+        lambda *args, **kwargs: FakeInfluxDBClient3(
+            missing_measurements=missing_measurements
+        ),
+    )
+    args = create_args(
+        influxdb_hostname=HOSTNAME,
+        fig_name="influxdb_missing_metric_warning",
+        fig_fmt="png",
+        **arg_overrides,
+    )
+
+    visualizer = BenchmonInfluxDBVisualizer(
+        args=args, logger=logger, traces_repo=str(tmp_path)
+    )
+    calls = []
+
+    def fake_render(self, specs, hostname, page_idx=None):
+        calls.append((hostname, [name for name, *_ in specs]))
+
+    monkeypatch.setattr(
+        visualizer,
+        "_render_page",
+        fake_render.__get__(visualizer, BenchmonInfluxDBVisualizer),
+    )
+
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        visualizer.run_plots()
+
+    assert calls == [(HOSTNAME, expected_specs)]
+    assert expected_warning in caplog.text
 
 
 def test_influxdb_visualizer_falls_back_when_variable_and_cpu_total_are_missing(
