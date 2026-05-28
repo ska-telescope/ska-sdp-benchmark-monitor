@@ -6,6 +6,7 @@ import re
 import json
 import html
 
+
 def fill_template(template: str, values: dict):
     """
     Replaces <key> placeholders in a string with values from a dictionary.
@@ -48,37 +49,61 @@ def fill_template_from_file(
 
 
 def generate_hidden(title: str, content: str):
-    """Generate an HTML <details> block. Title is escaped, content is expected to be HTML."""
-    return f"<details>\n<summary>{html.escape(title)}</summary>\n{content}\n</details>\n"
+    """Generate a string containing the Markdown description of a hidden section.
 
-def _html_ul(items):
-    """Render a simple HTML unordered list from already-escaped items."""
-    if not items:
-        return ""
-    return "<ul>\n" + "\n".join(f"<li>{item}</li>" for item in items) + "\n</ul>\n"
+    Args:
+        title (str): Section title.
+        content (str): Section content.
+
+    Returns:
+        str: Markdown code for a hidden section.
+    """
+    output = (
+        "<details>\n" + "<summary>" + title + "</summary>\n" + content + "</details>\n"
+    )
+    return output
+
 
 def spack_description(data):
-    """HTML description for a Spack package (returns a <details> block)."""
-    if not data:
-        return ""
-    name = html.escape(data.get("name", ""))
-    version = html.escape(str(data.get("version", "")))
-    platform = html.escape(str(data.get("arch", {}).get("platform", "")))
-    osname = html.escape(str(data.get("arch", {}).get("platform_os", "")))
-    cpu_arch = data.get("arch", {}).get("target", "")
-    if not isinstance(cpu_arch, str):
-        cpu_arch = cpu_arch.get("name", "")
-    cpu_arch = html.escape(str(cpu_arch))
-    compiler = html.escape(str(data.get("compiler", {}).get("name", ""))) + "/" + html.escape(str(data.get("compiler", {}).get("version", "")))
+    """Generate a Markdown description for a Spack package based on its JSON description.
 
-    infos = [
-        f"<strong>Version</strong>: {version}",
-        f"<strong>Platform</strong>: {platform}",
-        f"<strong>OS</strong>: {osname}",
-        f"<strong>CPU architecture</strong>: {cpu_arch}",
-        f"<strong>Compiler</strong>: {compiler}",
-    ]
-    return generate_hidden(name or "spack package", _html_ul(infos))
+    Args:
+        data: JSON description of a Spack package.
+
+    Returns:
+        str: Markdown description of the package.
+    """
+    name = data["name"]
+    version = data["version"]
+    platform = data["arch"]["platform"]
+    os = data["arch"]["platform_os"]
+    cpu_arch = data["arch"]["target"]
+    compiler = data["compiler"]["name"] + "/" + data["compiler"]["version"]
+
+    if not (type(cpu_arch) is str):
+        cpu_arch = cpu_arch["name"]
+
+    infos = (
+        "\n"
+        + "- **Version**: "
+        + version
+        + "\n"
+        + "- **Platform**: "
+        + platform
+        + "\n"
+        + "- **OS**: "
+        + os
+        + "\n"
+        + "- **CPU architecture**: "
+        + cpu_arch
+        + "\n"
+        + "- **Compiler**: "
+        + compiler
+        + "\n"
+    )
+
+    return generate_hidden(name, infos)
+
 
 def spack_env_description(spack_data):
     """Generate a Markdown description of a Spack environment from a JSON description.
@@ -99,64 +124,110 @@ def spack_env_description(spack_data):
 
 
 def python_env_description(data):
-    """Return Python environment as an HTML <details> block with a list of packages."""
+    """Generate a Markdown description of a Python environment from its JSON description.
+
+    Args:
+        data: JSON description of a Python environement.
+
+    Returns:
+        str: Markdown description of the environment.
+    """
     if data is None:
         return ""
-    env_name = html.escape(data.get("env", ""))
-    items = []
-    for item in data.get("packages", []):
-        items.append(html.escape(item.get("name", "")) + " / " + html.escape(item.get("version", "")))
-    return generate_hidden(f"Name: {env_name}", _html_ul(items))
+
+    environment_name = data["env"]
+    text = "\n"
+    for item in data["packages"]:
+        name = item["name"]
+        version = item["version"]
+        text = text + "- " + name + "/" + version + "\n"
+
+    return generate_hidden("Name: " + environment_name, text)
+
 
 def escaped_markdown(text: str) -> str:
-    """Escape Markdown special characters by prefixing them with a backslash.
-    Returns empty string for None input.
+    """Escapes Markdown special characters from a string.
+
+    Args:
+        text (str): String to process.
+
+    Returns:
+        str: String with escaped Markdown special characters.
     """
-    if text is None:
-        return ""
-    to_escape = set(r"$\`*_{}[]<>()#+-.!|")
-    s = str(text)
-    return "".join(f"\\{c}" if c in to_escape else c for c in s)
+    _MARKDOWN_CHARACTERS_TO_ESCAPE = set(r"$\`*_{}[]<>()#+-.!|")  # noqa: N806
+    return "".join(
+        f"\\{character}" if character in _MARKDOWN_CHARACTERS_TO_ESCAPE else character
+        for character in text
+    )
+
 
 def env_description(data):
-    """Return shell environment variables as an HTML unordered list."""
+    """Generate a Markdown description of a shell environment from its JSON description.
+
+    Args:
+        data: JSON description of a shell environment.
+
+    Returns:
+        str: Markdown description of the shell environment.
+    """
     if data is None:
         return ""
-    items = []
-    for key, val in data.items():
-        items.append(f"{html.escape(str(key))}: {html.escape(str(val))}")
-    return _html_ul(items)
+
+    text = "\n"
+    for key, item in data.items():
+        text = text + "- " + key + ": " + escaped_markdown(item) + "\n"
+
+    return text
+
 
 def hardware_description(hw_data):
-    """Return HTML content (no outer <details>) describing hardware as an unordered list."""
     if hw_data is None:
         return ""
+
+    template = """
+- CPUs:
+    - model name: <CPU_Model>
+    - number of cores: <Cores_per_socket>
+    - threads per core: <Threads_per_core>
+    - sockets and NUMA organisation: <Sockets> socket(s), <NUMA_nodes> NUMA nodes
+    - min frequency: <CPU_Min_Speed_MHz> MHz
+    - max frequency: <CPU_Max_Speed_MHz> MHz
+    - L1d cache: <L1d_cache> per socket
+    - L1i cache: <L1i_cache> per socket
+    - L2 cache: <L2_cache> per socket
+    - L3 cache: <L3_cache> per socket
+- Memory:
+    - RAM: <ram_gib> GiB (<ram_per_core_gib> GiB per core)
+    - Swap: <swap_gib> GiB
+
+"""
 
     cpu_data = hw_data["cpu"][1]
     ram_gib = hw_data["memory"]["mem"]["total"] / (1024 * 1024 * 1024)
     ram_per_core_gib = ram_gib / (
-        cpu_data.get("Sockets", 1) * cpu_data.get("Cores_per_socket", 1)
+        hw_data["cpu"][1]["Sockets"] * hw_data["cpu"][1]["Cores_per_socket"]
     )
     swap_gib = hw_data["memory"]["swap"]["total"] / (1024 * 1024 * 1024)
-    items = [
-        f"<strong>Model name</strong>: {html.escape(str(cpu_data.get('CPU_Model','')))}",
-        f"<strong>Number of cores</strong>: {html.escape(str(cpu_data.get('Cores_per_socket','')))}",
-        f"<strong>Threads per core</strong>: {html.escape(str(cpu_data.get('Threads_per_core','')))}",
-        f"<strong>Sockets and NUMA organisation</strong>: {html.escape(str(cpu_data.get('Sockets','')))} socket(s), {html.escape(str(cpu_data.get('NUMA_nodes','')))} NUMA nodes",
-        f"<strong>Min frequency</strong>: {html.escape(str(cpu_data.get('CPU_Min_Speed_MHz','N/A')))} MHz",
-        f"<strong>Max frequency</strong>: {html.escape(str(cpu_data.get('CPU_Max_Speed_MHz','N/A')))} MHz",
-        f"<strong>L1d cache</strong>: {html.escape(str(cpu_data.get('L1d_cache','')))} per socket",
-        f"<strong>L1i cache</strong>: {html.escape(str(cpu_data.get('L1i_cache','')))} per socket",
-        f"<strong>L2 cache</strong>: {html.escape(str(cpu_data.get('L2_cache','')))} per socket",
-        f"<strong>L3 cache</strong>: {html.escape(str(cpu_data.get('L3_cache','')))} per socket",
-        f"<strong>RAM</strong>: {round(ram_gib,2)} GiB ({round(ram_per_core_gib,2)} GiB per core)",
-        f"<strong>Swap</strong>: {round(swap_gib,2)} GiB",
-    ]
-    return _html_ul(items)
+    memory_data = {
+        "ram_gib": str(round(ram_gib, 2)),
+        "ram_per_core_gib": str(round(ram_per_core_gib, 2)),
+        "swap_gib": round(swap_gib, 2),
+    }
+
+    return fill_template(template, cpu_data | memory_data)
+
 
 def read_ps_data(file):
     """
-    Parse timing_mapping_report.csv
+    Read and parse a ps log file into a structured format.
+
+    Args:
+        file (TextIO): File object representing the ps log file.
+
+    Returns:
+        dict: A dictionary containing:
+            - "column_labels" (list[str]): List of column labels from the log file.
+            - "data" (list[dict]): List of dictionaries, each representing a parsed log entry.
     """
     reader = csv.DictReader(file)
     log_data = []
@@ -201,9 +272,21 @@ def read_ps_data(file):
 
 def process_data(ps_data):
     """
-    Aggregate CSV entries by PID:
-    - stores ELAPSED_LIST of (elapsed, core, timestamp, stage)
-    - ELAPSED holds the observed maximum elapsed (used for sorting)
+    Process parsed ps log data to aggregate information by process ID.
+
+    Args:
+        ps_data (dict): A dictionary containing:
+            - "column_labels" (list[str]): List of column labels from the log file.
+            - "data" (list[dict]): List of dictionaries, each representing a parsed log entry.
+
+    Returns:
+        dict: A dictionary where each key is a process ID (PID) and the value is another dictionary containing:
+            - "PPID" (str): Parent PID.
+            - "CPUID" (set[int] | set[str]): Set of CPU IDs used by the process (if available).
+            - "TID" (set): Set of thread IDs associated with the process.
+            - "CMD" (str): Command/short name of the process.
+            - "ELAPSED_LIST" (list): List of (elapsed: float, core, ts, stage) tuples.
+            - "ELAPSED" (float): Maximum elapsed time (in seconds) for the process.
     """
 
     log_data = ps_data["data"]
@@ -248,20 +331,46 @@ def process_data(ps_data):
 
     return result
 
+
 def _escape_table_cell(s: str) -> str:
-    """Escape table-breaking chars for Markdown cells."""
+    """Escape a value for safe use inside a Markdown table cell.
+
+    Args:
+        s (str | Any): Value to escape. If None, an empty string is returned.
+
+    Returns:
+        str: Escaped, newline-free string safe for inclusion in a Markdown cell.
+    """
     if s is None:
         return ""
     return str(s).replace("|", "\\|").replace("\n", " ").replace("\r", "")
 
-def ps_entry_to_line(pid, process_info):
-    """Return one summary table row computed from finished occurrences (elapsed>0)."""
 
+def ps_entry_to_line(pid, process_info):
+    """
+    Convert a process entry into a Markdown table row.
+
+    Args:
+        pid (str): Process ID.
+        process_info (dict): Dictionary containing process information with keys:
+            - "CMD" (str or list[str]): Command or command components for the process.
+            - "TID" (set[int] or list[int]): Set/list of thread IDs associated with the process.
+            - "CPUID" (set[int] or list[int], optional): Set/list of CPU IDs used by the process (if available).
+            - "ELAPSED_LIST" (list): List of (elapsed: float, core, ts, stage) occurrences.
+            - "ELAPSED" (float): Maximum elapsed time (seconds) for the process.
+
+    Returns:
+        str: A string representing a Markdown table row for the process entry.
+    """
     cmd = process_info.get("CMD", "") or ""
     ppid = process_info.get("PPID", "")
-    cpus = ", ".join(map(str, sorted(process_info.get("CPUID", []), key=lambda x: int(x) if isinstance(x, (str, int)) and str(x).isdigit() else x)))
-    elapsed_list = process_info.get("ELAPSED_LIST", [])
-    finished = [e for e, _, _, _ in elapsed_list if e > 0.0]
+    cpuid_vals = list(process_info.get("CPUID", []) or [])
+    try:
+        cpus = ", ".join(map(str, sorted(cpuid_vals)))
+    except Exception:
+        cpus = ", ".join(map(str, cpuid_vals)) if cpuid_vals else ""
+    elapsed_list = process_info.get("ELAPSED_LIST", []) or []
+    finished = [e for e, _, _, _ in elapsed_list if (e or 0) > 0.0]
     count_finished = len(finished)
     total = sum(finished) if count_finished else 0.0
     maximum = max(finished) if finished else 0.0
@@ -271,45 +380,56 @@ def ps_entry_to_line(pid, process_info):
 
 
 def ps_description(ps_data):
-    """Render process summary and details as HTML (summary table + details tables)."""
+    """Generate process summary and detailed sections in Markdown.
+
+    Produces:
+      - a summary table sorted by ELAPSED (the maximum observed elapsed time per PID, descending)
+        containing for each PID: short command, PID, PPID, statistics (max/sum/avg/(occ)) and CPUs;
+      - detailed sections per PID listing finished occurrences (elapsed > 0) with elapsed, core, timestamp and stage.
+
+    Args:
+        ps_data (dict): Dictionary with keys "column_labels" and "data" as returned by read_ps_data().
+
+    Returns:
+        str: Markdown content (summary table + per-PID detail sections) ready to be inserted into the template.
+    """
     processed = process_data(ps_data)
 
-    # summary HTML table
-    summary_rows = []
-    summary_rows.append("<table>")
-    summary_rows.append("<thead><tr><th>Command</th><th>PID</th><th>PPID</th><th>Stats (max/sum/avg/(occ))</th><th>CPUs</th></tr></thead>")
-    summary_rows.append("<tbody>")
-    for pid, info in sorted(processed.items(), key=lambda item: item[1].get("ELAPSED", 0.0), reverse=True):
-        cmd = html.escape(info.get("CMD","") or "")
-        ppid = html.escape(str(info.get("PPID","")))
-        cpus = ", ".join(map(str, sorted(info.get("CPUID", []), key=lambda x: int(x) if isinstance(x, (str, int)) and str(x).isdigit() else x)))
-        elapsed_list = info.get("ELAPSED_LIST", [])
-        finished = [e for e, _, _, _ in elapsed_list if e > 0.0]
-        count_finished = len(finished)
-        total = sum(finished) if count_finished else 0.0
-        maximum = max(finished) if finished else 0.0
-        avg = (total / count_finished) if count_finished else 0.0
-        summary = f"max={maximum:.2f}s sum={total:.2f}s avg={avg:.2f}s ({count_finished})"
-        summary_rows.append(f"<tr><td>{cmd}</td><td>{pid}</td><td>{ppid}</td><td>{html.escape(summary)}</td><td>{html.escape(cpus)}</td></tr>")
-    summary_rows.append("</tbody></table>")
+    # summary Markdown table header
+    header = (
+        "| Command | PID | PPID | Stats (max/sum/avg/(occ)) | CPUs |\n"
+        "| ------- | --- | ---- | ------------------------ | ---- |\n"
+    )
+    rows = []
+    for pid, info in sorted(
+        processed.items(), key=lambda item: item[1].get("ELAPSED", 0.0), reverse=True
+    ):
+        rows.append(ps_entry_to_line(pid, info))
 
-    parts = ["\n".join(summary_rows)]
+    parts = [header + "".join(rows)]
 
-    # details per PID as HTML <details> with HTML table (only finished events)
-    for pid, info in sorted(processed.items(), key=lambda item: item[1].get("ELAPSED", 0.0), reverse=True):
-        el_list = info.get("ELAPSED_LIST", [])
+    # details per PID as Markdown titled blocks with Markdown tables (only finished events)
+    for pid, info in sorted(
+        processed.items(), key=lambda item: item[1].get("ELAPSED", 0.0), reverse=True
+    ):
+        el_list = info.get("ELAPSED_LIST", []) or []
         finished_events = [t for t in el_list if (t[0] or 0) > 0.0]
         if not finished_events:
             continue
-        rows = []
-        rows.append("<table>")
-        rows.append("<thead><tr><th>elapsed (s)</th><th>core</th><th>timestamp</th><th>stage</th></tr></thead>")
-        rows.append("<tbody>")
+        detail = []
+        detail.append("**Details for PID {} (PPID {}):**\n\n".format(pid, info.get("PPID", "")))
+        detail.append("| elapsed (s) | core | timestamp | stage |\n")
+        detail.append("| ----------- | ---- | --------- | ----- |\n")
         for elapsed_val, core, ts, stage in finished_events:
-            rows.append(f"<tr><td>{elapsed_val:.2f}</td><td>{html.escape(str(core or '-'))}</td><td>{html.escape(str(ts or '-'))}</td><td>{html.escape(stage or '-')}</td></tr>")
-        rows.append("</tbody></table>")
-        title = f"Details for PID {pid} (PPID {info.get('PPID','')})"
-        parts.append(generate_hidden(title, "\n".join(rows)))
+            detail.append(
+                "| {:.2f} | {} | {} | {} |\n".format(
+                    elapsed_val,
+                    _escape_table_cell(core or "-"),
+                    _escape_table_cell(ts or "-"),
+                    _escape_table_cell(stage or "-"),
+                )
+            )
+        parts.append("".join(detail))
 
     return "\n\n".join(parts)
 

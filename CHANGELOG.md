@@ -5,6 +5,7 @@
 - `benchmon-postprocess` for visualization, report generation, and HPCToolkit post-processing
 - `--report-template` option in `benchmon-postprocess` for custom Markdown report templates
 - Annotation support with `--annotate-with-log`, CSV parsing via `read_annotation_csv()`, and visualization via `plot_annotation_stages()`, including multi-node filtering from a shared `events.csv`
+- Report now supports the new timing_mapping_report.csv format (updated ps parsing)
 
 ### Changed
 - Refactored execution workflow: `benchmon-setup` → `benchmon-start` → `benchmon-stop` → `benchmon-postprocess`
