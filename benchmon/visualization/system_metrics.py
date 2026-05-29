@@ -1330,6 +1330,12 @@ class SystemData:
         """
         alpha = 0.5
         diskmax = 0.0
+        bandwidth_ylabel = getattr(
+            self, "disk_bandwidth_ylabel", "Disk bandwidth (MB/s)"
+        )
+        disk_total_label_unit = getattr(
+            self, "disk_total_label_unit", "MB"
+        )
 
         def has_visible_activity(array):
             return len(array) > 0 and np.any(np.nan_to_num(array, nan=0.0) > 0)
@@ -1352,7 +1358,10 @@ class SystemData:
                     array = self.disk_prof[blk][field]
                     label = f"{field[-2:]}:{blk}"
                     if is_diskdata_label:
-                        label += f" ({self.disk_data[blk][field]} MB)"
+                        label += (
+                            f" ({self.disk_data[blk][field]} "
+                            f"{disk_total_label_unit})"
+                        )
                     if has_visible_activity(array):
                         plt.fill_between(
                             self.disk_stamps, array, label=label, alpha=alpha
@@ -1371,7 +1380,7 @@ class SystemData:
             if len(yticks) < self.yrange:
                 break
         plt.yticks(yticks)
-        plt.ylabel("Disk bandwidth (MB/s)")
+        plt.ylabel(bandwidth_ylabel)
         plt.grid()
         hand, lab = plt.gca().get_legend_handles_labels()
 

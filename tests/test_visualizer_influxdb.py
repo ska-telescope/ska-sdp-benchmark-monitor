@@ -775,7 +775,7 @@ def test_parse_query_timestamp_accepts_arrow_scalars_via_as_py():
     assert parse_query_timestamp(DummyArrowScalar()) == expected
 
 
-def test_plot_disk_renders_low_bandwidth_influx_data(logger):
+def test_plot_disk_uses_sector_units_without_sector_size(logger):
     client = FakeInfluxDBClient3(
         dataset={
             "disk_stats": [
@@ -829,13 +829,18 @@ def test_plot_disk_renders_low_bandwidth_influx_data(logger):
 
     plt.figure()
     diskmax = metrics.plot_disk()
-    _, labels = plt.gca().get_legend_handles_labels()
+    axis = plt.gca()
+    _, labels = axis.get_legend_handles_labels()
+    ylabel = axis.get_ylabel()
     plt.close()
 
     assert metrics.disk_profile_valid is True
-    assert metrics.maj_blks_sects["sda"] == 512
-    assert diskmax > 0
-    assert any(label.startswith("rd:sda") for label in labels)
+    assert metrics.disk_data["sda"]["sect-rd"] == 100
+    assert metrics.disk_data["sda"]["sect-wr"] == 200
+    assert diskmax == pytest.approx(100 / 300)
+    assert ylabel == "Disk bandwidth (sectors/s)"
+    assert "rd:sda (100 sectors)" in labels
+    assert "wr:sda (200 sectors)" in labels
 
 
 def test_plot_disk_uses_real_sector_size_from_influxdb(logger):
@@ -895,7 +900,9 @@ def test_plot_disk_uses_real_sector_size_from_influxdb(logger):
 
     plt.figure()
     diskmax = metrics.plot_disk()
-    _, labels = plt.gca().get_legend_handles_labels()
+    axis = plt.gca()
+    _, labels = axis.get_legend_handles_labels()
+    ylabel = axis.get_ylabel()
     plt.close()
 
     assert metrics.disk_profile_valid is True
@@ -903,6 +910,7 @@ def test_plot_disk_uses_real_sector_size_from_influxdb(logger):
     assert metrics.disk_data["sda"]["sect-rd"] == 491
     assert metrics.disk_data["sda"]["sect-wr"] == 184
     assert diskmax == pytest.approx(4.096)
+    assert ylabel == "Disk bandwidth (MB/s)"
     assert "rd:sda (491 MB)" in labels
     assert "wr:sda (184 MB)" in labels
 

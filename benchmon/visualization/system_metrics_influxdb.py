@@ -246,6 +246,8 @@ class SystemDataInfluxDB(SystemData):
         self.disk_rd_data = 0
         self.disk_wr_data = 0
         self.disk_profile_valid = False
+        self.disk_bandwidth_ylabel = "Disk bandwidth (MB/s)"
+        self.disk_total_label_unit = "MB"
 
         self.ib_prof = {}
         self.ib_data = {}
@@ -776,14 +778,39 @@ class SystemDataInfluxDB(SystemData):
         self.disk_prof = {}
         self.disk_data = {}
         self.disk_blks = list(rows.keys())
+        resolved_sector_sizes = {
+            blk: self._resolve_disk_sector_size(blk, sector_sizes)
+            for blk in self.disk_blks
+        }
+        use_sector_units = bool(self.disk_blks) and any(
+            sector_size is None
+            for sector_size in resolved_sector_sizes.values()
+        )
+        if use_sector_units:
+            self.disk_bandwidth_ylabel = "Disk bandwidth (sectors/s)"
+            self.disk_total_label_unit = "sectors"
+            if sector_sizes:
+                missing_devices = ", ".join(
+                    sorted(
+                        blk
+                        for blk, sector_size in resolved_sector_sizes.items()
+                        if sector_size is None
+                    )
+                )
+                self.logger.warning(
+                    "InfluxDB disk_stats is missing sector_size for device(s) %s on host %s; "
+                    "plotting disk bandwidth in sectors/s.",
+                    missing_devices,
+                    self.hostname,
+                )
         if rows:
             self.disk_stamps = next(iter(rows.values()))["timestamp"]
         for blk, profile in rows.items():
-            sector_size = self._resolve_disk_sector_size(blk, sector_sizes)
-            scale = sector_size / (1000**2)
+            sector_size = resolved_sector_sizes.get(blk)
+            scale = 1.0 if use_sector_units else sector_size / (1000**2)
             device_totals = totals.get(blk, {})
 
-            self.maj_blks_sects[blk] = sector_size
+            self.maj_blks_sects[blk] = sector_size or 0
             self.disk_prof[blk] = {
                 field: np.zeros(len(self.disk_stamps), dtype=float)
                 for field in disk_defaults
@@ -822,7 +849,7 @@ class SystemDataInfluxDB(SystemData):
             if is_missing_field_error(exc, "sector_size"):
                 self.logger.warning(
                     "InfluxDB disk_stats has no sector_size field for host %s; "
-                    "defaulting disk plots to 512 bytes/sector.",
+                    "plotting disk bandwidth in sectors/s.",
                     self.hostname,
                 )
                 return {}
@@ -839,14 +866,14 @@ class SystemDataInfluxDB(SystemData):
     @staticmethod
     def _resolve_disk_sector_size(
         device: str, sector_sizes: dict[str, int]
-    ) -> int:
+    ) -> int | None:
         if device in sector_sizes:
             return sector_sizes[device]
 
         matches = [name for name in sector_sizes if device.startswith(name)]
         if matches:
             return sector_sizes[max(matches, key=len)]
-        return 512
+        return None
 
     def _load_ib(self) -> None:
         rows, totals = self._load_rate_metric(
