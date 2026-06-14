@@ -507,7 +507,6 @@ class BenchmonVisualizer:
         try:
             fig, _ = plt.subplots(self.n_subplots, sharex=True)
             fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
-            fig.add_gridspec(self.n_subplots, hspace=0)
 
             sbp = 1
             annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
@@ -519,7 +518,6 @@ class BenchmonVisualizer:
                 plot_stage_timeline(self.annotation_stages, xlim=self.xlim, ax=ax_pipeline)
                 ax_pipeline.set_ylabel("Pipeline Events")
                 ax_pipeline.grid(True)
-                add_stage_legend(ax_pipeline)
 
             ax_last = None
             # CPU plot
@@ -529,17 +527,11 @@ class BenchmonVisualizer:
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
-                    ax = plt.gca()
+                    #ax = plt.gca()
                     ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
-                    if self.annotation_stages:
-                        plot_stage_markers(
-                            self.annotation_stages,
-                            ax_top=ax_pipeline,
-                            ax_bottom=ax_last,
-                            xlim=self.xlim,
-                        )
+
                 else:
                     self.logger.warning("No system metrics available for CPU plot")
 
@@ -552,14 +544,10 @@ class BenchmonVisualizer:
                         sbp += 1
                         self.system_metrics.plot_cpu(number=core_number,
                                                      annotate_with_cmds=annotate_with_cmds)
+                    ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
-                    if self.annotation_stages:
-                        plot_stage_markers(
-                            self.annotation_stages,
-                            ax_top=ax_pipeline,
-                            ax_bottom=ax_last,
-                            xlim=self.xlim)
+
                 else:
                     self.logger.warning("No system metrics available for CPU cores plot")
 
@@ -572,13 +560,10 @@ class BenchmonVisualizer:
                     self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
                                                           cores_out=self.args.cpu_cores_out,
                                                           annotate_with_cmds=annotate_with_cmds)
+                    ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
-                    if self.annotation_stages:
-                        plot_stage_markers(self.annotation_stages,
-                                           ax_top=ax_pipeline,
-                                           ax_bottom=ax_last,
-                                           xlim=self.xlim)
+
                 else:
                     self.logger.warning("No system metrics available for CPU per core plot")
 
@@ -593,11 +578,8 @@ class BenchmonVisualizer:
                                                                annotate_with_cmds=annotate_with_cmds)
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=freqmax)
-                    # if self.annotation_stages:
-                    #     plot_stage_markers(self.annotation_stages,
-                    #                        ax_top=ax_pipeline,
-                    #                        ax_bottom=ax_last,
-                    #                        xlim=self.xlim)
+
+                    ax_last = plt.gca()
                 else:
                     self.logger.warning("No system metrics available for CPU frequency plot")
 
@@ -611,11 +593,7 @@ class BenchmonVisualizer:
                     ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=memmax)
-                    if self.annotation_stages:
-                        plot_stage_markers(self.annotation_stages,
-                                           ax_top=ax_pipeline,
-                                           ax_bottom=ax_last,
-                                           xlim=self.xlim)
+
                 else:
                     self.logger.warning("No system metrics available for memory plot")
 
@@ -632,11 +610,8 @@ class BenchmonVisualizer:
                                                               annotate_with_cmds=annotate_with_cmds)
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=netmax)
-                    if self.annotation_stages:
-                        plot_stage_markers(self.annotation_stages,
-                                           ax_top=ax_pipeline,
-                                           ax_bottom=ax_last,
-                                           xlim=self.xlim)
+                    ax_last = plt.gca()
+
                 else:
                     self.logger.warning("No system metrics available for network plot")
 
@@ -647,11 +622,8 @@ class BenchmonVisualizer:
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
-                    if self.annotation_stages:
-                        plot_stage_markers(self.annotation_stages,
-                                           ax_top=ax_pipeline,
-                                           ax_bottom=ax_last,
-                                           xlim=self.xlim)
+
+                    ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=ibmax)
                 else:
@@ -670,11 +642,8 @@ class BenchmonVisualizer:
                                                             annotate_with_cmds=annotate_with_cmds)
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=diskmax)
-                    if self.annotation_stages:
-                        plot_stage_markers(self.annotation_stages,
-                                           ax_top=ax_pipeline,
-                                           ax_bottom=ax_last,
-                                           xlim=self.xlim)
+
+                    ax_last = plt.gca()
                 else:
                     self.logger.warning("No system metrics available for disk plot")
 
@@ -719,11 +688,11 @@ class BenchmonVisualizer:
                                           legend_ncol=self.args.fig_call_legend_ncol)
                 else:
                     self.logger.warning("No call traces available for call graph plot")
+            if self.annotation_stages and ax_pipeline is not None and ax_last is not None:
+                plot_stage_markers(self.annotation_stages,ax_top=ax_pipeline, ax_bottom=ax_last,xlim=self.xlim,)
 
             fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
-            plt.subplots_adjust(hspace=.5)
-            plt.tight_layout()
-
+            plt.tight_layout(h_pad=1.5)
             # Enable interactive plot
             if self.args.interactive:
                 self.logger.debug("Start interactive session with matplotlib")

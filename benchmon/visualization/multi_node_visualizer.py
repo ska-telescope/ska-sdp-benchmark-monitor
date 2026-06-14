@@ -8,7 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
-from .utils import plot_stage_markers, get_stage_color, add_stage_legend
+from .utils import plot_stage_markers, get_stage_color
 
 
 class BenchmonMNSyncVisualizer:
@@ -63,88 +63,101 @@ class BenchmonMNSyncVisualizer:
         ]
         has_annotations = len(nodes_annotations) > 0
 
-        # All stages combined (for vertical markers)
-        all_stages = [s for _, stages in nodes_annotations for s in stages]
-        nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net \
-            + self.args.ib + self.args.disk  # + (self.args.pow or self.args.pow_g5k)
+        # Interleaved color mapping: (hostname, label) → color index
+        color_map = {}
         if has_annotations:
-            nsbp += 1
+            node_hostnames = [h for h, _ in nodes_annotations]
+            n_nodes = len(node_hostnames)
+            stage_labels_ordered = []
+            seen_labels = set()
+            for _, stages in nodes_annotations:
+                for s in stages:
+                    if s["label"] not in seen_labels:
+                        stage_labels_ordered.append(s["label"])
+                        seen_labels.add(s["label"])
+            for stage_idx, label in enumerate(stage_labels_ordered):
+                for node_idx, hostname in enumerate(node_hostnames):
+                    color_map[(hostname, label)] = stage_idx * n_nodes + node_idx
+
+        n_annotation_subplots = len(nodes_annotations) if has_annotations else 0
+        nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net \
+            + self.args.ib + self.args.disk + n_annotation_subplots
 
         fig, _ = plt.subplots(nsbp, sharex=True)
         fig.set_size_inches(self.args.fig_width, nsbp * self.args.fig_height_unit)
-        fig.add_gridspec(nsbp, hspace=0)
 
         sbp = 1
         ax_pipeline = None
         ax_last = None
 
-        # --- Annotation subplot ---
+        # --- One annotation subplot per node ---
         if has_annotations:
-            ax_pipeline = plt.subplot(nsbp, 1, sbp)
-            sbp += 1
-            self.plot_sync_annotations(nodes_annotations, ax_pipeline)
+            for hostname, stages in nodes_annotations:
+                ax = plt.subplot(nsbp, 1, sbp)
+                sbp += 1
+                self.plot_node_annotation(hostname, stages, ax, color_map)
+                if ax_pipeline is None:
+                    ax_pipeline = ax
 
+        # --- Metric subplots ---
         if self.args.cpu:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_cpu(nodes_data=nodes_data)
             ax_last = plt.gca()
-            if has_annotations:
-                plot_stage_markers(all_stages, ax_top=ax_pipeline,
-                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.cpu_freq:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_cpufreq(nodes_data=nodes_data)
             ax_last = plt.gca()
-            if has_annotations:
-                plot_stage_markers(all_stages, ax_top=ax_pipeline,
-                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.mem:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_mem(nodes_data=nodes_data)
             ax_last = plt.gca()
-            if has_annotations:
-                plot_stage_markers(all_stages, ax_top=ax_pipeline,
-                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.net:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_net(nodes_data=nodes_data)
             ax_last = plt.gca()
-            if has_annotations:
-                plot_stage_markers(all_stages, ax_top=ax_pipeline,
-                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.ib:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_ib(nodes_data=nodes_data)
             ax_last = plt.gca()
-            if has_annotations:
-                plot_stage_markers(all_stages, ax_top=ax_pipeline,
-                                   ax_bottom=ax_last, xlim=self.xlim)
 
         if self.args.disk:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_disk(nodes_data=nodes_data)
             ax_last = plt.gca()
-            if has_annotations:
-                plot_stage_markers(all_stages, ax_top=ax_pipeline,
-                                   ax_bottom=ax_last, xlim=self.xlim)
 
-        # if self.args.pow or self.args.pow_g5k:
-        #     plt.subplot(nsbp, 1, sbp)
-        #     sbp += 1
-        #     self.plot_sync_pow(nodes_data=nodes_data)
+        # Single plot_stage_markers call after ALL subplots are created
+        if has_annotations and ax_pipeline is not None and ax_last is not None:
+            all_stages = [
+                {**s, "_hostname": hostname}
+                for hostname, stages in nodes_annotations
+                for s in stages
+            ]
+            plot_stage_markers(
+                all_stages,
+                ax_top=ax_pipeline,
+                ax_bottom=ax_last,
+                xlim=self.xlim,
+                color_map=color_map,
+                linewidth=1.6,
+                linestyle_start=(0, (4, 3)),
+                linestyle_stop=(0, (4, 3)),
+                stop_as_markers=True,
+                show_legend=True,
+                legend_loc="upper center",
+            )
 
-        plt.subplots_adjust(hspace=0.5)
-        plt.tight_layout()
+        plt.tight_layout(h_pad=1.5)
 
         if self.args.interactive:
             self.logger.debug("Start interactive session with matplotlib")
@@ -898,3 +911,53 @@ class BenchmonMNSyncVisualizer:
                 if len(yticks) < self.args.fig_yrange:
                     break
             plt.yticks(yticks)
+
+
+    def plot_node_annotation(self, hostname: str, stages: list, ax,
+                             color_map: dict) -> None:
+        """
+        Draw the annotation timeline for a single node — staircase layout.
+
+        Color is resolved from color_map[(hostname, label)] so that
+        node1/stageA and node2/stageA always get different colors.
+
+        Args:
+            hostname    : Node hostname — used as y-axis label
+            stages      : List of stage dicts {label, start, stop}
+            ax          : Matplotlib axis
+            color_map   : (hostname, label) → color index
+        """
+        if self.xlim:
+            ax.set_xlim(self.xlim)
+
+        ax.set_yticks([])
+        ax.set_ylim(0, 1)
+        ax.set_ylabel(hostname, fontsize=8, rotation=0, labelpad=60, va="center")
+        ax.grid(True, axis="x")
+
+        if not stages:
+            return
+
+        # Staircase layout — identical to plot_stage_timeline
+        y_base = 0.2
+        y_step = 0.6 / max(len(stages), 1)
+        cap_height = 0.03
+
+        for i, stage in enumerate(stages):
+            # Interleaved color: (hostname, label) → index
+            color = get_stage_color(color_map.get((hostname, stage["label"]), i))
+            y = y_base + i * y_step
+            start = stage["start"]
+            stop  = stage["stop"]
+
+            ax.hlines(y=y, xmin=start, xmax=stop, linewidth=1.6, color=color,
+                      transform=ax.get_xaxis_transform())
+            ax.axvline(x=start, ymin=y - cap_height, ymax=y + cap_height,
+                       linewidth=1.6, color=color)
+            ax.axvline(x=stop,  ymin=y - cap_height, ymax=y + cap_height,
+                       linewidth=1.6, color=color)
+            ax.text(
+                (start + stop) / 2, y + cap_height * 1.5, stage["label"],
+                ha="center", va="bottom", fontsize=7, fontweight="bold",
+                color=color, transform=ax.get_xaxis_transform(),
+            )
