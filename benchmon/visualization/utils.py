@@ -38,6 +38,7 @@ STAGE_COLOR_PALETTE = [
 
 ]
 
+
 def read_ical_log_file(traces_repo: str) -> dict:
     """
     Read ical log file
@@ -157,9 +158,9 @@ def read_annotation_csv(traces_repo: str, filename: str = "annotations.csv", nod
                 continue
 
             pipeline = row.get("pipeline", "").strip()
-            stage    = row.get("stage",    "").strip()
-            event    = row.get("event",    "").strip().upper()
-            ts       = float(row["timestamp"])
+            stage = row.get("stage", "").strip()
+            event = row.get("event", "").strip().upper()
+            ts = float(row["timestamp"])
 
             # Build a unique label combining pipeline and stage names
             label = f"{pipeline}/{stage}"

@@ -22,7 +22,6 @@ from .system_metrics_binary import SystemDataBinary
 from .utils import read_annotation_csv, plot_stage_timeline
 from .utils import plot_stage_markers
 from .utils import read_ical_log_file, plot_ical_stages
-from .utils import add_stage_legend
 
 
 class BenchmonVisualizer:
@@ -527,7 +526,6 @@ class BenchmonVisualizer:
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
-                    #ax = plt.gca()
                     ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
@@ -689,7 +687,7 @@ class BenchmonVisualizer:
                 else:
                     self.logger.warning("No call traces available for call graph plot")
             if self.annotation_stages and ax_pipeline is not None and ax_last is not None:
-                plot_stage_markers(self.annotation_stages,ax_top=ax_pipeline, ax_bottom=ax_last,xlim=self.xlim,)
+                plot_stage_markers(self.annotation_stages, ax_top=ax_pipeline, ax_bottom=ax_last, xlim=self.xlim,)
 
             fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
             plt.tight_layout(h_pad=1.5)
