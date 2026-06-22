@@ -4,7 +4,6 @@ Python module to read and plot system resources measurements
 
 import logging
 import itertools
-import os
 import time
 from math import ceil
 
