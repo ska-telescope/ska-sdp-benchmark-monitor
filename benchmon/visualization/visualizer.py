@@ -61,7 +61,6 @@ class BenchmonVisualizer:
         self.logger = logger
 
         self.traces_repo = traces_repo
-        os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
 
         self.hostname = os.path.basename(os.path.realpath(traces_repo))[16:]
         self.system_metrics = None
