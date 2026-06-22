@@ -22,6 +22,9 @@
 ### Fixed
 - Fixed report generation in `benchmon-postprocess`
 
+### Removed
+- Removed `.pkl` caching and the `pkl_dir/` directory.
+
 ## 0.2.0 - 2025-08-08
 ### Added
 - InfluxDB integration for real-time monitoring
