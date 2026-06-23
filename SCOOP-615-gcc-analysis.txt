@@ -1,0 +1,88 @@
+SCOOP-615 Technical Analysis: Benchmon GCC/C++ Version Constraint
+
+Summary
+
+The original concern was that benchmon development appeared to depend on a specific GCC version. After analysis and build validation, the issue is more accurately described as a C++ standard compatibility constraint in rt-monitor rather than a hard dependency on GCC 11.4.0 itself.
+
+Findings
+
+1. Current compiler environment
+
+- The current environment uses GCC/G++ 11.4.0.
+- This version is fully capable of building the current rt-monitor code.
+- An explicit clean C++17 build was validated successfully with GCC/G++ 11.4.0.
+- GCC 12 could not be fully validated on this machine because `gcc-12` is installed but `g++-12` is not present.
+
+2. Why C++14 and older do not work
+
+The current rt-monitor code uses several features that require at least C++17:
+
+- std::filesystem
+- std::string_view
+- structured bindings
+- std::from_chars
+
+These usages are present in multiple files, so the codebase cannot realistically support C++14 or older without broader refactoring.
+
+3. Why the code previously required C++20
+
+Although most of the code only needed C++17, there were a few remaining C++20-only API usages based on std::string::starts_with. These were found in:
+
+- benchmon/rt-monitor/inc/db_stream.hpp
+- benchmon/rt-monitor/src/cpufreq_monitor.cpp
+- benchmon/rt-monitor/src/disk_monitor.cpp
+
+In addition, benchmon/rt-monitor/CMakeLists.txt explicitly required C++20.
+
+This meant the effective minimum standard was C++20, even though the overall implementation mostly only depended on C++17.
+
+4. Compatibility issue exposed while lowering to C++17
+
+After replacing the C++20 starts_with calls and lowering the configured language standard to C++17, one more compatibility issue appeared in disk_monitor.cpp.
+
+- A vector insertion used a form that compiled under the previous configuration but failed under the stricter C++17 build path.
+- This was fixed by switching to a C++17-compatible aggregate initialization form.
+
+5. Minimum GCC version that can be stated safely
+
+- After the C++20-only API usages were removed, the codebase is aligned with C++17 rather than C++20.
+- However, saying only "any compiler with C++17 support" is still too broad.
+- The code depends on `std::filesystem`, `std::string_view`, structured bindings, and integer `std::from_chars`.
+- In practice, the safest minimum GCC version to state is GCC 9 or newer.
+- GCC 8 may be close in language/library support, but it is not safe to claim as supported here because `std::filesystem` often still requires extra `stdc++fs` linkage handling in that generation, and that is not currently modeled in the build system.
+- Therefore the recommended support statement is GCC 9+.
+
+Changes made
+
+1. Lowered rt-monitor language standard from C++20 to C++17 in benchmon/rt-monitor/CMakeLists.txt.
+2. Replaced C++20 starts_with prefix checks with C++17-compatible rfind(..., 0) == 0 prefix checks.
+3. Replaced one block_device_info emplace_back call with a C++17-compatible push_back aggregate initialization in disk_monitor.cpp.
+
+Validation performed
+
+1. Verified that C++14 is not sufficient by compiling representative source files directly with -std=gnu++14.
+2. Observed concrete C++14 failures caused by:
+   - std::filesystem
+   - std::string_view
+   - structured bindings
+   - string.starts_with
+3. Performed a clean out-of-tree rt-monitor build with C++17 enabled.
+4. Confirmed that the full rt-monitor target builds successfully under C++17 after the changes.
+5. Performed an explicit clean GCC 11 + C++17 out-of-tree build and confirmed success.
+
+Conclusion
+
+- Benchmon rt-monitor does not need to be tied to GCC 11.4.0 specifically.
+- The real lower bound is driven by the C++ language/library features used in the code.
+- C++14 and older are not sufficient for the current implementation.
+- After removing the small number of C++20-only API usages, the code builds successfully with C++17.
+- Therefore, the appropriate minimum requirement for rt-monitor is C++17, not C++20.
+- The safest compiler-version statement is GCC 9+.
+
+Recommended wording for the issue outcome
+
+The GCC-version concern is valid in practice, but the root cause is not a hard dependency on GCC 11.4.0. The actual issue was that rt-monitor was configured and partially implemented in a way that required C++20. After removing the small number of C++20-only API usages, rt-monitor builds successfully with C++17. The code still cannot support C++14 or older because it relies on genuine C++17 features such as std::filesystem, std::string_view, structured bindings, and std::from_chars.
+
+Recommended support statement
+
+rt-monitor should be documented and treated as requiring GCC 9 or newer. GCC 11.4.0 has been validated explicitly in the current environment. Support for GCC 8 should not be claimed without additional build-system work and explicit validation, mainly because of `std::filesystem` linkage behavior in that compiler generation.
