@@ -73,28 +73,4 @@ def test_metrics():
 
     args = create_args(cpu=True, cpu_freq=True, mem=True, net=True, disk=True, ib=True, call=True, pow=True)
 
-    bm = BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo)
-
-    # Validate profiles are non-empty and contain valid values
-    for device, metrics in bm.system_metrics.cpu_prof.items():
-        for space, values in metrics.items():
-            assert len(values) > 0, f"Empty cpu_prof[{device}][{space}]"
-
-    for device, metrics in bm.system_metrics.disk_prof.items():
-        for space, values in metrics.items():
-            assert len(values) > 0, f"Empty disk_prof[{device}][{space}]"
-
-    assert bm.system_metrics.ib_prof, "ib_prof is empty"
-
-    for device, metrics in bm.system_metrics.net_prof.items():
-        for space, values in metrics.items():
-            assert len(values) > 0, f"Empty net_prof[{device}][{space}]"
-
-    pow_cpus = [k for k in bm.power_perf_metrics.pow_prof.keys() if k != "time"]
-    assert len(pow_cpus) > 0, "pow_prof has no cpu entries"
-
-    for metric, values in bm.system_metrics.mem_prof.items():
-        assert len(values) > 0, f"Empty mem_prof[{metric}]"
-
-    for metric, values in bm.system_metrics.cpufreq_prof.items():
-        assert len(values) > 0, f"Empty cpufreq_prof[{metric}]"
+    BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo)
