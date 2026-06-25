@@ -4,7 +4,6 @@ import csv
 import logging
 import json
 import os
-import pickle
 import time
 from datetime import datetime
 
@@ -96,103 +95,69 @@ class PerfPowerData:
         """
         Create power profiles
         """
-        pow_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_prof.pkl"
-        ts_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_stamps.pkl"
+        self.logger.debug("Read PerfPower csv report..."); t0 = time.time()  # noqa: E702
+        result = self.read_csv_list()
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-        pickle_loaded = False
+        # Check if CSV reading failed
+        if result != 0:
+            self.logger.warning("Failed to read CSV data, creating empty profile")
+            self._create_empty_profile()
+            return 0
 
-        if os.access(pow_pkl, os.R_OK):
-            try:
-                self.logger.debug("Load Power profile..."); t0 = time.time()  # noqa: E702
+        # Check if csv_list has sufficient data
+        LINES_START_INDEX = 2  # noqa: N806
+        if len(self.csv_list) < LINES_START_INDEX:
+            self.logger.warning("CSV file has insufficient data, creating empty profile")
+            self._create_empty_profile()
+            return 0
 
-                with open(pow_pkl, "rb") as _pf:
-                    self.pow_prof = pickle.load(_pf)
-                with open(ts_pkl, "rb") as _pf:
-                    self.time_stamps = pickle.load(_pf)
+        self.logger.debug("Create PerfPower profile..."); t0 = time.time()  # noqa: E702
 
-                self.cpus = list(self.pow_prof.keys())
-                if "time" in self.cpus:
-                    self.cpus.remove("time")
+        EVENT_INDEX = 4  # noqa: N806
+        self.events = list({item[EVENT_INDEX] for item in self.csv_list[LINES_START_INDEX:]})
+        nevents = len(self.events)
 
-                if self.cpus:
-                    self.events = self.pow_prof[self.cpus[0]].keys()
-                else:
-                    self.events = []
+        CPU_INDEX = 1  # noqa: N806
+        self.cpus = list({item[CPU_INDEX] for item in self.csv_list[LINES_START_INDEX:]})
+        ncpu = len(self.cpus)
 
-                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
-                pickle_loaded = True
+        stride = ncpu * nevents
+        self.pow_prof["time"] = [
+            float(self.csv_list[i][0])
+            for i in range(LINES_START_INDEX, len(self.csv_list), stride)
+        ]
+        self.nstamps = len(self.pow_prof["time"])
 
-            except (IOError, pickle.PickleError, KeyError) as e:
-                self.logger.warning(f"Error loading pickle files: {e}, will recreate from CSV")
+        for cpu in self.cpus:
+            for event in self.events:
+                self.pow_prof[cpu] = {event: [] for event in self.events}
 
-        if not pickle_loaded:
-            self.logger.debug("Read PerfPower csv report..."); t0 = time.time()  # noqa: E702
-            result = self.read_csv_list()
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        for _list in self.csv_list[LINES_START_INDEX:]:
+            cpu = _list[1]
+            event = _list[4]
+            value = float(_list[2]) / (float(_list[5]) * 1e-9)  # J = W/S
+            self.pow_prof[cpu][event] += [value]
 
-            # Check if CSV reading failed
-            if result != 0:
-                self.logger.warning("Failed to read CSV data, creating empty profile")
-                self._create_empty_profile()
-                return 0
+        for cpu in self.cpus:
+            for event in self.events:
+                self.pow_prof[cpu][event] = np.array(self.pow_prof[cpu][event])
 
-            # Check if csv_list has sufficient data
-            LINES_START_INDEX = 2  # noqa: N806
-            if len(self.csv_list) < LINES_START_INDEX:
-                self.logger.warning("CSV file has insufficient data, creating empty profile")
-                self._create_empty_profile()
-                return 0
+        # Time stamps
+        with open(self.csv_filename) as file:
+            first_line = file.readline()
+            if len(first_line) < 3:
+                self.logger.warning("CSV file has invalid timestamp format, using default")
+                epoch0 = 0.0
+            else:
+                epoch0 = float(first_line[2:-1])
 
-            self.logger.debug("Create PerfPower profile..."); t0 = time.time()  # noqa: E702
+        self.time_stamps = np.zeros(self.nstamps + 1)
+        self.time_stamps[0] = epoch0
+        for i in range(0, self.nstamps):
+            self.time_stamps[i + 1] = epoch0 + self.pow_prof["time"][i]
 
-            EVENT_INDEX = 4  # noqa: N806
-            self.events = list({item[EVENT_INDEX] for item in self.csv_list[LINES_START_INDEX:]})
-            nevents = len(self.events)
-
-            CPU_INDEX = 1  # noqa: N806
-            self.cpus = list({item[CPU_INDEX] for item in self.csv_list[LINES_START_INDEX:]})
-            ncpu = len(self.cpus)
-
-            stride = ncpu * nevents
-            self.pow_prof["time"] = [float(self.csv_list[i][0]) for i in range(LINES_START_INDEX,
-                                                                               len(self.csv_list),
-                                                                               stride)]
-            self.nstamps = len(self.pow_prof["time"])
-
-            for cpu in self.cpus:
-                for event in self.events:
-                    self.pow_prof[cpu] = {event: [] for event in self.events}
-
-            for _list in self.csv_list[LINES_START_INDEX:]:
-                cpu = _list[1]
-                event = _list[4]
-                value = float(_list[2]) / (float(_list[5]) * 1e-9)  # J = W/S
-                self.pow_prof[cpu][event] += [value]
-
-            for cpu in self.cpus:
-                for event in self.events:
-                    self.pow_prof[cpu][event] = np.array(self.pow_prof[cpu][event])
-
-            # Time stamps
-            with open(self.csv_filename) as file:
-                first_line = file.readline()
-                if len(first_line) < 3:
-                    self.logger.warning("CSV file has invalid timestamp format, using default")
-                    epoch0 = 0.0
-                else:
-                    epoch0 = float(first_line[2:-1])
-
-            self.time_stamps = np.zeros(self.nstamps + 1)
-            self.time_stamps[0] = epoch0
-            for i in range(0, self.nstamps):
-                self.time_stamps[i + 1] = epoch0 + self.pow_prof["time"][i]
-
-            with open(pow_pkl, "wb") as _pf:
-                pickle.dump(self.pow_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.time_stamps, _pf)
-
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 
