@@ -33,6 +33,13 @@ cache:
     - source $VENV_DIR/bin/activate
     - apt-get update && apt-get install -y cmake git build-essential meson catch2 libmbedtls-dev libboost-all-dev libspdlog-dev openssl libpsl-dev
 
+.gcc9_build_env:
+  image: ubuntu:22.04
+  before_script:
+    - export DEBIAN_FRONTEND=noninteractive
+    - apt-get update
+    - apt-get install -y cmake git make gcc-9 g++-9 libcurl4-openssl-dev libssl-dev libicu-dev libboost-all-dev
+
 install:
   stage: setup
   extends: .test_env
@@ -107,6 +114,15 @@ test_doc:
     paths:
       - docs/build/
     expire_in: 1h
+
+test_rt_monitor_gcc9:
+  stage: test
+  extends: .gcc9_build_env
+  script:
+    - mkdir -p /tmp/rt-monitor-gcc9
+    - cd /tmp/rt-monitor-gcc9
+    - CC=gcc-9 CXX=g++-9 cmake -DCMAKE_CXX_STANDARD=17 $CI_PROJECT_DIR/benchmon/rt-monitor
+    - cmake --build .
 
 include:
   # Docs pages
