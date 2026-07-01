@@ -3,15 +3,15 @@ Python module to read and plot system resources measurements
 """
 
 import csv
-import logging
 import itertools
+import logging
 import os
 import sys
 import time
 from math import ceil
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 class SystemData:
@@ -41,7 +41,9 @@ class SystemData:
             self.cpus = []
             self.cpu_prof = {}
             self.cpu_stamps = np.array([])
-            self.cpu_profile_valid = self.get_cpu_profile(csv_cpu_report=csv_cpu_report) == 0
+            self.cpu_profile_valid = (
+                self.get_cpu_profile(csv_cpu_report=csv_cpu_report) == 0
+            )
 
         if csv_cpufreq_report:
             self.ncpu_freq = 0
@@ -50,12 +52,17 @@ class SystemData:
             self.cpufreq_stamps = np.array([])
             self.cpufreq_min = None
             self.cpufreq_max = None
-            self.cpufreq_profile_valid = self.get_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report) == 0
+            self.cpufreq_profile_valid = (
+                self.get_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report)
+                == 0
+            )
 
         if csv_mem_report:
             self.mem_prof = {}
             self.mem_stamps = np.array([])
-            self.mem_profile_valid = self.get_mem_profile(csv_mem_report=csv_mem_report) == 0
+            self.mem_profile_valid = (
+                self.get_mem_profile(csv_mem_report=csv_mem_report) == 0
+            )
 
         if csv_net_report:
             self.net_prof = {}
@@ -67,7 +74,9 @@ class SystemData:
             self.net_tx_total = np.array([])
             self.net_rx_data = 0
             self.net_tx_data = 0
-            self.net_profile_valid = self.get_net_prof(csv_net_report=csv_net_report) == 0
+            self.net_profile_valid = (
+                self.get_net_prof(csv_net_report=csv_net_report) == 0
+            )
 
         if csv_disk_report:
             self.disk_prof = {}
@@ -80,7 +89,9 @@ class SystemData:
             self.disk_wr_total = np.array([])
             self.disk_rd_data = 0
             self.disk_wr_data = 0
-            self.disk_profile_valid = self.get_disk_prof(csv_disk_report=csv_disk_report) == 0
+            self.disk_profile_valid = (
+                self.get_disk_prof(csv_disk_report=csv_disk_report) == 0
+            )
 
         if csv_ib_report:
             self.ib_prof = {}
@@ -104,12 +115,16 @@ class SystemData:
         """
         # Read line of cpu csv report
         t0 = time.time()
-        cpu_report_lines = self.read_csv_line_as_list(csv_report=csv_cpu_report)
+        cpu_report_lines = self.read_csv_line_as_list(
+            csv_report=csv_cpu_report
+        )
         self.logger.debug(f"\t open+read = {round(time.time() - t0, 3)} s")
 
         # Check if csv file is empty or limited to header
         if not cpu_report_lines or len(cpu_report_lines) <= 1:
-            self.logger.warning("CPU CSV report is empty, returning empty data")
+            self.logger.warning(
+                "CPU CSV report is empty, returning empty data"
+            )
             return {}, []
 
         # Get cpus, number of cpu cores + global
@@ -127,7 +142,8 @@ class SystemData:
         #                  "irq": 7, "softirq": 8, "steal": 9, "guest": 10, "guestnice": 11}
         _sidx = 2
         cpu_metric_keys = {
-            key: idx + _sidx for idx, key in enumerate(cpu_report_lines[0][_sidx:])
+            key: idx + _sidx
+            for idx, key in enumerate(cpu_report_lines[0][_sidx:])
         }
 
         # Init cpu time series
@@ -143,7 +159,9 @@ class SystemData:
         t0 = time.time()
         for line in cpu_report_lines[1:]:
             for key in cpu_metric_keys:
-                cpu_ts_raw[line[cpu_index]][key] += [float(line[cpu_metric_keys[key]])]
+                cpu_ts_raw[line[cpu_index]][key] += [
+                    float(line[cpu_metric_keys[key]])
+                ]
         self.logger.debug(f"\t fill dict = {round(time.time() - t0, 3)} s")
         timestamps_raw = [
             float(line[time_index]) for line in cpu_report_lines[1::ncpu_glob]
@@ -192,16 +210,15 @@ class SystemData:
             }
         self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
 
-        t0i = time.time()
-        for stamp in range(nstamps):
-            for key, metric_key in itertools.product(
-                cpu_ts_raw.keys(), cpu_ts_raw["cpu"].keys()
-            ):
-                cpu_ts[key][metric_key][stamp] = (
-                    cpu_ts_raw[key][metric_key][stamp + 1]
-                    - cpu_ts_raw[key][metric_key][stamp]
+            # Check if CPU report data is empty
+            if not cpu_ts_raw:
+                self.logger.warning(
+                    "CPU CSV report data is empty, creating empty profile"
                 )
-        self.logger.debug(f"\t compute spaces = {round(time.time() - t0i, 3)} s")
+                self.cpu_prof = {}
+                self.cpu_stamps = np.array([])
+                self.ncpu = 0
+                return 0
 
         t0i = time.time()
         for key in cpu_ts.keys():
@@ -210,19 +227,49 @@ class SystemData:
                 for metric_key in cpu_ts["cpu"].keys():
                     cpu_total += cpu_ts[key][metric_key][stamp]
 
-                for metric_key in cpu_ts["cpu"].keys():
+            t0i = time.time()
+            cpu_ts = {}
+            for key in cpu_ts_raw.keys():
+                cpu_ts[key] = {
+                    metric_key: np.zeros(nstamps)
+                    for metric_key in cpu_ts_raw["cpu"].keys()
+                }
+            self.logger.debug(
+                f"\t init dict = {round(time.time() - t0i, 3)} s"
+            )
+
+            t0i = time.time()
+            for stamp in range(nstamps):
+                for key, metric_key in itertools.product(
+                    cpu_ts_raw.keys(), cpu_ts_raw["cpu"].keys()
+                ):
                     cpu_ts[key][metric_key][stamp] = (
                         cpu_ts[key][metric_key][stamp] / cpu_total * 100
                     )
-        self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
+            self.logger.debug(
+                f"\t compute spaces = {round(time.time() - t0i, 3)} s"
+            )
 
         self.cpu_prof = cpu_ts
         self.cpu_stamps = timestamps
 
-        t0i = time.time()
-        self.logger.debug(f"\t save profile = {round(time.time() - t0i, 3)} s")
+                    for metric_key in cpu_ts["cpu"].keys():
+                        cpu_ts[key][metric_key][stamp] = (
+                            cpu_ts[key][metric_key][stamp] / cpu_total * 100
+                        )
+            self.logger.debug(
+                f"\t compute percents = {round(time.time() - t0i, 3)} s"
+            )
 
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.cpu_prof = cpu_ts
+            self.cpu_stamps = timestamps
+
+            t0i = time.time()
+            self.logger.debug(
+                f"\t save profile = {round(time.time() - t0i, 3)} s"
+            )
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
 
@@ -235,8 +282,10 @@ class SystemData:
         prefix = f"{number}: " if number else ""
 
         # Check there is content
-        if (len(self.cpu_stamps) < 1):
-            self.logger.warning("Empty cpu journal, skipping corresponding overall plot")
+        if len(self.cpu_stamps) < 1:
+            self.logger.warning(
+                "Empty cpu journal, skipping corresponding overall plot"
+            )
             return -1
 
         cpu_usr = self.cpu_prof[core]["user"] + self.cpu_prof[core]["nice"]
@@ -253,12 +302,20 @@ class SystemData:
         )
 
         plt.fill_between(
-            self.cpu_stamps, 100, color="C7", alpha=alpha / 3, label=f"{prefix}idle"
+            self.cpu_stamps,
+            100,
+            color="C7",
+            alpha=alpha / 3,
+            label=f"{prefix}idle",
         )
 
         curve_stl = cpu_stl
         plt.fill_between(
-            self.cpu_stamps, curve_stl, color="C5", alpha=alpha, label=f"{prefix}virt"
+            self.cpu_stamps,
+            curve_stl,
+            color="C5",
+            alpha=alpha,
+            label=f"{prefix}virt",
         )
 
         curve_wai = curve_stl + cpu_wai
@@ -305,7 +362,9 @@ class SystemData:
         _order = [0, 4, 3, 2, 1]
         _handles, _labels = plt.gca().get_legend_handles_labels()
         plt.legend(
-            [_handles[idx] for idx in _order], [_labels[idx] for idx in _order], loc=1
+            [_handles[idx] for idx in _order],
+            [_labels[idx] for idx in _order],
+            loc=1,
         )
 
         if annotate_with_cmds:
@@ -321,8 +380,10 @@ class SystemData:
         """
 
         # Check there is content
-        if (len(self.cpu_stamps) < 1):
-            self.logger.warning("Empty cpu journal, skipping corresponding core plot")
+        if len(self.cpu_stamps) < 1:
+            self.logger.warning(
+                "Empty cpu journal, skipping corresponding core plot"
+            )
             return -1
 
         cores = [core for core in range(self.ncpu)]
@@ -338,7 +399,8 @@ class SystemData:
             core_name = f"cpu{core}"
 
             cpu_usr = (
-                self.cpu_prof[core_name]["user"] + self.cpu_prof[core_name]["nice"]
+                self.cpu_prof[core_name]["user"]
+                + self.cpu_prof[core_name]["nice"]
             )
 
             cpu_sys = (
@@ -372,14 +434,20 @@ class SystemData:
         """
         Read memory report
         """
-        mem_report_lines = self.read_csv_line_as_list(csv_report=csv_mem_report)
+        mem_report_lines = self.read_csv_line_as_list(
+            csv_report=csv_mem_report
+        )
 
         # Check if csv file is empty
         if not mem_report_lines or len(mem_report_lines) <= 1:
-            self.logger.warning("Memory CSV report is empty, returning empty data")
+            self.logger.warning(
+                "Memory CSV report is empty, returning empty data"
+            )
             return [], {}
 
-        keys_with_idx = {key: idx for idx, key in enumerate(mem_report_lines[0][:-1])}
+        keys_with_idx = {
+            key: idx for idx, key in enumerate(mem_report_lines[0][:-1])
+        }
 
         return mem_report_lines, keys_with_idx
 
@@ -415,9 +483,45 @@ class SystemData:
             self.mem_stamps = np.array([])
             return 0
 
-        self.logger.debug("Create Memory profile...")
-        t0 = time.time()
-        memory_dict = {key: [] for key in _chosen_keys}
+        else:
+
+            ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"  # noqa: F841, E501, N806, B950
+
+            _chosen_keys = [
+                "timestamp",
+                "MemTotal",
+                "MemFree",
+                "Buffers",
+                "Cached",
+                "Slab",
+                "SwapTotal",
+                "SwapFree",
+                "SwapCached",
+            ]
+
+            self.logger.debug("Read Memory csv report...")
+            t0 = time.time()  # noqa: E702
+            mem_report_lines, keys_with_idx = self.read_mem_csv_report(
+                csv_mem_report=csv_mem_report
+            )
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if memory report is empty
+            if not mem_report_lines:
+                self.logger.warning(
+                    "Memory CSV report is empty, creating empty profile"
+                )
+                self.mem_prof = {key: np.array([]) for key in _chosen_keys}
+                self.mem_stamps = np.array([])
+                return 0
+
+            self.logger.debug("Create Memory profile...")
+            t0 = time.time()
+            memory_dict = {key: [] for key in _chosen_keys}
+
+            for line in mem_report_lines[1:]:
+                for key in memory_dict:
+                    memory_dict[key] += [float(line[keys_with_idx[key]])]
 
         for line in mem_report_lines[1:]:
             for key in memory_dict:
@@ -443,10 +547,13 @@ class SystemData:
         # Memory
         total = self.mem_prof["MemTotal"] / memunit
         cached = (
-            self.mem_prof["Buffers"] + self.mem_prof["Cached"] + self.mem_prof["Slab"]
+            self.mem_prof["Buffers"]
+            + self.mem_prof["Cached"]
+            + self.mem_prof["Slab"]
         ) / memunit
         used = (
-            -cached + (self.mem_prof["MemTotal"] - self.mem_prof["MemFree"]) / memunit
+            -cached
+            + (self.mem_prof["MemTotal"] - self.mem_prof["MemFree"]) / memunit
         )
         plt.fill_between(
             self.mem_stamps, total, alpha=alpha, label="MemTotal", color="b"
@@ -467,13 +574,21 @@ class SystemData:
         swap_total = self.mem_prof["SwapTotal"] / memunit
         swap_used = swap_total - self.mem_prof["SwapFree"] / memunit
         plt.fill_between(
-            self.mem_stamps, swap_total, alpha=alpha, label="SwapTotal", color="r"
+            self.mem_stamps,
+            swap_total,
+            alpha=alpha,
+            label="SwapTotal",
+            color="r",
         )
         plt.fill_between(
-            self.mem_stamps, swap_used, alpha=alpha * 3, label="SwapUsed", color="r"
+            self.mem_stamps,
+            swap_used,
+            alpha=alpha * 3,
+            label="SwapUsed",
+            color="r",
         )
 
-        if (len(self.mem_prof["timestamp"]) < 1):
+        if len(self.mem_prof["timestamp"]) < 1:
             total_max = 0
             self.logger.warning("Empty memory journal, generating empty plot")
         else:
@@ -518,25 +633,75 @@ class SystemData:
         self.logger.debug("Create CPUFreq profile...")
         t0 = time.time()
 
-        # Parse CPU frequency range with error handling
-        try:
-            if (len(cpufreq_report_lines[0]) > 2
-                    and '[' in cpufreq_report_lines[0][2] and ']' in cpufreq_report_lines[0][2]):
-                freq_range_str = cpufreq_report_lines[0][2].split('[')[1].split(']')[0]
-                if '-' in freq_range_str:
-                    cpu_freq_parsing = freq_range_str.split("-")
-                    self.cpufreq_min = cpu_freq_parsing[0] if cpu_freq_parsing[0] else None
-                    self.cpufreq_max = (cpu_freq_parsing[1] if len(cpu_freq_parsing) > 1
-                                        and cpu_freq_parsing[1] else None)
+            self.cpufreq_min = self.cpufreq_vals["min"]
+            self.cpufreq_max = self.cpufreq_vals["max"]
+            self.ncpu_freq = len(self.cpufreq_prof)
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+        else:
+
+            self.logger.debug("Read CPUFreq csv report...")
+            t0 = time.time()  # noqa: E702
+            cpufreq_report_lines = self.read_csv_line_as_list(
+                csv_report=csv_cpufreq_report
+            )
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if csv file is empty
+            if not cpufreq_report_lines or len(cpufreq_report_lines) <= 1:
+                self.logger.warning(
+                    "CPUFreq CSV report is empty (NB does not work"
+                    " on virtual machines), returning empty data"
+                )
+                return [], {}
+
+            self.logger.debug("Create CPUFreq profile...")
+            t0 = time.time()
+
+            # Parse CPU frequency range with error handling
+            try:
+                if (
+                    len(cpufreq_report_lines[0]) > 2
+                    and "[" in cpufreq_report_lines[0][2]
+                    and "]" in cpufreq_report_lines[0][2]
+                ):
+                    freq_range_str = (
+                        cpufreq_report_lines[0][2].split("[")[1].split("]")[0]
+                    )
+                    if "-" in freq_range_str:
+                        cpu_freq_parsing = freq_range_str.split("-")
+                        self.cpufreq_min = (
+                            cpu_freq_parsing[0]
+                            if cpu_freq_parsing[0]
+                            else None
+                        )
+                        self.cpufreq_max = (
+                            cpu_freq_parsing[1]
+                            if len(cpu_freq_parsing) > 1
+                            and cpu_freq_parsing[1]
+                            else None
+                        )
+                    else:
+                        self.logger.warning(
+                            "CPU frequency range format not recognized"
+                            ' (expecting "frequency[min-max]" in header),'
+                            "returning empty data"
+                        )
+                        return [], {}
                 else:
-                    self.logger.warning("CPU frequency range format not recognized"
-                                        " (expecting \"frequency[min-max]\" in header),"
-                                        "returning empty data")
+                    self.logger.warning(
+                        "CPU frequency header format not recognized"
+                        '(expecting "timestamp,cpu core,frequency[min-max]"'
+                        " in header), returning empty data"
+                    )
                     return [], {}
-            else:
-                self.logger.warning("CPU frequency header format not recognized"
-                                    "(expecting \"timestamp,cpu core,frequency[min-max]\""
-                                    " in header), returning empty data")
+            except (IndexError, ValueError, AttributeError) as e:
+                self.logger.warning(
+                    f"Error parsing CPU frequency range {e} (expecting"
+                    ' "timestamp,cpu core,frequency[min-max]" in header),'
+                    " returning empty data"
+                )
                 return [], {}
         except (IndexError, ValueError, AttributeError) as e:
             self.logger.warning(f"Error parsing CPU frequency range {e} (expecting"
@@ -552,11 +717,11 @@ class SystemData:
         while ts == ts_0:
             self.ncpu_freq += 1
 
-            line_idx += 1
-            if (line_idx < len(cpufreq_report_lines)):
-                ts = cpufreq_report_lines[line_idx][0]
-            else:
-                break
+                line_idx += 1
+                if line_idx < len(cpufreq_report_lines):
+                    ts = cpufreq_report_lines[line_idx][0]
+                else:
+                    break
 
         # Init cpu time series
         cpufreq_ts = {}
@@ -573,10 +738,12 @@ class SystemData:
                 np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / HZ_UNIT
             )
 
-        self.cpufreq_prof = cpufreq_ts
-        self.cpufreq_stamps = [
-            float(line[0]) for line in cpufreq_report_lines[1::self.ncpu_freq]
-        ]
+            self.cpufreq_prof = cpufreq_ts
+            step = self.ncpu_freq
+            self.cpufreq_stamps = [
+                float(line[0])
+                for line in cpufreq_report_lines[1::step]
+            ]
 
         self.cpufreq_vals["mean"] = np.zeros_like(self.cpufreq_stamps)
         for cpu in range(self.ncpu_freq):
@@ -599,7 +766,7 @@ class SystemData:
         HZ_UNIT = 1e6  # noqa: N806
 
         cores = [core for core in range(self.ncpu_freq)]
-        if (len(cores) == 0):
+        if len(cores) == 0:
             # There is no data
             self.logger.warning("Empty cpufreq journal, generating empty plot")
             return 0
@@ -620,7 +787,9 @@ class SystemData:
                 label=f"core-{core}",
             )
 
-        plt.plot(self.cpufreq_stamps, self.cpufreq_vals["mean"], "k.-", label="mean")
+        plt.plot(
+            self.cpufreq_stamps, self.cpufreq_vals["mean"], "k.-", label="mean"
+        )
 
         cpu_freq_max = 6  # Hard-coded 6 HZ
         if self.cpufreq_min and self.cpufreq_max:
@@ -646,7 +815,9 @@ class SystemData:
         plt.ylabel("CPU frequencies (GHz)")
         plt.grid()
         plt.legend(
-            loc=0, ncol=self.ncpu_freq // ceil(self.ncpu_freq / 16), fontsize="6"
+            loc=0,
+            ncol=self.ncpu_freq // ceil(self.ncpu_freq / 16),
+            fontsize="6",
         )
 
         if annotate_with_cmds:
@@ -658,11 +829,15 @@ class SystemData:
         """
         Read network csv report
         """
-        net_report_lines = self.read_csv_line_as_list(csv_report=csv_net_report)
+        net_report_lines = self.read_csv_line_as_list(
+            csv_report=csv_net_report
+        )
 
         # Check if csv file is empty
         if not net_report_lines or len(net_report_lines) <= 1:
-            self.logger.warning("Network CSV report is empty, returning empty data")
+            self.logger.warning(
+                "Network CSV report is empty, returning empty data"
+            )
             return {}, []
 
         # Get network interfaces
@@ -683,7 +858,8 @@ class SystemData:
         # }
         _sidx = 2
         self.net_metric_keys = {
-            key: idx + _sidx for idx, key in enumerate(net_report_lines[0][_sidx:])
+            key: idx + _sidx
+            for idx, key in enumerate(net_report_lines[0][_sidx:])
         }
 
         _interf_idx = 1
@@ -699,7 +875,8 @@ class SystemData:
                 ]
 
         timestamps_raw = [
-            float(item[0]) for item in net_report_lines[_samples_idx:][::nnet_interf]
+            float(item[0])
+            for item in net_report_lines[_samples_idx:][::nnet_interf]
         ]
 
         return net_ts_raw, timestamps_raw
@@ -754,7 +931,56 @@ class SystemData:
                         - net_ts_raw[key][metric_key][stamp]
                     ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
 
-        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.logger.debug("Read Network csv report...")
+            t0 = time.time()  # noqa: E702
+            net_ts_raw, timestamps_raw = self.read_net_csv_report(
+                csv_net_report=csv_net_report
+            )
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if network report data is empty
+            if not net_ts_raw:
+                self.logger.warning(
+                    "Network CSV report data is empty, creating empty profile"
+                )
+                self.net_prof = {}
+                self.net_data = {}
+                self.net_stamps = np.array([])
+                self.net_interfs = []
+                return
+
+            self.logger.debug("Create Network profile...")
+            t0 = time.time()
+            nstamps = len(timestamps_raw) - 1
+            self.net_stamps = np.zeros(nstamps)
+            for stamp in range(nstamps):
+                self.net_stamps[stamp] = (
+                    timestamps_raw[stamp + 1] + timestamps_raw[stamp]
+                ) / 2
+
+            # Init network profile
+            for interf in self.net_interfs:
+                self.net_prof[interf] = {
+                    key: np.zeros(nstamps) for key in self.net_metric_keys
+                }
+                self.net_data[interf] = {
+                    key: 0 for key in self.net_metric_keys
+                }  # noqa: C420
+
+            # Fill in
+            for key in net_ts_raw:
+                for metric_key in self.net_metric_keys:
+                    self.net_data[key][metric_key] = (
+                        net_ts_raw[key][metric_key][-1]
+                        - net_ts_raw[key][metric_key][0]
+                    )
+                    for stamp in range(nstamps):
+                        self.net_prof[key][metric_key][stamp] = (
+                            net_ts_raw[key][metric_key][stamp + 1]
+                            - net_ts_raw[key][metric_key][stamp]
+                        ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
     def plot_network(
         self,
@@ -861,7 +1087,7 @@ class SystemData:
                             markersize=_mrksz,
                         )
 
-        if (len(self.net_stamps) < 1):
+        if len(self.net_stamps) < 1:
             self.logger.warning("Empty network journal, generating empty plot")
             netmax = 0
         else:
@@ -887,7 +1113,9 @@ class SystemData:
         """
         Read disk monitoring csv report
         """
-        disk_report_lines = self.read_csv_line_as_list(csv_report=csv_disk_report)
+        disk_report_lines = self.read_csv_line_as_list(
+            csv_report=csv_disk_report
+        )
 
         # useful indexes for the csv report
         _maj_blk_indx = 0  # noqa: F841
@@ -899,7 +1127,9 @@ class SystemData:
 
         # Check if csv file is empty
         if not disk_report_lines or len(disk_report_lines) <= _samples_idx:
-            self.logger.warning("Disk CSV report is empty, returning empty data")
+            self.logger.warning(
+                "Disk CSV report is empty, returning empty data"
+            )
             return {}, []
 
         # self.disk_field_keys = { # https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
@@ -919,7 +1149,10 @@ class SystemData:
         self.maj_blks_sects = dict(
             zip(
                 disk_report_lines[_sect_blk_indx][0::2],
-                [int(sect) for sect in disk_report_lines[_sect_blk_indx][1::2]],
+                [
+                    int(sect)
+                    for sect in disk_report_lines[_sect_blk_indx][1::2]
+                ],
             )
         )
 
@@ -934,7 +1167,8 @@ class SystemData:
             ts = disk_report_lines[line_idx][0]
         # ndisk_blk = int(disk_report_lines[_all_blk_indx][0])
         self.disk_blks = [
-            disk_report_lines[_samples_idx + idx][_blk_idx] for idx in range(ndisk_blk)
+            disk_report_lines[_samples_idx + idx][_blk_idx]
+            for idx in range(ndisk_blk)
         ]
 
         # raw disk measure stamps
@@ -958,7 +1192,8 @@ class SystemData:
 
         # raw time stamps
         timestamps_raw = [
-            float(item[0]) for item in disk_report_lines[_samples_idx:][::ndisk_blk]
+            float(item[0])
+            for item in disk_report_lines[_samples_idx:][::ndisk_blk]
         ]
 
         return disk_ts_raw, timestamps_raw
@@ -967,6 +1202,7 @@ class SystemData:
         """
         Get disk profile
         """
+
         self.logger.debug("Read Disk csv report...")
         t0 = time.time()  # noqa: E702
         disk_ts_raw, timestamps_raw = self.read_disk_csv_report(
@@ -975,7 +1211,9 @@ class SystemData:
         self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
         # Check if disk report data is empty
         if not disk_ts_raw:
-            self.logger.warning("Disk CSV report data is empty, creating empty profile")
+            self.logger.warning(
+                "Disk CSV report data is empty, creating empty profile"
+            )
             self.disk_prof = {}
             self.disk_data = {}
             self.disk_stamps = np.array([])
@@ -999,32 +1237,47 @@ class SystemData:
             self.disk_prof[blk] = {
                 key: np.zeros(nstamps) for key in self.disk_field_keys
             }
-            self.disk_data[blk] = {key: -999.999 for key in self.disk_field_keys}
+            self.disk_data[blk] = {
+                key: -999.999 for key in self.disk_field_keys
+            }
 
-        # Fill in
-        for blk in self.disk_blks:
-            self.disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
-            self.disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
-            # for field_key in self.disk_field_keys:
-            #     for stamp in range(nstamps):
-            #         self.disk_prof[blk][field_key][stamp] = (disk_ts_raw[blk][field_key][stamp + 1]
-            # - disk_ts_raw[blk][field_key][stamp])
+        self.logger.debug("Create Disk profile...")
+        t0 = time.time()  # noqa: E702
+        # final time stamps
+        nstamps = len(timestamps_raw) - 1
+        self.disk_stamps = np.zeros(nstamps)
+        for stamp in range(nstamps):
+            self.disk_stamps[stamp] = (
+                timestamps_raw[stamp + 1] + timestamps_raw[stamp]
+            ) / 2
 
-        # Sectors and data n bytes
-        BYTES_UNIT = 1000**2  # noqa: N806
-        fields = ["sect-rd", "sect-wr", "sect-disc"]
-        for blk in self.disk_blks:
-            bytes_by_sector = self.maj_blks_sects[
-                [item for item in self.maj_blks_sects if item in blk][0]
-            ]
-            for field in fields:
-                for stamp in range(nstamps):
-                    self.disk_prof[blk][field][stamp] = (
-                        (
-                            disk_ts_raw[blk][field][stamp + 1]
-                            - disk_ts_raw[blk][field][stamp]
+            # Sectors and data n bytes
+            BYTES_UNIT = 1000**2  # noqa: N806
+            fields = ["sect-rd", "sect-wr", "sect-disc"]
+            for blk in self.disk_blks:
+                bytes_by_sector = self.maj_blks_sects[
+                    [item for item in self.maj_blks_sects if item in blk][0]
+                ]
+                for field in fields:
+                    for stamp in range(nstamps):
+                        self.disk_prof[blk][field][stamp] = (
+                            (
+                                disk_ts_raw[blk][field][stamp + 1]
+                                - disk_ts_raw[blk][field][stamp]
+                            )
+                            / (
+                                timestamps_raw[stamp + 1]
+                                - timestamps_raw[stamp]
+                            )
+                            * bytes_by_sector
+                            / BYTES_UNIT
                         )
-                        / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+
+                    self.disk_data[blk][field] = int(
+                        (
+                            disk_ts_raw[blk][field][-1]
+                            - disk_ts_raw[blk][field][0]
+                        )
                         * bytes_by_sector
                         / BYTES_UNIT
                     )
@@ -1035,24 +1288,10 @@ class SystemData:
                     / BYTES_UNIT
                 )
 
-        # Number of operations
-        fields = [
-            "#rd-cd",
-            "#rd-md",
-            "#wr-cd",
-            "#wr-md",
-            "#io-ip",
-            "#disc-cd",
-            "#disc-md",
-            "#flush-req",
-        ]
-        for blk in self.disk_blks:
-            for field in fields:
-                for stamp in range(nstamps):
-                    self.disk_prof[blk][field][stamp] = (
-                        disk_ts_raw[blk][field][stamp + 1]
-                        - disk_ts_raw[blk][field][stamp]
-                    ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+                    self.disk_data[blk][field] = int(
+                        disk_ts_raw[blk][field][-1]
+                        - disk_ts_raw[blk][field][0]
+                    )
 
                 self.disk_data[blk][field] = int(
                     disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]
@@ -1073,8 +1312,17 @@ class SystemData:
         """
         alpha = 0.5
         diskmax = 0.0
+        bandwidth_ylabel = getattr(
+            self, "disk_bandwidth_ylabel", "Disk bandwidth (MB/s)"
+        )
+        disk_total_label_unit = getattr(
+            self, "disk_total_label_unit", "MB"
+        )
 
-        if (len(self.disk_stamps) < 1):
+        def has_visible_activity(array):
+            return len(array) > 0 and np.any(np.nan_to_num(array, nan=0.0) > 0)
+
+        if len(self.disk_stamps) < 1:
             self.logger.warning("Empty disk journal, generating empty plot")
         self.disk_rd_total = np.zeros_like(self.disk_stamps)
         self.disk_wr_total = np.zeros_like(self.disk_stamps)
@@ -1092,8 +1340,11 @@ class SystemData:
                     array = self.disk_prof[blk][field]
                     label = f"{field[-2:]}:{blk}"
                     if is_diskdata_label:
-                        label += f" ({self.disk_data[blk][field]} MB)"
-                    if np.linalg.norm(array) > 1:
+                        label += (
+                            f" ({self.disk_data[blk][field]} "
+                            f"{disk_total_label_unit})"
+                        )
+                    if has_visible_activity(array):
                         plt.fill_between(
                             self.disk_stamps, array, label=label, alpha=alpha
                         )
@@ -1111,7 +1362,7 @@ class SystemData:
             if len(yticks) < self.yrange:
                 break
         plt.yticks(yticks)
-        plt.ylabel("Disk bandwidth (MB/s)")
+        plt.ylabel(bandwidth_ylabel)
         plt.grid()
         hand, lab = plt.gca().get_legend_handles_labels()
 
@@ -1132,8 +1383,10 @@ class SystemData:
                         label = f"{field[:3]}:{blk}"
                         if is_diskdata_label:
                             label += f" ({self.disk_data[blk][field]:.3e} op)"
-                        if np.linalg.norm(array) > 1:
-                            pltt.plot(self.disk_stamps, array, label=label, ls="-")
+                        if has_visible_activity(array):
+                            pltt.plot(
+                                self.disk_stamps, array, label=label, ls="-"
+                            )
             pltt.set_ylabel("Disk operations per second (IOPS)")
             pltt.grid()
             hand_twin, lab_twin = pltt.get_legend_handles_labels()
@@ -1231,12 +1484,61 @@ class SystemData:
                 key: 0 for key in self.ib_metric_keys
             }  # noqa: C420
 
-        # Fill in
-        BYTES_UNIT = (1 / 4) * 1000**2  # noqa: N806 (MB)
-        for interf in self.ib_interfs:
-            for metric_key in self.ib_metric_keys:
-                for stamp in range(nstamps):
-                    self.ib_prof[interf][metric_key][stamp] = (
+            self.logger.debug("Read IB csv report...")
+            t0 = time.time()  # noqa: E702
+            ib_ts_raw, timestamps_raw = self.read_ib_csv_report(
+                csv_ib_report=csv_ib_report
+            )
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+            # Check if IB report data is empty
+            if not ib_ts_raw:
+                self.logger.warning(
+                    "IB CSV report data is empty, creating empty profile"
+                )
+                self.ib_prof = {}
+                self.ib_data = {}
+                self.ib_stamps = np.array([])
+                self.ib_interfs = []
+                return
+
+            self.logger.debug("Create IB profile...")
+            t0 = time.time()
+            nstamps = len(timestamps_raw) - 1
+
+            self.ib_stamps = np.zeros(nstamps)
+            for stamp in range(nstamps):
+                self.ib_stamps[stamp] = (
+                    timestamps_raw[stamp + 1] + timestamps_raw[stamp]
+                ) / 2
+
+            # Init infiniband profile
+            for interf in self.ib_interfs:
+                self.ib_prof[interf] = {
+                    key: np.zeros(nstamps) for key in self.ib_metric_keys
+                }
+                self.ib_data[interf] = {
+                    key: 0 for key in self.ib_metric_keys
+                }  # noqa: C420
+
+            # Fill in
+            BYTES_UNIT = (1 / 4) * 1000**2  # noqa: N806 (MB)
+            for interf in self.ib_interfs:
+                for metric_key in self.ib_metric_keys:
+                    for stamp in range(nstamps):
+                        self.ib_prof[interf][metric_key][stamp] = (
+                            (
+                                ib_ts_raw[interf][metric_key][stamp + 1]
+                                - ib_ts_raw[interf][metric_key][stamp]
+                            )
+                            / (
+                                timestamps_raw[stamp + 1]
+                                - timestamps_raw[stamp]
+                            )
+                            / BYTES_UNIT
+                        )
+
+                    self.ib_data[interf][metric_key] = int(
                         (
                             ib_ts_raw[interf][metric_key][stamp + 1]
                             - ib_ts_raw[interf][metric_key][stamp]

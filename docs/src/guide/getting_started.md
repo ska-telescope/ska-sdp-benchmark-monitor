@@ -133,6 +133,53 @@ benchmon-visu <traces-directory> [options]
 ```
 If no directory is specified, the current directory (`./`) is used.
 
+`benchmon-visu` also supports reading system metrics directly from InfluxDB v3 instead of local CSV/BIN traces. In this mode, the positional argument is still required, but it is used as the output directory for figures and logs rather than as an input trace directory.
+
+##### InfluxDB-backed visualization
+- `--influxdb`: Enable direct visualization from InfluxDB.
+- `--influxdb-url`: InfluxDB v3 HTTP endpoint, for example `http://localhost:8181`.
+- `--influxdb-token`: InfluxDB token. Leave empty when the server is configured without authentication.
+- `--influxdb-org`: InfluxDB organization. Optional for the local benchmon stack.
+- `--influxdb-database`: Database/bucket name. Default: `metrics`.
+- `--influxdb-hostname`: Optional hostname filter. If omitted, `benchmon-visu` discovers all hostnames that have data in the selected time window.
+- `--resolution`: Query resolution. Supported values are `auto`, `raw`, `1s`, `5s`, `10s`, `30s`, `1m`, `5m`, `15m`, and `1h`.
+
+If `--start-time` and `--end-time` are omitted, InfluxDB mode queries all data in the selected database.
+
+When you run against the local Benchmon stack and expect large full-database scans, start the stack with `benchmon-start-grafana --influxdb-query-file-limit 2000` (or another positive value) to increase the backend scan budget. This flag is passed to `influxdb3 serve` and sets the maximum number of parquet files that one query may scan, so changing it requires restarting the stack.
+
+In InfluxDB mode, the supported system plots are `--cpu`, `--cpu-all`, `--cpu-freq`, `--mem`, `--net`, `--disk`, `--ib`, and `--sys`. `--sys` expands to `--cpu --cpu-freq --mem --net --disk --ib`.
+
+The output style remains consistent with CSV/BIN visualization:
+- One figure set is generated per discovered host.
+- If the output root is `./benchmon_influx_figures`, per-host figures are written under `./benchmon_influx_figures/benchmon_traces_<hostname>/`.
+- `--recursive` additionally generates `./benchmon_influx_figures/multi-node_sync.<fmt>` when more than one host is found, matching the legacy synchronized multi-node view.
+- Very large figure layouts are automatically split into `__partNN` pages.
+
+Time filtering keeps the same interface as the CSV/BIN visualizer: `--start-time` and `--end-time` use the `YYYY-MM-DDTHH:MM:SS` format and are used directly as local wall-clock time on the machine running `benchmon-visu`. No manual UTC conversion is required.
+
+If a full-database query is rejected by the InfluxDB backend because the request is too large, either restart the stack with a larger `--influxdb-query-file-limit` or rerun `benchmon-visu` with both `--start-time` and `--end-time` to narrow the query. Increasing `--influxdb-query-file-limit` affects query/read behavior only; it does not change CSV importer batching or write limits.
+
+If some requested InfluxDB measurements are missing from the selected database, benchmon renders the plots backed by the tables that do exist and skips the unavailable plot types.
+
+InfluxDB mode does not support `--pow`, `--pow-g5k`, `--call`, `--inline-call`, or `--binary`.
+
+Example:
+
+```bash
+benchmon-visu ./benchmon_influx_figures \
+  --influxdb \
+  --influxdb-url http://localhost:8181 \
+  --influxdb-database metrics \
+  --start-time 2026-02-04T21:48:20 \
+  --end-time 2026-02-04T22:03:20 \
+  --sys \
+  --recursive \
+  --resolution auto \
+  --fig-fmt png \
+  --fig-name benchmon_influx_overview
+```
+
 Available options:
 ##### Resource usage
 - `--mem`: Visualize memory usage.
