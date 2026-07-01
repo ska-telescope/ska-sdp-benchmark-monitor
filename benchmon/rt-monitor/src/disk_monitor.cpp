@@ -266,7 +266,7 @@ std::vector<block_device_info> get_partition_block_sizes_binary()
 
         if (bs_file.is_open() && bs_file >> block_size)
         {
-            entries.emplace_back(device_name, block_size);
+            entries.push_back({device_name, block_size});
         }
     }
 
@@ -318,7 +318,7 @@ void read_disk_samples(int fd, const std::unordered_map<std::string, size_t> &na
         while (curr < line_end && !std::isspace(*curr)) curr++;
         std::string device(name_start, curr - name_start);
 
-        if (device.starts_with("loop") || device.starts_with("dm"))
+        if (device.rfind("loop", 0) == 0 || device.rfind("dm", 0) == 0)
         {
             ptr = eol ? eol + 1 : end;
             continue;
