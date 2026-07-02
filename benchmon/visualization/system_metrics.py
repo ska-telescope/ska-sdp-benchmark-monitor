@@ -183,7 +183,9 @@ class SystemData:
 
         # Check if CPU report data is empty
         if not cpu_ts_raw:
-            self.logger.warning("CPU CSV report data is empty, creating empty profile")
+            self.logger.warning(
+                "CPU CSV report data is empty, creating empty profile"
+            )
             self.cpu_prof = {}
             self.cpu_stamps = np.array([])
             self.ncpu = 0
@@ -208,17 +210,22 @@ class SystemData:
                 metric_key: np.zeros(nstamps)
                 for metric_key in cpu_ts_raw["cpu"].keys()
             }
-        self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
+        self.logger.debug(
+            f"\t init dict = {round(time.time() - t0i, 3)} s"
+        )
 
-            # Check if CPU report data is empty
-            if not cpu_ts_raw:
-                self.logger.warning(
-                    "CPU CSV report data is empty, creating empty profile"
+        t0i = time.time()
+        for stamp in range(nstamps):
+            for key, metric_key in itertools.product(
+                cpu_ts_raw.keys(), cpu_ts_raw["cpu"].keys()
+            ):
+                cpu_ts[key][metric_key][stamp] = (
+                    cpu_ts_raw[key][metric_key][stamp + 1]
+                    - cpu_ts_raw[key][metric_key][stamp]
                 )
-                self.cpu_prof = {}
-                self.cpu_stamps = np.array([])
-                self.ncpu = 0
-                return 0
+        self.logger.debug(
+            f"\t compute spaces = {round(time.time() - t0i, 3)} s"
+        )
 
         t0i = time.time()
         for key in cpu_ts.keys():
@@ -227,51 +234,22 @@ class SystemData:
                 for metric_key in cpu_ts["cpu"].keys():
                     cpu_total += cpu_ts[key][metric_key][stamp]
 
-            t0i = time.time()
-            cpu_ts = {}
-            for key in cpu_ts_raw.keys():
-                cpu_ts[key] = {
-                    metric_key: np.zeros(nstamps)
-                    for metric_key in cpu_ts_raw["cpu"].keys()
-                }
-            self.logger.debug(
-                f"\t init dict = {round(time.time() - t0i, 3)} s"
-            )
-
-            t0i = time.time()
-            for stamp in range(nstamps):
-                for key, metric_key in itertools.product(
-                    cpu_ts_raw.keys(), cpu_ts_raw["cpu"].keys()
-                ):
+                for metric_key in cpu_ts["cpu"].keys():
                     cpu_ts[key][metric_key][stamp] = (
                         cpu_ts[key][metric_key][stamp] / cpu_total * 100
                     )
-            self.logger.debug(
-                f"\t compute spaces = {round(time.time() - t0i, 3)} s"
-            )
+        self.logger.debug(
+            f"\t compute percents = {round(time.time() - t0i, 3)} s"
+        )
 
         self.cpu_prof = cpu_ts
         self.cpu_stamps = timestamps
 
-                    for metric_key in cpu_ts["cpu"].keys():
-                        cpu_ts[key][metric_key][stamp] = (
-                            cpu_ts[key][metric_key][stamp] / cpu_total * 100
-                        )
-            self.logger.debug(
-                f"\t compute percents = {round(time.time() - t0i, 3)} s"
-            )
-
-            self.cpu_prof = cpu_ts
-            self.cpu_stamps = timestamps
-
-            t0i = time.time()
-            self.logger.debug(
-                f"\t save profile = {round(time.time() - t0i, 3)} s"
-            )
-
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        t0i = time.time()
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
+
 
     def plot_cpu(self, number="", annotate_with_cmds=None) -> int:
         """
@@ -626,87 +604,58 @@ class SystemData:
 
         # Check if csv file is empty
         if not cpufreq_report_lines or len(cpufreq_report_lines) <= 1:
-            self.logger.warning("CPUFreq CSV report is empty (NB does not work"
-                                " on virtual machines), returning empty data")
+            self.logger.warning(
+                "CPUFreq CSV report is empty (NB does not work"
+                " on virtual machines), returning empty data"
+            )
             return [], {}
 
         self.logger.debug("Create CPUFreq profile...")
         t0 = time.time()
 
-            self.cpufreq_min = self.cpufreq_vals["min"]
-            self.cpufreq_max = self.cpufreq_vals["max"]
-            self.ncpu_freq = len(self.cpufreq_prof)
-
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
-
-        else:
-
-            self.logger.debug("Read CPUFreq csv report...")
-            t0 = time.time()  # noqa: E702
-            cpufreq_report_lines = self.read_csv_line_as_list(
-                csv_report=csv_cpufreq_report
-            )
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
-
-            # Check if csv file is empty
-            if not cpufreq_report_lines or len(cpufreq_report_lines) <= 1:
-                self.logger.warning(
-                    "CPUFreq CSV report is empty (NB does not work"
-                    " on virtual machines), returning empty data"
+        # Parse CPU frequency range with error handling
+        try:
+            if (
+                len(cpufreq_report_lines[0]) > 2
+                and "[" in cpufreq_report_lines[0][2]
+                and "]" in cpufreq_report_lines[0][2]
+            ):
+                freq_range_str = (
+                    cpufreq_report_lines[0][2].split("[")[1].split("]")[0]
                 )
-                return [], {}
-
-            self.logger.debug("Create CPUFreq profile...")
-            t0 = time.time()
-
-            # Parse CPU frequency range with error handling
-            try:
-                if (
-                    len(cpufreq_report_lines[0]) > 2
-                    and "[" in cpufreq_report_lines[0][2]
-                    and "]" in cpufreq_report_lines[0][2]
-                ):
-                    freq_range_str = (
-                        cpufreq_report_lines[0][2].split("[")[1].split("]")[0]
+                if "-" in freq_range_str:
+                    cpu_freq_parsing = freq_range_str.split("-")
+                    self.cpufreq_min = (
+                        cpu_freq_parsing[0]
+                        if cpu_freq_parsing[0]
+                        else None
                     )
-                    if "-" in freq_range_str:
-                        cpu_freq_parsing = freq_range_str.split("-")
-                        self.cpufreq_min = (
-                            cpu_freq_parsing[0]
-                            if cpu_freq_parsing[0]
-                            else None
-                        )
-                        self.cpufreq_max = (
-                            cpu_freq_parsing[1]
-                            if len(cpu_freq_parsing) > 1
-                            and cpu_freq_parsing[1]
-                            else None
-                        )
-                    else:
-                        self.logger.warning(
-                            "CPU frequency range format not recognized"
-                            ' (expecting "frequency[min-max]" in header),'
-                            "returning empty data"
-                        )
-                        return [], {}
+                    self.cpufreq_max = (
+                        cpu_freq_parsing[1]
+                        if len(cpu_freq_parsing) > 1
+                        and cpu_freq_parsing[1]
+                        else None
+                    )
                 else:
                     self.logger.warning(
-                        "CPU frequency header format not recognized"
-                        '(expecting "timestamp,cpu core,frequency[min-max]"'
-                        " in header), returning empty data"
+                        "CPU frequency range format not recognized"
+                        ' (expecting "frequency[min-max]" in header),'
+                        "returning empty data"
                     )
                     return [], {}
-            except (IndexError, ValueError, AttributeError) as e:
+            else:
                 self.logger.warning(
-                    f"Error parsing CPU frequency range {e} (expecting"
-                    ' "timestamp,cpu core,frequency[min-max]" in header),'
-                    " returning empty data"
+                    "CPU frequency header format not recognized"
+                    '(expecting "timestamp,cpu core,frequency[min-max]"'
+                    " in header), returning empty data"
                 )
                 return [], {}
         except (IndexError, ValueError, AttributeError) as e:
-            self.logger.warning(f"Error parsing CPU frequency range {e} (expecting"
-                                " \"timestamp,cpu core,frequency[min-max]\" in header),"
-                                " returning empty data")
+            self.logger.warning(
+                f"Error parsing CPU frequency range {e} (expecting"
+                ' "timestamp,cpu core,frequency[min-max]" in header),'
+                " returning empty data"
+            )
             return [], {}
 
         # Get ncpu
@@ -717,11 +666,11 @@ class SystemData:
         while ts == ts_0:
             self.ncpu_freq += 1
 
-                line_idx += 1
-                if line_idx < len(cpufreq_report_lines):
-                    ts = cpufreq_report_lines[line_idx][0]
-                else:
-                    break
+            line_idx += 1
+            if line_idx < len(cpufreq_report_lines):
+                ts = cpufreq_report_lines[line_idx][0]
+            else:
+                break
 
         # Init cpu time series
         cpufreq_ts = {}
@@ -738,12 +687,12 @@ class SystemData:
                 np.array(cpufreq_ts[f"cpu{cpu_nb}"]) / HZ_UNIT
             )
 
-            self.cpufreq_prof = cpufreq_ts
-            step = self.ncpu_freq
-            self.cpufreq_stamps = [
-                float(line[0])
-                for line in cpufreq_report_lines[1::step]
-            ]
+        self.cpufreq_prof = cpufreq_ts
+        step = self.ncpu_freq
+        self.cpufreq_stamps = [
+            float(line[0])
+            for line in cpufreq_report_lines[1::step]
+        ]
 
         self.cpufreq_vals["mean"] = np.zeros_like(self.cpufreq_stamps)
         for cpu in range(self.ncpu_freq):
@@ -1241,60 +1190,68 @@ class SystemData:
                 key: -999.999 for key in self.disk_field_keys
             }
 
-        self.logger.debug("Create Disk profile...")
-        t0 = time.time()  # noqa: E702
-        # final time stamps
-        nstamps = len(timestamps_raw) - 1
-        self.disk_stamps = np.zeros(nstamps)
-        for stamp in range(nstamps):
-            self.disk_stamps[stamp] = (
-                timestamps_raw[stamp + 1] + timestamps_raw[stamp]
-            ) / 2
+        # Fill in
+        for blk in self.disk_blks:
+            self.disk_prof[blk]["major"] = disk_ts_raw[blk]["major"]
+            self.disk_prof[blk]["minor"] = disk_ts_raw[blk]["minor"]
+            # for field_key in self.disk_field_keys:
+            #     for stamp in range(nstamps):
+            #         self.disk_prof[blk][field_key][stamp] = (disk_ts_raw[blk][field_key][stamp + 1]
+            # - disk_ts_raw[blk][field_key][stamp])
 
-            # Sectors and data n bytes
-            BYTES_UNIT = 1000**2  # noqa: N806
-            fields = ["sect-rd", "sect-wr", "sect-disc"]
-            for blk in self.disk_blks:
-                bytes_by_sector = self.maj_blks_sects[
-                    [item for item in self.maj_blks_sects if item in blk][0]
-                ]
-                for field in fields:
-                    for stamp in range(nstamps):
-                        self.disk_prof[blk][field][stamp] = (
-                            (
-                                disk_ts_raw[blk][field][stamp + 1]
-                                - disk_ts_raw[blk][field][stamp]
-                            )
-                            / (
-                                timestamps_raw[stamp + 1]
-                                - timestamps_raw[stamp]
-                            )
-                            * bytes_by_sector
-                            / BYTES_UNIT
-                        )
-
-                    self.disk_data[blk][field] = int(
+        # Sectors and data n bytes
+        BYTES_UNIT = 1000**2  # noqa: N806
+        fields = ["sect-rd", "sect-wr", "sect-disc"]
+        for blk in self.disk_blks:
+            bytes_by_sector = self.maj_blks_sects[
+                [item for item in self.maj_blks_sects if item in blk][0]
+            ]
+            for field in fields:
+                for stamp in range(nstamps):
+                    self.disk_prof[blk][field][stamp] = (
                         (
-                            disk_ts_raw[blk][field][-1]
-                            - disk_ts_raw[blk][field][0]
+                            disk_ts_raw[blk][field][stamp + 1]
+                            - disk_ts_raw[blk][field][stamp]
+                        )
+                        / (
+                            timestamps_raw[stamp + 1]
+                            - timestamps_raw[stamp]
                         )
                         * bytes_by_sector
                         / BYTES_UNIT
                     )
 
                 self.disk_data[blk][field] = int(
-                    (disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0])
+                    (
+                        disk_ts_raw[blk][field][-1]
+                        - disk_ts_raw[blk][field][0]
+                    )
                     * bytes_by_sector
                     / BYTES_UNIT
                 )
 
-                    self.disk_data[blk][field] = int(
-                        disk_ts_raw[blk][field][-1]
-                        - disk_ts_raw[blk][field][0]
-                    )
+        # Number of operations
+        fields = [
+            "#rd-cd",
+            "#rd-md",
+            "#wr-cd",
+            "#wr-md",
+            "#io-ip",
+            "#disc-cd",
+            "#disc-md",
+            "#flush-req",
+        ]
+        for blk in self.disk_blks:
+            for field in fields:
+                for stamp in range(nstamps):
+                    self.disk_prof[blk][field][stamp] = (
+                        disk_ts_raw[blk][field][stamp + 1]
+                        - disk_ts_raw[blk][field][stamp]
+                    ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
 
                 self.disk_data[blk][field] = int(
-                    disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]
+                    disk_ts_raw[blk][field][-1]
+                    - disk_ts_raw[blk][field][0]
                 )
 
         self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")

@@ -126,6 +126,7 @@ def main():
     """Run main function."""
     args = parsing()
     traces_repo = args.traces_repo
+    is_recursive = args.recursive
 
     if args.influxdb:
         os.makedirs(traces_repo, exist_ok=True)
