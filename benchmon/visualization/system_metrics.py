@@ -456,50 +456,16 @@ class SystemData:
 
         # Check if memory report is empty
         if not mem_report_lines:
-            self.logger.warning("Memory CSV report is empty, creating empty profile")
+            self.logger.warning(
+                "Memory CSV report is empty, creating empty profile"
+            )
             self.mem_prof = {key: np.array([]) for key in _chosen_keys}
             self.mem_stamps = np.array([])
             return 0
 
-        else:
-
-            ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"  # noqa: F841, E501, N806, B950
-
-            _chosen_keys = [
-                "timestamp",
-                "MemTotal",
-                "MemFree",
-                "Buffers",
-                "Cached",
-                "Slab",
-                "SwapTotal",
-                "SwapFree",
-                "SwapCached",
-            ]
-
-            self.logger.debug("Read Memory csv report...")
-            t0 = time.time()  # noqa: E702
-            mem_report_lines, keys_with_idx = self.read_mem_csv_report(
-                csv_mem_report=csv_mem_report
-            )
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
-
-            # Check if memory report is empty
-            if not mem_report_lines:
-                self.logger.warning(
-                    "Memory CSV report is empty, creating empty profile"
-                )
-                self.mem_prof = {key: np.array([]) for key in _chosen_keys}
-                self.mem_stamps = np.array([])
-                return 0
-
-            self.logger.debug("Create Memory profile...")
-            t0 = time.time()
-            memory_dict = {key: [] for key in _chosen_keys}
-
-            for line in mem_report_lines[1:]:
-                for key in memory_dict:
-                    memory_dict[key] += [float(line[keys_with_idx[key]])]
+        self.logger.debug("Create Memory profile...")
+        t0 = time.time()
+        memory_dict = {key: [] for key in _chosen_keys}
 
         for line in mem_report_lines[1:]:
             for key in memory_dict:
@@ -514,6 +480,7 @@ class SystemData:
         self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
+
 
     def plot_memory_usage(self, annotate_with_cmds=None) -> float:
         """
@@ -843,7 +810,9 @@ class SystemData:
 
         # Check if network report data is empty
         if not net_ts_raw:
-            self.logger.warning("Network CSV report data is empty, creating empty profile")
+            self.logger.warning(
+                "Network CSV report data is empty, creating empty profile"
+            )
             self.net_prof = {}
             self.net_data = {}
             self.net_stamps = np.array([])
@@ -872,7 +841,8 @@ class SystemData:
         for key in net_ts_raw:
             for metric_key in self.net_metric_keys:
                 self.net_data[key][metric_key] = (
-                    net_ts_raw[key][metric_key][-1] - net_ts_raw[key][metric_key][0]
+                    net_ts_raw[key][metric_key][-1]
+                    - net_ts_raw[key][metric_key][0]
                 )
                 for stamp in range(nstamps):
                     self.net_prof[key][metric_key][stamp] = (
@@ -880,56 +850,7 @@ class SystemData:
                         - net_ts_raw[key][metric_key][stamp]
                     ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
 
-            self.logger.debug("Read Network csv report...")
-            t0 = time.time()  # noqa: E702
-            net_ts_raw, timestamps_raw = self.read_net_csv_report(
-                csv_net_report=csv_net_report
-            )
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
-
-            # Check if network report data is empty
-            if not net_ts_raw:
-                self.logger.warning(
-                    "Network CSV report data is empty, creating empty profile"
-                )
-                self.net_prof = {}
-                self.net_data = {}
-                self.net_stamps = np.array([])
-                self.net_interfs = []
-                return
-
-            self.logger.debug("Create Network profile...")
-            t0 = time.time()
-            nstamps = len(timestamps_raw) - 1
-            self.net_stamps = np.zeros(nstamps)
-            for stamp in range(nstamps):
-                self.net_stamps[stamp] = (
-                    timestamps_raw[stamp + 1] + timestamps_raw[stamp]
-                ) / 2
-
-            # Init network profile
-            for interf in self.net_interfs:
-                self.net_prof[interf] = {
-                    key: np.zeros(nstamps) for key in self.net_metric_keys
-                }
-                self.net_data[interf] = {
-                    key: 0 for key in self.net_metric_keys
-                }  # noqa: C420
-
-            # Fill in
-            for key in net_ts_raw:
-                for metric_key in self.net_metric_keys:
-                    self.net_data[key][metric_key] = (
-                        net_ts_raw[key][metric_key][-1]
-                        - net_ts_raw[key][metric_key][0]
-                    )
-                    for stamp in range(nstamps):
-                        self.net_prof[key][metric_key][stamp] = (
-                            net_ts_raw[key][metric_key][stamp + 1]
-                            - net_ts_raw[key][metric_key][stamp]
-                        ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
-
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+        self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
     def plot_network(
         self,
@@ -1415,7 +1336,9 @@ class SystemData:
 
         # Check if IB report data is empty
         if not ib_ts_raw:
-            self.logger.warning("IB CSV report data is empty, creating empty profile")
+            self.logger.warning(
+                "IB CSV report data is empty, creating empty profile"
+            )
             self.ib_prof = {}
             self.ib_data = {}
             self.ib_stamps = np.array([])
@@ -1441,66 +1364,20 @@ class SystemData:
                 key: 0 for key in self.ib_metric_keys
             }  # noqa: C420
 
-            self.logger.debug("Read IB csv report...")
-            t0 = time.time()  # noqa: E702
-            ib_ts_raw, timestamps_raw = self.read_ib_csv_report(
-                csv_ib_report=csv_ib_report
-            )
-            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
-
-            # Check if IB report data is empty
-            if not ib_ts_raw:
-                self.logger.warning(
-                    "IB CSV report data is empty, creating empty profile"
-                )
-                self.ib_prof = {}
-                self.ib_data = {}
-                self.ib_stamps = np.array([])
-                self.ib_interfs = []
-                return
-
-            self.logger.debug("Create IB profile...")
-            t0 = time.time()
-            nstamps = len(timestamps_raw) - 1
-
-            self.ib_stamps = np.zeros(nstamps)
-            for stamp in range(nstamps):
-                self.ib_stamps[stamp] = (
-                    timestamps_raw[stamp + 1] + timestamps_raw[stamp]
-                ) / 2
-
-            # Init infiniband profile
-            for interf in self.ib_interfs:
-                self.ib_prof[interf] = {
-                    key: np.zeros(nstamps) for key in self.ib_metric_keys
-                }
-                self.ib_data[interf] = {
-                    key: 0 for key in self.ib_metric_keys
-                }  # noqa: C420
-
-            # Fill in
-            BYTES_UNIT = (1 / 4) * 1000**2  # noqa: N806 (MB)
-            for interf in self.ib_interfs:
-                for metric_key in self.ib_metric_keys:
-                    for stamp in range(nstamps):
-                        self.ib_prof[interf][metric_key][stamp] = (
-                            (
-                                ib_ts_raw[interf][metric_key][stamp + 1]
-                                - ib_ts_raw[interf][metric_key][stamp]
-                            )
-                            / (
-                                timestamps_raw[stamp + 1]
-                                - timestamps_raw[stamp]
-                            )
-                            / BYTES_UNIT
-                        )
-
-                    self.ib_data[interf][metric_key] = int(
+        # Fill in
+        BYTES_UNIT = (1 / 4) * 1000**2  # noqa: N806 (MB)
+        for interf in self.ib_interfs:
+            for metric_key in self.ib_metric_keys:
+                for stamp in range(nstamps):
+                    self.ib_prof[interf][metric_key][stamp] = (
                         (
                             ib_ts_raw[interf][metric_key][stamp + 1]
                             - ib_ts_raw[interf][metric_key][stamp]
                         )
-                        / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
+                        / (
+                            timestamps_raw[stamp + 1]
+                            - timestamps_raw[stamp]
+                        )
                         / BYTES_UNIT
                     )
 
