@@ -1,6 +1,8 @@
 #!/usr/bin/bash
 
 args=""
+use_binary=false
+
 # Priority 2: parse command line args
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -16,6 +18,10 @@ while [[ $# -gt 0 ]]; do
             report_template=$2  # belongs to user only, never overridden by BENCHMON_ARGS
             shift 2
             ;;
+        "-b" | "--binary")
+            use_binary=true
+            shift 1
+            ;;
         *)
             args="$args $1"
             shift 1
@@ -23,7 +29,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Priority 1: BENCHMON_ARGS overrides level, save-dir, verbose only
+# Priority 1: BENCHMON_ARGS overrides level, save-dir, verbose, binary only
 if [[ -n "${BENCHMON_ARGS}" ]]; then
     echo "[INFO]: BENCHMON_ARGS is set, overriding matching arguments." >&2
     eval set -- "$BENCHMON_ARGS"
@@ -41,6 +47,10 @@ if [[ -n "${BENCHMON_ARGS}" ]]; then
                 args="$args --verbose"
                 shift 1
                 ;;
+            "-b" | "--binary")
+                use_binary=true
+                shift 1
+                ;;
             *)
                 shift 1  # ignore other args (belong to benchmon-start)
                 ;;
@@ -49,9 +59,17 @@ if [[ -n "${BENCHMON_ARGS}" ]]; then
 fi
 
 # Priority 3: defaults if nothing set
+# NOTE: use_binary is NEVER defaulted here on purpose. It can only become true
+# via BENCHMON_ARGS or an explicit -b/--binary on the command line above.
 level=${level:-0}
 save_dir="${save_dir:-./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}}"
-echo "[INFO]: benchmon-postprocess --level $level --save-dir $save_dir${report_template:+ --report-template $report_template} $args" >&2
+
+binary_arg=""
+if [[ "$use_binary" == true ]]; then
+    binary_arg="--binary"
+fi
+
+echo "[INFO]: benchmon-postprocess --level $level --save-dir $save_dir${report_template:+ --report-template $report_template}${binary_arg:+ $binary_arg} $args" >&2
 
 traces_repo=$save_dir #/benchmon_traces_$(hostname)
 
@@ -66,27 +84,27 @@ if [[ -f "$events_file" ]]; then
     annotations_args="--annotate-with-log $events_file"
 fi
 if [[ $level == 0 ]]; then
-    $benchmon_visu --recursive --cpu --mem --net --disk --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo
+    $benchmon_visu --recursive --cpu --mem --net --disk $binary_arg --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
+    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops $binary_arg --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo
     # Only call benchmon-visu with annotation if annotation arguments are set
     # (i.e., events.csv exists), to avoid generating duplicate non-annotated plots
     if [[ -n "$annotations_args" ]]; then
-        $benchmon_visu --recursive --cpu --mem --net --disk --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
-        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo
+        $benchmon_visu --recursive --cpu --mem --net --disk $binary_arg --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
+        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops $binary_arg --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo
     fi
 elif [[ $level == 1 ]]; then
-    $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
+    $benchmon_visu --recursive --cpu --mem --net --disk --inline-call $binary_arg --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
+    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call $binary_arg --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
     if [[ -n "$annotations_args" ]]; then
-        $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
-        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo # --pow
+        $benchmon_visu --recursive --cpu --mem --net --disk --inline-call $binary_arg --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
+        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call $binary_arg --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo # --pow
     fi
 elif [[ $level == 2 ]]; then
-    $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --call --call-depth 4 --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
-    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
+    $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --call --call-depth 4 $binary_arg --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_overview $traces_repo
+    $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 $binary_arg --fig-fmt png --fig-dpi medium --fig-name benchmon_figure_detailed $traces_repo # --pow
     if [[ -n "$annotations_args" ]]; then
-        $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --call --call-depth 4 --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
-        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo # --pow
+        $benchmon_visu --recursive --cpu --mem --net --disk --inline-call --call --call-depth 4 $binary_arg --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_overview_annotated $traces_repo
+        $benchmon_visu --recursive --cpu --cpu-all --cpu-freq --mem --net --net-all --net-data --disk --disk-data --disk-iops --inline-call --call --call-depth 4 $binary_arg --fig-fmt png --fig-dpi medium $annotations_args --fig-name benchmon_figure_detailed_annotated $traces_repo # --pow
     fi
 fi
 
@@ -94,18 +112,25 @@ fi
 # Postprocessing: Benchmon report
 # ------------------------------
 
-# software/hardware report file
+# software report file (swmon*.json) - warn if none found
 software_report=()
 for f in "$save_dir"/swmon*.json; do
     software_report+=("$f")
 done
 software_report="${software_report[0]:-}"
+if [[ -z "$software_report" ]]; then
+    echo "[WARNING]: benchmon-postprocess: no swmon*.json found in $save_dir, skipping --software-report" >&2
+fi
 
+# hardware report file (hwmon*.json) - warn if none found
 hardware_report=()
 for f in "$save_dir"/hwmon*.json; do
     hardware_report+=("$f")
 done
 hardware_report="${hardware_report[0]:-}"
+if [[ -z "$hardware_report" ]]; then
+    echo "[WARNING]: benchmon-postprocess: no hwmon*.json found in $save_dir, skipping --hardware-report" >&2
+fi
 
 # report template
 eval "$($(dirname ${BASH_SOURCE[0]})/benchmon-config)"
@@ -114,24 +139,25 @@ report_template="${report_template:-$BENCHMON_LIB_PATH/report/template.md}"
 if [[ -f "$report_template" ]]; then
     template_arg=(--template "$report_template")
 else
-    echo "warning: template not found ($report_template), using default ($BENCHMON_LIB_PATH/report/template.md)" >&2
+    echo "[WARNING]: benchmon-postprocess: template not found ($report_template), using default ($BENCHMON_LIB_PATH/report/template.md)" >&2
     template_arg=(--template "$BENCHMON_LIB_PATH/report/template.md")
 fi
 
 # figure path for report
 figure_path="$traces_repo/benchmon_traces_$(hostname)/benchmon_figure_detailed.png"
-if [[ ! -f "$figure_path" ]]; then
-    echo "warning: figure not found ($figure_path), report will be generated without image" >&2
+if [[ -f "$figure_path" ]]; then
+    figure_arg=(--figure-path "$figure_path")
+else
+    echo "[WARNING]: benchmon-postprocess: figure not found ($figure_path), report will be generated without image" >&2
+    figure_arg=()
 fi
-figure_arg=(--figure-path "$figure_path")
 
 # optional ps-report
 ps_report="$traces_repo/benchmon_traces_$(hostname)/timing_mapping_report.csv"
-
 if [[ -f "$ps_report" ]]; then
     ps_arg=(--ps-report "$ps_report")
 else
-    echo "warning: timing_mapping_report.csv not found, skipping --ps-report" >&2
+    echo "[WARNING]: benchmon-postprocess: timing_mapping_report.csv not found, skipping --ps-report" >&2
     ps_arg=()
 fi
 
@@ -140,7 +166,6 @@ report_dir="$traces_repo/benchmon_traces_$(hostname)"
 report_md="$report_dir/benchmon_report.md"
 report_html="$report_dir/benchmon_report.html"
 
-# run benchmon report
 echo "[INFO]: running benchmon-report (cwd=$(pwd)) -> $report_md" >&2
 benchmon-report \
     --software-report "$software_report" \
@@ -148,22 +173,36 @@ benchmon-report \
     "${figure_arg[@]}" \
     "${ps_arg[@]}" \
     "${template_arg[@]}" \
-    --output "$report_md"
+    --output "$report_md" \
+    || echo "[WARNING]: benchmon-postprocess: benchmon-report failed, report not generated" >&2
 
 # convert to HTML
-if command -v pandoc >/dev/null 2>&1 && [[ -f "$report_md" ]]; then
-    pandoc "$report_md" -f markdown -t html \
-        -o "$report_html"
+if [[ -f "$report_md" ]]; then
+    if command -v pandoc >/dev/null 2>&1; then
+        pandoc "$report_md" -f markdown -t html -o "$report_html"
+    else
+        echo "[WARNING]: benchmon-postprocess: 'pandoc' not found, skipping HTML conversion" >&2
+    fi
 fi
 
 # ------------------------------
 # Postprocessing: HPCtoolkit outputs
 # ------------------------------
 
-# Loop on the directories to produce the HPCtoolkit outputs
-traces=($save_dir/hpctoolkit_traces/hpctoolkit_*/)
-for trace_dir in ${traces[@]}; do
-    hpcstruct $trace_dir --cache $(dirname ${trace_dir%/*})cache
-    hpcprof -o $(dirname ${trace_dir%/*})/database_$(basename ${trace_dir%/*}) -M stats $trace_dir
-done
-wait
+if ! command -v hpcstruct >/dev/null 2>&1 || ! command -v hpcprof >/dev/null 2>&1; then
+    echo "[WARNING]: benchmon-postprocess: 'hpcstruct'/'hpcprof' not found, skipping HPCtoolkit post-processing" >&2
+else
+    # Loop on the directories to produce the HPCtoolkit outputs
+    shopt -s nullglob
+    traces=($save_dir/hpctoolkit_traces/hpctoolkit_*/)
+    shopt -u nullglob
+    if [[ ${#traces[@]} -eq 0 ]]; then
+        echo "[WARNING]: benchmon-postprocess: no HPCtoolkit traces found in $save_dir/hpctoolkit_traces, skipping" >&2
+    else
+        for trace_dir in ${traces[@]}; do
+            hpcstruct $trace_dir --cache $(dirname ${trace_dir%/*})cache
+            hpcprof -o $(dirname ${trace_dir%/*})/database_$(basename ${trace_dir%/*}) -M stats $trace_dir
+        done
+        wait
+    fi
+fi

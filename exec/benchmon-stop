@@ -2,9 +2,35 @@
 # Sends SIGUSR1 (not SIGTERM) so that benchmon-run is not accidentally stopped
 # by SLURM's end-of-job SIGTERM — only an explicit call to benchmon-stop can stop benchmon-run
 #   and the user can be sure that when they call benchmon-stop, benchmon-run will be stopped.
+# --binary: additionally sends SIGTERM to the C++ subprocess (rt-monitor does not handle SIGUSR1).
+
+use_binary=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        "--binary" | "-b") use_binary=true; shift ;;
+        *) shift ;;
+    esac
+done
+
+# Auto-detect --binary from BENCHMON_ARGS
+if [[ "$use_binary" == false ]] && [[ "${BENCHMON_ARGS}" == *"--binary"* ]]; then
+    use_binary=true
+fi
+
+# --binary: send SIGTERM to C++ subprocess(es) via their dedicated PID file
+if [[ "$use_binary" == true ]]; then
+    binary_pid_file=./.benchmon-run_binary_pids_${OAR_JOB_ID}${SLURM_JOB_ID}_$(hostname)
+    if [[ -f "$binary_pid_file" ]]; then
+        for pid in $(cat "$binary_pid_file"); do
+            kill -TERM "$pid" 2>/dev/null && echo "[INFO]: benchmon-stop: SIGTERM -> binary PID $pid" >&2
+        done
+        rm -v "$binary_pid_file"
+    fi
+fi
+
+# Original behaviour unchanged: SIGUSR1 to the Python benchmon-run process
 benchmon_pid_file=./.benchmon-run_pid_${OAR_JOB_ID}${SLURM_JOB_ID}_$(hostname)
-if [[ -f ${benchmon_pid_file} ]]
-then
+if [[ -f ${benchmon_pid_file} ]]; then
     pid=$(cat ${benchmon_pid_file})
     kill -USR1 ${pid}
     while [ -e /proc/${pid} ]; do
@@ -12,4 +38,3 @@ then
     done
     rm -v ${benchmon_pid_file}
 fi
-
