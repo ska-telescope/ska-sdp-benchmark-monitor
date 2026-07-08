@@ -212,12 +212,10 @@ class RunMonitor:
         """
         Get benchmon-run pid
         """
-        filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
+        filename = f"./.benchmon-run_binary_pids_{JOBID}_{HOSTNAME}"
         with open(filename, "w") as fn:
-            for id in pids:
-                fn.write(f"{id},")
-
-        self.logger.debug(f"PID file created: {filename}")
+            fn.write(" ".join(str(p) for p in pids))
+        self.logger.debug(f"Binary PID file created: {filename}")
 
 
     def run_sys_monitoring_binary(self):
@@ -427,10 +425,13 @@ class RunMonitor:
 
             self.logger.debug(f"Terminated perf (power) with stdout: {process_stdout}")
 
-        # Kill sys processes
+
         for process in self.sys_process:
             try:
-                process.send_signal(signal.SIGUSR1)
+                if self.binary_sys_monitoring:
+                    process.terminate()  # SIGTERM : rt-monitor
+                else:
+                    process.send_signal(signal.SIGUSR1)
                 # @cs allow enough time for monitoring scripts to terminate and write data
                 timeout = int(2 / self.sys_freq) + 5
                 process_stdout, _ = process.communicate(timeout=timeout)
