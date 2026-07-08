@@ -465,6 +465,15 @@ class ReportGenerator:
         if hw_report_path:
             with open(hw_report_path, "r") as file:
                 hw_data = json.load(file)
+            # Normalize single-node dicts to {hostname: node_data} so both formats
+            # are processed identically.
+            if "cpu" in hw_data or "system" in hw_data:
+                node_name = (
+                    hw_data.get("system", {}).get("hostname")
+                    or os.path.splitext(os.path.basename(hw_report_path))[0]
+                )
+                hw_data = {node_name: hw_data}
+
             hw_str = "\n".join(
                 generate_hidden(node, hardware_description(node_data))
                 for node, node_data in hw_data.items()
@@ -475,6 +484,10 @@ class ReportGenerator:
         if sw_report_path:
             with open(sw_report_path, "r") as file:
                 sw_data = json.load(file)
+
+            if "spack_dependencies" in sw_data or "pyenv" in sw_data or "env" in sw_data:
+                node_name = os.path.splitext(os.path.basename(sw_report_path))[0]
+                sw_data = {node_name: sw_data}
 
             spack_env_str = ""
             python_env_str = ""
