@@ -4,6 +4,7 @@ Python module to read and plot system resources measurements
 
 import logging
 import itertools
+import os
 import time
 from math import ceil
 
@@ -36,6 +37,94 @@ def read_c_string(file):
             break
         chars.append(byte)
     return b''.join(chars).decode('utf-8')
+
+
+_NET_INTERFACE_BYTES = set(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:-")
+
+
+def _is_net_interface_byte(value: int) -> bool:
+    return value in _NET_INTERFACE_BYTES
+
+
+def read_variable_net_samples(file_path: str):
+    """Read network samples written by rt-monitor's variable-length binary format."""
+    with open(file_path, "rb") as file:
+        data = file.read()
+
+    if not data:
+        return [], []
+
+    if len(data) < 8:
+        raise ValueError("Network binary report is too short to contain a timestamp.")
+
+    offset = 0
+    samples_list = []
+    interfaces = []
+
+    first_timestamp = int.from_bytes(data[offset:offset + 8], byteorder="little", signed=False)
+    offset += 8
+
+    while offset < len(data):
+        if not _is_net_interface_byte(data[offset]):
+            break
+
+        name_start = offset
+        while offset < len(data) and _is_net_interface_byte(data[offset]):
+            offset += 1
+
+        if offset + 16 > len(data):
+            raise ValueError("Network binary report ended mid-sample while reading the first timestamp block.")
+
+        interface = data[name_start:offset].decode("utf-8")
+        rx_bytes = int.from_bytes(data[offset:offset + 8], byteorder="little", signed=False)
+        tx_bytes = int.from_bytes(data[offset + 8:offset + 16], byteorder="little", signed=False)
+        offset += 16
+
+        interfaces.append(interface)
+        samples_list.append({
+            "timestamp": first_timestamp,
+            "interface": interface,
+            "rx-bytes": rx_bytes,
+            "tx-bytes": tx_bytes,
+        })
+
+    if not interfaces:
+        raise ValueError("Network binary report did not contain any interface records.")
+
+    while offset < len(data):
+        if offset + 8 > len(data):
+            raise ValueError("Network binary report ended mid-sample while reading a timestamp.")
+
+        timestamp = int.from_bytes(data[offset:offset + 8], byteorder="little", signed=False)
+        offset += 8
+
+        for interface in interfaces:
+            name_bytes = interface.encode("utf-8")
+            name_end = offset + len(name_bytes)
+            if name_end > len(data):
+                raise ValueError("Network binary report ended mid-sample while reading an interface name.")
+
+            if data[offset:name_end] != name_bytes:
+                raise ValueError(
+                    f"Network binary report interface order changed or data is corrupted near offset {offset}."
+                )
+            offset = name_end
+
+            if offset + 16 > len(data):
+                raise ValueError("Network binary report ended mid-sample while reading counters.")
+
+            rx_bytes = int.from_bytes(data[offset:offset + 8], byteorder="little", signed=False)
+            tx_bytes = int.from_bytes(data[offset + 8:offset + 16], byteorder="little", signed=False)
+            offset += 16
+
+            samples_list.append({
+                "timestamp": timestamp,
+                "interface": interface,
+                "rx-bytes": rx_bytes,
+                "tx-bytes": tx_bytes,
+            })
+
+    return samples_list, interfaces
 
 
 class SystemDataBinary:
@@ -581,20 +670,10 @@ class SystemDataBinary:
         """
         Read network report
         """
-        samples_list = read_binary_samples(bin_net_report, system_binary_reader.hf_net_sample)
+        samples_list, self.net_interfs = read_variable_net_samples(bin_net_report)
 
-        # Get network interfaces
-        ts_0 = samples_list[0]["timestamp"]
-        ts = ts_0
-        line_idx = 0
-        self.net_interfs = []
-        while ts == ts_0:
-            self.net_interfs += [samples_list[line_idx]["interface"]]
-            line_idx += 1
-            ts = samples_list[line_idx]["timestamp"]
         nnet_interf = len(self.net_interfs)
-        self.net_metric_keys = [key for key, _, enabled in system_binary_reader.hf_net_sample().field_definitions
-                                if key not in ["timestamp", "interface"] and enabled]
+        self.net_metric_keys = ["rx-bytes", "tx-bytes"]
 
         net_ts_raw = {}
         for interf in self.net_interfs:
