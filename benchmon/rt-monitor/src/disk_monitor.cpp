@@ -14,6 +14,13 @@
 #include "spdlog/common.h"
 #include "thread_safe_queue.hpp"
 
+#ifdef major
+#undef major
+#endif
+#ifdef minor
+#undef minor
+#endif
+
 namespace rt_monitor::disk
 {
 struct block_device_info
