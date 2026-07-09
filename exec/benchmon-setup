@@ -71,7 +71,10 @@ args="$args --save-dir $save_dir_arg"
 echo "[INFO]: benchmon-setup level=$level save-dir=$save_dir_arg" >&2
 
 # Run benchmon-check to assess conditions in which we are operating
-$(dirname ${BASH_SOURCE[0]})/benchmon-check
+if ! $(dirname ${BASH_SOURCE[0]})/benchmon-check; then
+    echo "[ERROR]: benchmon-setup: benchmon-check reported critical missing requirement(s) (see above), aborting setup." >&2
+    return 1 2>/dev/null || exit 1
+fi
 
 # Create the target directory
 mkdir -p "$save_dir_arg"

@@ -21,6 +21,7 @@
 
 ### Fixed
 - Fixed report generation in `benchmon-postprocess`
+- Fixed environment validation in `benchmon-check` to aggregate and report all configuration warnings at once, while ensuring `benchmon-setup` properly aborts only on critical dependency failures.
 
 ### Removed
 - Removed `.pkl` caching and the `pkl_dir/` directory.
