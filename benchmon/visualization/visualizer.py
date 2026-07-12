@@ -22,6 +22,8 @@ from .system_metrics_binary import SystemDataBinary
 from .utils import read_annotation_csv, plot_stage_timeline
 from .utils import plot_stage_markers
 from .utils import read_ical_log_file, plot_ical_stages
+from .utils import read_annotation_csv_pss, is_pss_annotation, plot_pss_annotation  # PSS support
+from .utils import compute_concurrency_from_stages, plot_concurrency      # PSS concurrency view
 
 
 class BenchmonVisualizer:
@@ -80,28 +82,59 @@ class BenchmonVisualizer:
         self.inline_calls_prof = None
 
         self.annotation_stages = None
+        self.annotation_stages_pss = None
         if self.args.annotate_with_log:
-            # Expecting a CSV file passed with --annotate-with-log=name.csv
-            # or defaulting to annotations.csv
             filename = self.args.annotate_with_log
             try:
                 node_name = os.path.basename(os.path.realpath(self.traces_repo)).replace("benchmon_traces_", "")
                 events_dir = os.path.dirname(os.path.dirname(self.traces_repo))
-                self.logger.debug(f"Using events file from: {events_dir}")
-                self.logger.debug(f"Filtering annotations for node: {node_name}")
-                self.annotation_stages = read_annotation_csv(
-                    events_dir,
-                    filename,
-                    node_name=node_name,
-                )
 
-                if not self.annotation_stages:
-                    self.logger.warning(f"No annotations found for node {node_name}")
-                    self.annotation_stages = None
+                # Peek at the CSV to detect PSS format before any parsing
+                _is_pss_csv = False
+                _csv_path = filename if (os.path.isabs(filename) or os.path.exists(filename)) \
+                            else os.path.join(events_dir, filename)
+                if os.path.exists(_csv_path):
+                    with open(_csv_path, "r") as _f:
+                        import csv as _csv
+                        _reader = _csv.DictReader(_f)
+                        for _row in _reader:
+                            if _row.get("pipeline", "").strip().upper() == "PSS":
+                                _is_pss_csv = True
+                                break
+
+                if _is_pss_csv:
+                    self.logger.debug("PSS CSV format detected — using PSS reader directly")
+                    try:
+                        self.annotation_stages_pss = read_annotation_csv_pss(
+                            events_dir, filename, node_name=None,
+                        )
+                        if self.annotation_stages_pss:
+                            # Set annotation_stages to non-None so subplot is reserved
+                            self.annotation_stages = self.annotation_stages_pss
+                        else:
+                            self.logger.warning("PSS reader returned no stages")
+                    except Exception as e:
+                        self.logger.warning(f"PSS annotation read failed: {e}")
+                else:
+                    # Standard INST-style CSV
+                    self.annotation_stages = read_annotation_csv(
+                        events_dir, filename, node_name=node_name,
+                    )
+                    if not self.annotation_stages:
+                        self.logger.debug(
+                            f"No annotations for node '{node_name}', retrying without node filter"
+                        )
+                        self.annotation_stages = read_annotation_csv(
+                            events_dir, filename, node_name=None,
+                        )
+                    if not self.annotation_stages:
+                        self.logger.warning("Annotation file yielded no stages")
+                        self.annotation_stages = None
 
             except FileNotFoundError:
                 self.logger.warning(f"Annotation file not found: {filename}")
                 self.annotation_stages = None
+
         # Reserve one subplot for annotation timeline
         if self.annotation_stages:
             self.n_subplots += 1
@@ -497,7 +530,7 @@ class BenchmonVisualizer:
         """
         ax_pipeline = None
         ax_last = None
-        # Check if we have any subplots to create
+
         if self.n_subplots <= 0:
             self.logger.warning("No subplots to create, skipping plotting")
             return
@@ -508,8 +541,19 @@ class BenchmonVisualizer:
 
             sbp = 1
             annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
-            # --- Pipeline events plot ---
-            if self.annotation_stages:
+
+            # --- Pipeline events / PSS concurrency subplot ---
+            if self.annotation_stages_pss:
+                # PSS mode: concurrency fill_between view
+                self.logger.debug("Plotting PSS stage concurrency")
+                ax_pipeline = plt.subplot(self.n_subplots, 1, sbp)
+                sbp += 1
+                concurrency_dict = compute_concurrency_from_stages(self.annotation_stages_pss)
+                plot_concurrency(concurrency_dict, ax=ax_pipeline)
+                ax_pipeline.set_xlim(self.xlim)
+
+            elif self.annotation_stages:
+                # Standard INST mode: horizontal timeline segments
                 self.logger.debug("Plotting annotation timeline")
                 ax_pipeline = plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
@@ -518,17 +562,17 @@ class BenchmonVisualizer:
                 ax_pipeline.grid(True)
 
             ax_last = None
+
             # CPU plot
             if self.args.cpu:
                 if self.system_metrics:
-                    self.logger.debug("Plotting  cpu")
+                    self.logger.debug("Plotting cpu")
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
                     ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
-
                 else:
                     self.logger.warning("No system metrics available for CPU plot")
 
@@ -536,7 +580,7 @@ class BenchmonVisualizer:
             if bool(self.args.cpu_cores_full):
                 if self.system_metrics:
                     for core_number in self.args.cpu_cores_full.split(","):
-                        self.logger.debug(f"Plotting  full cpu core {core_number}")
+                        self.logger.debug(f"Plotting full cpu core {core_number}")
                         ax = plt.subplot(self.n_subplots, 1, sbp)
                         sbp += 1
                         self.system_metrics.plot_cpu(number=core_number,
@@ -544,14 +588,13 @@ class BenchmonVisualizer:
                     ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
-
                 else:
                     self.logger.warning("No system metrics available for CPU cores plot")
 
             # CPU per core plot
             if self.args.cpu_all:
                 if self.system_metrics:
-                    self.logger.debug("Plotting  cpu per core")
+                    self.logger.debug("Plotting cpu per core")
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
@@ -560,14 +603,13 @@ class BenchmonVisualizer:
                     ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages)
-
                 else:
                     self.logger.warning("No system metrics available for CPU per core plot")
 
             # CPU cores frequency plot
             if self.args.cpu_freq:
                 if self.system_metrics:
-                    self.logger.debug("Plotting  cpu cores frequency")
+                    self.logger.debug("Plotting cpu cores frequency")
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
@@ -575,7 +617,6 @@ class BenchmonVisualizer:
                                                                annotate_with_cmds=annotate_with_cmds)
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=freqmax)
-
                     ax_last = plt.gca()
                 else:
                     self.logger.warning("No system metrics available for CPU frequency plot")
@@ -583,21 +624,20 @@ class BenchmonVisualizer:
             # Memory/swap plot
             if self.args.mem:
                 if self.system_metrics:
-                    self.logger.debug("Plotting  memory/swap")
+                    self.logger.debug("Plotting memory/swap")
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     memmax = self.system_metrics.plot_memory_usage(annotate_with_cmds=annotate_with_cmds)
                     ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=memmax)
-
                 else:
                     self.logger.warning("No system metrics available for memory plot")
 
             # Network plot
             if self.args.net or self.args.net_all or self.args.net_data:
                 if self.system_metrics:
-                    self.logger.debug("Plotting  network")
+                    self.logger.debug("Plotting network")
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
@@ -608,18 +648,16 @@ class BenchmonVisualizer:
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=netmax)
                     ax_last = plt.gca()
-
                 else:
                     self.logger.warning("No system metrics available for network plot")
 
             # Infiniband plot
             if self.args.ib:
                 if self.system_metrics:
-                    self.logger.debug("Plotting  infiniband")
+                    self.logger.debug("Plotting infiniband")
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
-
                     ax_last = plt.gca()
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=ibmax)
@@ -629,7 +667,7 @@ class BenchmonVisualizer:
             # Disk plot
             if self.args.disk:
                 if self.system_metrics:
-                    self.logger.debug("Plotting  disk")
+                    self.logger.debug("Plotting disk")
                     ax = plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
@@ -639,7 +677,6 @@ class BenchmonVisualizer:
                                                             annotate_with_cmds=annotate_with_cmds)
                     if self.ical_stages:
                         plot_ical_stages(self.ical_stages, ymax=diskmax)
-
                     ax_last = plt.gca()
                 else:
                     self.logger.warning("No system metrics available for disk plot")
@@ -650,24 +687,20 @@ class BenchmonVisualizer:
                 ax = plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 powmax = [0]
-
                 if self.args.pow and self.power_perf_metrics:
                     try:
                         powmax += [self.power_perf_metrics.plot_events()]
                     except Exception as e:
                         self.logger.warning(f"Error plotting perf power events: {e}")
-
                 if self.args.pow_g5k and self.power_g5k_metrics:
                     try:
                         powmax += [self.power_g5k_metrics.plot_g5k_pow_profiles()]
                     except Exception as e:
                         self.logger.warning(f"Error plotting G5K power profiles: {e}")
-
                 if annotate_with_cmds:
                     annotate_with_cmds(ymax=max(powmax))
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=max(powmax))
-
                 plt.xticks(*self.xticks)
                 plt.xlim(self.xlim)
                 plt.ylabel("Power (W)")
@@ -685,20 +718,28 @@ class BenchmonVisualizer:
                                           legend_ncol=self.args.fig_call_legend_ncol)
                 else:
                     self.logger.warning("No call traces available for call graph plot")
-            if self.annotation_stages and ax_pipeline is not None and ax_last is not None:
-                plot_stage_markers(self.annotation_stages, ax_top=ax_pipeline, ax_bottom=ax_last, xlim=self.xlim,)
+
+            # --- Stage markers: ONLY for standard (non-PSS) annotations ---
+            if not self.annotation_stages_pss \
+                    and self.annotation_stages \
+                    and ax_pipeline is not None \
+                    and ax_last is not None:
+                plot_stage_markers(
+                    self.annotation_stages,
+                    ax_top=ax_pipeline,
+                    ax_bottom=ax_last,
+                    xlim=self.xlim,
+                )
 
             fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
             plt.tight_layout(h_pad=1.5)
-            # Enable interactive plot
+
             if self.args.interactive:
                 self.logger.debug("Start interactive session with matplotlib")
                 plt.show()
 
-            # Figure saving parameters
             dpi = {"unset": "figure", "low": 200, "medium": 600, "high": 1200}
             figpath = f"{self.traces_repo}" if self.args.fig_path is None else self.args.fig_path
-
             try:
                 for fmt in self.args.fig_fmt.split(","):
                     figname = f"{figpath}/{self.args.fig_name}.{fmt}"
@@ -710,6 +751,7 @@ class BenchmonVisualizer:
         except Exception as e:
             self.logger.error(f"Error in run_plots: {e}")
             return
+
 
     def annotate_with_cmds(self, ymax: float = 100.) -> None:
         """
