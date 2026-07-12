@@ -169,6 +169,11 @@ class RunMonitor:
         else:
             self.logger.info("Monitoring started.")
             while self.should_run:
+                for proc in self.sys_process:
+                    if proc.poll() is not None and proc.poll() != 0:
+                        self.logger.critical(f"A monitoring script crashed! Error:\n{proc.stdout.read().strip() if proc.stdout else ''}")
+                        self.should_run = False
+                        break
                 time.sleep(1)
 
         self._shutdown()

@@ -1,10 +1,24 @@
 #!/usr/bin/bash
 
+# Check dependency
+if ! command -v bc &> /dev/null; then
+    echo "CRITICAL: 'bc' command not found." >&2
+    exit 1
+fi
+
 freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
 
 report_cpu_freq=$2
 cpu0_repo=/sys/devices/system/cpu/cpu0
+
+# Check hardware support
+if [ ! -d "${cpu0_repo}/cpufreq" ]; then
+    echo "timestamp,cpu_core,frequency[N/A]" > $report_cpu_freq
+    echo "[WARNING] cpufreq monitoring not supported on this hardware." >&2
+    exit 0
+fi
+
 cpu_freq_min=$(cat ${cpu0_repo}/cpufreq/cpuinfo_min_freq)
 cpu_freq_max=$(cat ${cpu0_repo}/cpufreq/cpuinfo_max_freq)
 echo "timestamp,cpu_core,frequency[$cpu_freq_min-$cpu_freq_max]" > $report_cpu_freq

@@ -1,5 +1,11 @@
 #!/usr/bin/bash
 
+# Check dependency
+if ! command -v bc &> /dev/null; then
+    echo "CRITICAL: 'bc' command not found." >&2
+    exit 1
+fi
+
 freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
 

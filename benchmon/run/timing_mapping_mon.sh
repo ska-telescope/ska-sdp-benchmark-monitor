@@ -3,6 +3,13 @@
 # Pass frequency as first argument, output filename as second, no-mapping as third to skipping mapping 
 freq=$1
 output=$2
+
+# Check dependency
+if ! command -v bc &> /dev/null; then
+    echo "CRITICAL: 'bc' command not found." >&2
+    exit 1
+fi
+
 if [ "$3" = 'no-mapping' ]; then
     ps_fields="ppid,pid,tid,etimes,lstart,cmd";
     awk_fields='$1, $2, $3'
