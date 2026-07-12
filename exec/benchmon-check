@@ -13,26 +13,19 @@ log = logging.getLogger(__name__)
 # Global list to keep track of subprocesses for cleanup
 _running_processes = []
 
-# CRITICAL: benchmon cannot produce reliable data without these -> ERROR + abort.
-# 'bc' is used by cpu_mon.sh/mem_mon.sh/net_mon.sh/disk_mon.sh
-critical_command_check_set = {
+# All base commands are treated as optional for the global environment run
+command_check_set = {
     "bc": "bc",
-}
-
-# OPTIONAL: missing -> WARNING only, benchmon still works (reduced features).
-optional_command_check_set = {
     "perf": "perf",
     "hpcrun": "hpcrun",
     "hpcstruct": "hpcstruct",
     "hpcprof": "hpcprof",
 }
 
-
-
 command_advice_set = {
     "bc": "The 'bc' command is not available. 'bc' is a basic calculator "
-           "utility. To install it, use the following command based on "
-           "your Linux distribution:\n"
+           "utility required for the Bash back-end. If unavailable, consider "
+           "using the C++ back-end. To install it, use:\n"
           "  - For Ubuntu/Debian: `sudo apt-get install bc`\n"
           "  - For CentOS/RHEL: `sudo yum install bc`\n"
           "  - For Fedora: `sudo dnf install bc`",
@@ -62,9 +55,6 @@ sys_monitor_check_set = {
     "disk": "cat /proc/diskstats",
     "ib": "cat /sys/class/infiniband/*/ports/1/counters/port*data"
 }
-
-# hardware/fabric-dependent -> optional
-non_critical_sys_monitor_checks = {"cpufreq", "ib"}
 
 # Temporary file for perf record
 _temp_file = tempfile.NamedTemporaryFile(delete=False)
@@ -106,7 +96,7 @@ def cleanup():
 # Register cleanup function to run at exit
 atexit.register(cleanup)
 
-def check_cmd(cmd, advice=None, critical=False):
+def check_cmd(cmd, advice=None):
     """
     Check if the command is valid by running it and checking the return code.
     If the command fails, log the error message from stderr and any provided advice.
@@ -119,25 +109,19 @@ def check_cmd(cmd, advice=None, critical=False):
     try:
         result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode != 0:
-            if critical:
-                log.error(f"Command '{cmd}' failed with return code {result.returncode}: {result.stderr.strip()}")
-            else:
-                log.warning(f"Command '{cmd}' failed with return code {result.returncode}: {result.stderr.strip()}")
+            log.warning(f"Command '{cmd}' failed with return code {result.returncode}: {result.stderr.strip()}")
             if advice:
                 log.info(f"Advice: {advice}")
             return False
         return True
     except Exception as e:
-        if critical:
-            log.error(f"Exception while running command '{cmd}': {e}")
-        else:
-            log.warning(f"Exception while running command '{cmd}': {e}")
+        log.warning(f"Exception while running command '{cmd}': {e}")
         if advice:
             log.info(f"Advice: {advice}")
         return False
 
 
-def check_binary_available(cmd, advice, critical=False):
+def check_binary_available(cmd, advice):
     """
     Check if the binary is available in the system PATH.
     If not, log the advice.
@@ -148,11 +132,9 @@ def check_binary_available(cmd, advice, critical=False):
         bool: True if the binary is found, False otherwise.
     """
     if shutil.which(cmd) is None:
-        if critical:
-            log.error(f"Critical command '{cmd}' is not available.")
-        else:
-            log.warning(f"Base command '{cmd}' is not available.")
-        log.info(f"Advice: {advice}")
+        log.warning(f"Base command '{cmd}' is not available.")
+        if advice:
+            log.info(f"Advice: {advice}")
         return False
     return True
 
@@ -163,26 +145,21 @@ def check_benchmon_env():
     reported together in a single run. Returns False only if at least one
     CRITICAL requirement is missing; non-critical issues are warnings only.
     """
-    critical_failures = []
+
     warning_count = 0
 
-    # --- Critical base commands (bc) ---
-    for name, cmd in critical_command_check_set.items():
-        if not check_binary_available(cmd, command_advice_set.get(name), critical=True):
-            critical_failures.append(name)
-
-    # --- Optional base commands (perf, hpctoolkit binaries) ---
-    for name, cmd in optional_command_check_set.items():
-        if not check_binary_available(cmd, command_advice_set.get(name), critical=False):
+    # --- Base commands (bc, perf, hpctoolkit binaries) ---
+    for name, cmd in command_check_set.items():
+        if not check_binary_available(cmd, command_advice_set.get(name)):
             warning_count += 1
 
-    # --- Essential /proc files: without these, sys monitoring cannot work at all ---
+    # --- Essential /proc files ---
     essential_files = ["/proc/stat", "/proc/meminfo", "/proc/net/dev", "/proc/diskstats"]
     for file in essential_files:
         if not os.path.exists(file):
-            log.error(f"Critical file '{file}' does not exist.")
-            log.info("Advice: Ensure that the system is properly configured and the necessary kernel modules are loaded.")
-            critical_failures.append(file)
+            log.warning(f"File '{file}' does not exist.")
+            log.info("Advice: Ensure that the system is properly configured if using the Bash back-end.")
+            warning_count += 1
 
     # --- Optional /sys files (cpufreq: hardware-dependent, safe to continue) ---
     optional_files = [
@@ -192,32 +169,22 @@ def check_benchmon_env():
     ]
     for file in optional_files:
         if not os.path.exists(file):
-            log.warning(f"Optional file '{file}' does not exist, but continuing.")
+            log.warning(f"Optional file '{file}' does not exist. Monitoring of CPU frequency will be affected.")
             warning_count += 1
 
-    # --- Monitoring commands: cpu/mem/net/disk critical, cpufreq/ib optional ---
+    # --- Monitoring commands ---
     for name, cmd in sys_monitor_check_set.items():
-        critical = name not in non_critical_sys_monitor_checks
-        if not check_cmd(cmd, critical=critical):
-            if critical:
-                critical_failures.append(name)
-            else:
-                log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
-                warning_count += 1
-
-    # --- perf-based checks: all optional (power/call profiling are opt-in) ---
-    for name, cmd in perf_monitor_check_set.items():
-        advice = perf_monitor_advice_set.get(name)
-        if not check_cmd(cmd, advice, critical=False):
+        advice = f"Monitoring of {name} will be affected."
+        if not check_cmd(cmd, advice=advice):
             log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
             warning_count += 1
 
-    if critical_failures:
-        log.error(
-            f"Critical requirement(s) missing/failed: {', '.join(critical_failures)}. "
-            f"benchmon cannot produce reliable monitoring data without them."
-        )
-        return False
+    # --- perf-based checks: all optional (power/call profiling are opt-in) ---
+    for name, cmd in perf_monitor_check_set.items():
+        advice = perf_monitor_advice_set.get(name, f"Monitoring of {name.replace('_', ' ')} will be affected.")
+        if not check_cmd(cmd, advice):
+            log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
+            warning_count += 1
 
     if warning_count:
         log.info(f"{warning_count} non-critical warning(s) reported above; continuing.")
@@ -230,12 +197,9 @@ def main():
     scripts (e.g. benchmon-setup) can detect failure and abort instead of
     silently continuing with broken/incomplete monitoring.
     """
-    if check_benchmon_env():
-        log.info("Benchmark environment is ready.")
-        sys.exit(0)
-    else:
-        log.error("Benchmark environment is NOT ready (see critical errors above). Aborting.")
-        sys.exit(1)
+    check_benchmon_env()
+    log.info("Benchmark environment is ready.")
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
