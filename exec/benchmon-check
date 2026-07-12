@@ -147,11 +147,14 @@ def check_benchmon_env():
     """
 
     warning_count = 0
+    bc_available = True
 
     # --- Base commands (bc, perf, hpctoolkit binaries) ---
     for name, cmd in command_check_set.items():
         if not check_binary_available(cmd, command_advice_set.get(name)):
             warning_count += 1
+            if name == "bc":
+                bc_available = False
 
     # --- Essential /proc files ---
     essential_files = ["/proc/stat", "/proc/meminfo", "/proc/net/dev", "/proc/diskstats"]
@@ -188,6 +191,11 @@ def check_benchmon_env():
 
     if warning_count:
         log.info(f"{warning_count} non-critical warning(s) reported above; continuing.")
+
+    if not bc_available:
+        log.error("Critical requirement 'bc' is missing. Environment is NOT ready.")
+        return False
+
     return True
 
 def main():
@@ -197,9 +205,12 @@ def main():
     scripts (e.g. benchmon-setup) can detect failure and abort instead of
     silently continuing with broken/incomplete monitoring.
     """
-    check_benchmon_env()
-    log.info("Benchmark environment is ready.")
-    sys.exit(0)
+    if check_benchmon_env():
+        log.info("Benchmark environment is ready.")
+        sys.exit(0)
+    else:
+        log.error("Benchmark environment is NOT ready (see critical errors above). Aborting.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
