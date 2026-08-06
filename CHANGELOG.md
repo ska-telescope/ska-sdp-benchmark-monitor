@@ -33,6 +33,9 @@
 - Grafana dashboard support with 6 panels (CPU Usage, CPU Frequency, Memory Usage, Network I/O, Disk I/O, InfiniBand)
 - New command line options: --grafana, --grafana-url, --grafana-job-name, --grafana-batch-size, --grafana-send-interval
 - CSV output control with --csv/--no-csv parameters
+- Optional timing mapping monitoring modes:
+  - `--timing` enables process/thread timing collection.
+  - `--timing-mapping` enables timing collection with CPU core mapping.
 
 ### Enhanced
 - Extended monitoring to include CPU frequency, disk I/O, network I/O, and InfiniBand metrics

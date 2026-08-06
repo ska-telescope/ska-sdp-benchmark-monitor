@@ -177,6 +177,20 @@ class RunUtils:
             help="Use the C++ binary backend for sampling. Default: False"
         )
 
+        parser.add_argument(
+            "--timing-mapping",
+            action="store_true",
+            default=False,
+            help="Enable timing mapping monitoring with CPU mapping"
+        )
+
+        parser.add_argument(
+            "--timing",
+            action="store_true",
+            default=False,
+            help="Enable timing monitoring without CPU mapping"
+        )
+
         return parser.parse_args()
 
 

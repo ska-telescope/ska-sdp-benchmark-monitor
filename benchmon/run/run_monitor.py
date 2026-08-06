@@ -45,6 +45,8 @@ class RunMonitor:
         self.bin_sys_filename = lambda device: f"{device}_report.bin"
         self.is_system = args.system
         self.sys_freq = args.sys_freq
+        self.timing_mapping = args.timing_mapping
+        self.timing = args.timing and not args.timing_mapping
 
         # Power monitoring parameters
         self.pow_filename = "pow_report.csv"
@@ -191,8 +193,11 @@ class RunMonitor:
 
         sh_repo = os.path.dirname(os.path.realpath(__file__))
 
+        devices = ("cpu", "cpufreq", "mem", "net", "disk", "ib")
+        if self.timing_mapping or self.timing:
+            devices += ("timing_mapping",)
         # CPU + CPUfreq + Memory + Network + Disk monitoring processes
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib", "timing_mapping"):
+        for device in devices:
             # Determine which script to use
             sh_repo = os.path.dirname(os.path.realpath(__file__))
 
@@ -201,6 +206,8 @@ class RunMonitor:
                 script_path = f"{sh_repo}/{device}_mon.sh"
                 csv_file = f"{self.save_dir}/{self.sys_filename(device)}"
                 args = ["bash", script_path, f"{freq}", csv_file]
+                if device == "timing_mapping" and self.timing:
+                    args.append("no-mapping")
                 msg = f"CSV script: {script_path} → {csv_file}"
 
                 self.logger.debug(f"Starting: {msg}")
