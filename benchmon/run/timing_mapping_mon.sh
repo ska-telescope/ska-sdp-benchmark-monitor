@@ -35,6 +35,11 @@ ps_reformat () {
 trap 'ultimate=true' SIGTERM SIGUSR1
 
 # Determine sampling period
+# Check that bc is available
+if ! command -v bc &> /dev/null; then
+   echo "CRITICAL: 'bc' command not found" >&2
+   exit 1
+fi
 sampl=$(bc <<< "scale=6; 1/$freq")
 
 # We assume we want to measure processes running under the same parent process
