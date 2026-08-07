@@ -22,9 +22,9 @@ from .system_metrics_binary import SystemDataBinary
 from .utils import read_annotation_csv, plot_stage_timeline
 from .utils import plot_stage_markers
 from .utils import read_ical_log_file, plot_ical_stages
-from .utils import read_annotation_csv_pss, is_pss_annotation, plot_pss_annotation  # PSS support
+from .utils import read_annotation_csv_pss  # PSS support
 from .utils import compute_concurrency_from_stages, plot_concurrency      # PSS concurrency view
-
+from .utils import is_cheetah_csv
 
 class BenchmonVisualizer:
     """
@@ -89,34 +89,24 @@ class BenchmonVisualizer:
                 node_name = os.path.basename(os.path.realpath(self.traces_repo)).replace("benchmon_traces_", "")
                 events_dir = os.path.dirname(os.path.dirname(self.traces_repo))
 
-                # Peek at the CSV to detect PSS format before any parsing
-                _is_pss_csv = False
+                # Peek at the CSV to detect cheetah pipline format before any parsing
                 _csv_path = filename if (os.path.isabs(filename) or os.path.exists(filename)) \
-                            else os.path.join(events_dir, filename)
-                if os.path.exists(_csv_path):
-                    with open(_csv_path, "r") as _f:
-                        import csv as _csv
-                        _reader = _csv.DictReader(_f)
-                        for _row in _reader:
-                            if _row.get("pipeline", "").strip().upper() == "PSS":
-                                _is_pss_csv = True
-                                break
-
-                if _is_pss_csv:
-                    self.logger.debug("PSS CSV format detected — using PSS reader directly")
+                        else os.path.join(events_dir, filename)
+                if is_cheetah_csv(_csv_path):
+                    self.logger.debug("Cheetah/PSS CSV format detected")
                     try:
                         self.annotation_stages_pss = read_annotation_csv_pss(
-                            events_dir, filename, node_name=None,
+                        events_dir, filename, node_name=None,
                         )
                         if self.annotation_stages_pss:
-                            # Set annotation_stages to non-None so subplot is reserved
+                        # Set annotation_stages to non-None so subplot is reserved
                             self.annotation_stages = self.annotation_stages_pss
                         else:
-                            self.logger.warning("PSS reader returned no stages")
+                            self.logger.warning("reader returned no stages")
                     except Exception as e:
-                        self.logger.warning(f"PSS annotation read failed: {e}")
+                        self.logger.warning(f"annotation read failed: {e}")
                 else:
-                    # Standard INST-style CSV
+                    # Standard CSV style
                     self.annotation_stages = read_annotation_csv(
                         events_dir, filename, node_name=node_name,
                     )

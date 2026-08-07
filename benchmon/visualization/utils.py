@@ -8,6 +8,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 
+import re
+from collections import defaultdict
+import matplotlib.patches as mpatches
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage color palette — Kelly's 20 colors of maximum contrast.
 # Ordered so that consecutive entries are perceptually as different as possible:
@@ -377,69 +381,92 @@ def plot_stage_markers(
             ax.set_xlim(xlim)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PSS-style dense annotation support
-# 5 categories: cheetah_pipe, klotski/beam1, klotski/beam2,
-#               rfim_iqrm/beam1, rfim_iqrm/beam2
-# Lanes are ordered bottom → top in the subplot.
+# Cheetah pipline style
 # ─────────────────────────────────────────────────────────────────────────────
 
-PSS_CATEGORIES = [
-    "rfim_iqrm/beam2",
-    "rfim_iqrm/beam1",
-    "klotski/beam2",
-    "klotski/beam1",
+CHEETAH_PIPE_KNOWN_MODULES = [
+    "rfim_iqrm",
+    "klotski",
+    "spsift",
+    "spscluster",
+    "psbc",
+    "DRED",
+    "CXFT_laby",
+    "CXFT_fpga",
+    "CDOS",
+    "CXFT_setup",
+    "FDAS_laby",
+    "FDAS_fpga",
+    "strongSIFT",
+    "simpleSIFT",
+    "fldo",
+    "optim",
     "cheetah_pipe",
 ]
 
-_PSS_COLORS = {
-    "cheetah_pipe":    "#0067A5",  # strong blue
-    "klotski/beam1":   "#008856",  # vivid green
-    "klotski/beam2":   "#F38400",  # vivid orange
-    "rfim_iqrm/beam1": "#BE0032",  # vivid red
-    "rfim_iqrm/beam2": "#875692",  # strong purple
+_CHEETAH_PIPE_BASE_COLORS = {
+    "rfim_iqrm":   "#BE0032",   # red
+    "klotski":     "#008856",   # green
+    "spsift":      "#F38400",   # orange
+    "spscluster":  "#875692",   # purple
+    "psbc":        "#E25822",   # vermilion
+    "DRED":        "#654522",   # brown
+    "CXFT_laby":   "#2B3D26",   # dark green
+    "CXFT_fpga":   "#0067A5",   # blue
+    "CDOS":        "#B3446C",   # raspberry
+    "CXFT_setup":  "#8B008B",   # dark magenta
+    "FDAS_laby":   "#00A86B",   # jade
+    "FDAS_fpga":   "#4169E1",   # royal blue
+    "strongSIFT":  "#FF4500",   # orange-red
+    "simpleSIFT":  "#FF8C00",   # dark orange
+    "fldo":        "#20B2AA",   # light sea green
+    "optim":       "#708090",   # slate gray
+    "cheetah_pipe":"#0067A5",   # strong blue
 }
 
+def _get_cheetah_pipe_color(category: str) -> str:
+    """Return a color for a category (module or module/beam)."""
+    base = category.split("/")[0]
+    return _CHEETAH_PIPE_BASE_COLORS.get(base, "#7F7F7F")  # gray fallback
 
-def _classify_pss_stage(stage: str, message: str):
+def _classify_pss_stage(stage: str, message: str) -> str | None:
     """
-    Map a PSS stage name + message to one of the 5 PSS categories.
-    Returns None if the stage is not a recognized PSS stage.
+    Map a PSS stage name.
+    Returns None if the stage is not recognized.
+    
     """
-    import re
+    stage = stage.strip()
+    message = (message or "").strip().lower()
+
+    # cheetah_pipe is global
     if stage == "cheetah_pipe":
         return "cheetah_pipe"
-    if re.match(r"rfim_iqrm", stage):
-        beam = message.strip() if message else ""
-        if beam in ("beam1", "beam2"):
-            return f"rfim_iqrm/{beam}"
-    if re.match(r"klotski", stage):
-        beam = message.strip() if message else ""
-        if beam in ("beam1", "beam2"):
-            return f"klotski/{beam}"
-    return None
+
+    # Extract base module name
+    base = re.sub(r"_\d+$", "", stage)
+
+    if base not in CHEETAH_PIPE_KNOWN_MODULES:
+        return None
+
+    # Beam detection
+    beam = None
+    if message in ("beam1", "beam2", "beam3"):
+        beam = message
+    elif message in ("beam<na>", "beamna", "na", ""):
+        beam = None  # treat as no beam
+
+    if beam:
+        return f"{base}/{beam}"
+    else:
+        return base
 
 
 def read_annotation_csv_pss(
     traces_repo: str, filename: str, node_name: str = None
 ) -> list:
     """
-    PSS-aware annotation reader.
-
-    Parses a PSS events.csv and groups stages into the 5 PSS categories:
-        cheetah_pipe, klotski/beam1, klotski/beam2,
-        rfim_iqrm/beam1, rfim_iqrm/beam2
-
-    Each returned stage dict has an extra '_category' field.
-    Both 'STOP' and 'FINISHED' are accepted as end-event labels.
-
-    Args:
-        traces_repo (str)           : Directory containing the CSV (or parent)
-        filename    (str)           : CSV filename or absolute path
-        node_name   (str, optional) : Hostname to filter on; 'unknown' rows
-                                      are always kept (PSS uses node=unknown)
-
-    Returns:
-        list[dict]: Sorted list of stage intervals with '_category' metadata
+    Returns a list of stage intervals with an extra '_category' field.
+    Only recognized modules are kept. Missing modules simply do not appear.
     """
     if os.path.isabs(filename) or os.path.exists(filename):
         csv_path = filename
@@ -447,32 +474,28 @@ def read_annotation_csv_pss(
         csv_path = os.path.join(traces_repo, filename)
 
     if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"PSS annotation CSV not found: {csv_path}")
+        raise FileNotFoundError(f"cheetah pipe annotation CSV file not found: {csv_path}")
 
-    # key: (category, instance_label)  →  {"START": ts, "STOP"/"FINISHED": ts}
-    stages_tmp = {}
+    stages_tmp = {}  # key: (category, instance_label) → {"START": ts, "STOP": ts}
 
     with open(csv_path, "r") as f:
         reader = csv.DictReader(f)
         for row in reader:
             row_node = row.get("node", "").strip()
-
-            # Keep rows whose node matches, or is "unknown"/empty (PSS quirk)
             if node_name and row_node not in (node_name, "unknown", ""):
                 continue
 
-            pipeline = row.get("pipeline", "").strip()
-            stage    = row.get("stage",    "").strip()
-            message  = row.get("message",  "").strip()
-            event    = row.get("event",    "").strip().upper()
-            ts       = float(row["timestamp"])
+            stage = row.get("stage", "").strip()
+            message = row.get("message", "").strip()
+            event = row.get("event", "").strip().upper()
+            ts = float(row["timestamp"])
 
             category = _classify_pss_stage(stage, message)
             if category is None:
                 continue
 
-            # Unique key: category + fully-qualified stage instance
-            key = (category, f"{pipeline}/{stage}")
+            # Unique key per instance
+            key = (category, f"{row.get('pipeline', 'PSS')}/{stage}")
             if key not in stages_tmp:
                 stages_tmp[key] = {}
             stages_tmp[key][event] = ts
@@ -482,134 +505,72 @@ def read_annotation_csv_pss(
         stop_ts = events.get("FINISHED") or events.get("STOP")
         if "START" in events and stop_ts is not None:
             stages.append({
-                "label":     label,
+                "label": label,
                 "_category": category,
-                "start":     events["START"],
-                "stop":      stop_ts,
+                "start": events["START"],
+                "stop": stop_ts,
             })
 
     stages.sort(key=lambda s: s["start"])
     return stages
 
-
-def is_pss_annotation(stages: list) -> bool:
+def is_cheetah_csv(csv_path: str, sample_size: int = 50) -> bool:
     """
-    Return True if *stages* looks like a PSS dense annotation,
-    i.e. it contains more than 5 rfim_iqrm or klotski entries.
+    Robust detection of Cheetah/PSS-format events.csv.
+    Returns True only if the file looks genuinely like a Cheetah annotation file.
     """
-    import re
-    count = sum(
-        1 for s in stages
-        if re.search(r"rfim_iqrm|klotski", s.get("label", ""))
-    )
-    return count > 5
+    if not os.path.exists(csv_path):
+        return False
 
+    try:
+        with open(csv_path, "r") as f:
+            reader = csv.DictReader(f)
+            fieldnames = [c.strip().lower() for c in (reader.fieldnames or [])]
 
-def plot_pss_annotation(stages_pss: list, ax, xlim=None) -> None:
-    """
-    Plot PSS-style dense annotation in 5 horizontal lanes.
+            # 1. Header check
+            required = {"timestamp", "pipeline", "stage", "event"}
+            if not required.issubset(set(fieldnames)):
+                return False
 
-    Lanes (bottom → top):
-        rfim_iqrm/beam2  — vertical tick marks  (very short stages)
-        rfim_iqrm/beam1  — vertical tick marks  (very short stages)
-        klotski/beam2    — horizontal bars
-        klotski/beam1    — horizontal bars
-        cheetah_pipe     — horizontal bar
+            # 2. Sample some rows
+            pss_count = 0
+            known_stage_count = 0
+            total = 0
 
-    rfim_iqrm stages are rendered as tall tick marks so they remain
-    visible even when their real duration is only ~0.05 s.
+            known_stages = {
+                "cheetah_pipe", "rfim_iqrm", "klotski", "spsift",
+                "spscluster", "fdas_laby", "strongsift", "fldo", "psbc",
+                "fdas_fpga", "dred", "cxft_setup", "cxft_laby", "cxft_fpga",
+                "cdos", "optim", "simplesift"
+            }
 
-    Args:
-        stages_pss  (list) : output of read_annotation_csv_pss()
-        ax                 : matplotlib Axes to draw on
-        xlim        (list) : [xmin, xmax] to apply
-    """
-    import matplotlib.patches as mpatches
+            for row in reader:
+                total += 1
+                pipeline = row.get("pipeline", "").strip().upper()
+                stage = row.get("stage", "").strip().lower()
 
-    if not stages_pss or ax is None:
-        return
+                if pipeline == "PSS":
+                    pss_count += 1
 
-    n_lanes  = len(PSS_CATEGORIES)   # 5
-    lane_h   = 1.0 / n_lanes         # 0.20  (in axes fraction)
+                # strip trailing _digits for matching
+                base_stage = re.sub(r"_\d+$", "", stage)
+                if base_stage in known_stages or any(k in stage for k in known_stages):
+                    known_stage_count += 1
 
-    # transform: x = data coords, y = axes fraction [0, 1]
-    xform = ax.get_xaxis_transform()
+                if total >= sample_size:
+                    break
 
-    for i, category in enumerate(PSS_CATEGORIES):
-        y_lo  = i * lane_h
-        y_hi  = y_lo + lane_h
-        y_mid = (y_lo + y_hi) / 2
-        color = _PSS_COLORS.get(category, "gray")
+            if total == 0:
+                return False
 
-        cat_stages = [s for s in stages_pss if s.get("_category") == category]
-        if not cat_stages:
-            continue
+            # 3. Decision rules
+            pss_ratio = pss_count / total
+            has_known_stages = known_stage_count > 0
 
-        starts = [s["start"] for s in cat_stages]
-        stops  = [s["stop"]  for s in cat_stages]
+            return pss_ratio >= 0.8 and has_known_stages
 
-        if "rfim_iqrm" in category:
-            # ── Tick-mark style ────────────────────────────────────────────
-            # Each rfim_iqrm stage gets a tall vertical line spanning most
-            # of its lane.  This keeps them visible even at ~0.05 s duration.
-            ax.vlines(
-                x=starts,
-                ymin=y_lo + lane_h * 0.05,
-                ymax=y_hi - lane_h * 0.05,
-                colors=color,
-                linewidth=1.0,
-                alpha=0.70,
-                transform=xform,
-                zorder=5,
-            )
-        else:
-            # ── Horizontal bar style ───────────────────────────────────────
-            bar_lo = y_lo + lane_h * 0.20
-            bar_hi = y_hi - lane_h * 0.20
-            ax.hlines(
-                y=[y_mid] * len(starts),
-                xmin=starts,
-                xmax=stops,
-                colors=color,
-                linewidth=max(4.0, lane_h * 40),
-                alpha=0.85,
-                transform=xform,
-                zorder=5,
-            )
-            # Small vertical caps at start / stop
-            for x0, x1 in zip(starts, stops):
-                ax.vlines(x=x0, ymin=bar_lo, ymax=bar_hi,
-                          colors=color, linewidth=1.2, alpha=0.85,
-                          transform=xform, zorder=6)
-                ax.vlines(x=x1, ymin=bar_lo, ymax=bar_hi,
-                          colors=color, linewidth=1.2, alpha=0.85,
-                          transform=xform, zorder=6)
-
-    # ── Y-axis: one label per lane ─────────────────────────────────────────
-    ytick_pos    = [(i + 0.5) * lane_h for i in range(n_lanes)]
-    ytick_labels = PSS_CATEGORIES
-    ax.set_yticks(ytick_pos)
-    ax.set_yticklabels(ytick_labels, fontsize=8)
-    ax.set_ylim(0, 1)
-    ax.set_ylabel("Stage concurrency", fontsize=9)
-    ax.grid(axis="x", linestyle="--", linewidth=0.5, alpha=0.5)
-
-    # ── Legend (5 colored patches) ─────────────────────────────────────────
-    handles = [
-        mpatches.Patch(color=_PSS_COLORS[cat], label=cat)
-        for cat in PSS_CATEGORIES
-    ]
-    ax.legend(
-        handles=handles,
-        loc="upper right",
-        fontsize=8,
-        ncol=2,
-        framealpha=0.8,
-    )
-
-    if xlim:
-        ax.set_xlim(xlim)
-
+    except Exception:
+        return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -618,38 +579,23 @@ def plot_pss_annotation(stages_pss: list, ax, xlim=None) -> None:
 
 def compute_concurrency_from_stages(stages: list) -> dict:
     """
-    Compute concurrent activity per stage type from a list of stage intervals.
-
-    Groups stage instances by type (e.g. rfim_iqrm_12 → rfim_iqrm) and
-    builds a step-function of how many instances are active at each moment.
-
-    Args:
-        stages (list): list of dicts with 'label', 'start', 'stop'
-
-    Returns:
-        dict: { stage_type: (times_array, counts_array) }
+    Compute concurrent activity per category.
+    Returns: { category: (times_array, counts_array) }
+    Only categories present in the data are returned.
     """
-    from collections import defaultdict
-    import re
-
     events = defaultdict(list)
 
     for st in stages:
-        label = st["label"]
-        # rfim_iqrm/beam1, klotski/beam2, cheetah_pipe/master → keep as-is
-        # PSS labels from read_annotation_csv_pss already have _category
         category = st.get("_category")
-        if category:
-            stage_type = category
-        else:
-            # fallback: strip trailing _digits
-            stage_type = re.sub(r"_\d+$", "", label)
-
-        events[stage_type].append((st["start"], +1))
-        events[stage_type].append((st["stop"],  -1))
+        if not category:
+            # fallback
+            label = st.get("label", "")
+            category = re.sub(r"_\d+$", "", label.split("/")[-1])
+        events[category].append((st["start"], +1))
+        events[category].append((st["stop"], -1))
 
     concurrency = {}
-    for stage_type, evts in events.items():
+    for category, evts in events.items():
         evts.sort(key=lambda x: x[0])
         times, counts = [], []
         current = 0
@@ -657,47 +603,121 @@ def compute_concurrency_from_stages(stages: list) -> dict:
             current += delta
             times.append(ts)
             counts.append(current)
-        concurrency[stage_type] = (np.array(times), np.array(counts))
+        concurrency[category] = (np.array(times), np.array(counts))
 
     return concurrency
 
-
-def plot_concurrency(concurrency_dict: dict, ax=None) -> None:
-    """
-    Plot stage concurrency as stacked step-fills, one per stage type.
-
-    Each stage type is drawn in its PSS color if available, otherwise
-    falls back to the standard palette.
-
-    Args:
-        concurrency_dict (dict): output of compute_concurrency_from_stages()
-        ax               : matplotlib Axes to draw on (uses plt.gca() if None)
-    """
-    import matplotlib.patches as mpatches
+def plot_concurrency(concurrency_dict: dict, ax=None, max_concurrency: int = 2) -> None:
 
     if ax is None:
         ax = plt.gca()
 
-    offset = 0
-    spacing = 1.5
+    if not concurrency_dict:
+        ax.set_ylabel("Stage concurrency")
+        return
+
+    def sort_key(cat):
+        base = cat.split("/")[0]
+        try:
+            base_idx = CHEETAH_PIPE_KNOWN_MODULES.index(base)
+        except ValueError:
+            base_idx = 999
+        beam = cat.split("/")[1] if "/" in cat else ""
+        beam_idx = {"beam1": 1, "beam2": 2, "beam3": 3}.get(beam, 0)
+        return (base_idx, beam_idx)
+
+    sorted_cats = sorted(concurrency_dict.keys(), key=sort_key)
+
+    offset = 0.0
+    spacing = 1.2
     handles = []
 
-    for i, (stage_type, (times, counts)) in enumerate(sorted(concurrency_dict.items())):
-        color = _PSS_COLORS.get(stage_type, get_stage_color(i))
+    for cat in sorted_cats:
+        times, counts = concurrency_dict[cat]
+        if len(times) == 0:
+            continue
+
+        # concurrency
+        real_counts = counts.copy()
+        # concurrency after thresholding
+        display_counts = np.minimum(counts, max_concurrency)
+
+        color = _get_cheetah_pipe_color(cat)
 
         ax.fill_between(
             times,
             offset,
-            offset + counts,
+            offset + display_counts,
             step="post",
             alpha=0.85,
             color=color,
-            linewidth=0.8,
-            label=stage_type,
+            linewidth=0.6,
+            label=cat,
         )
-        handles.append(mpatches.Patch(color=color, label=stage_type))
-        offset += spacing + (counts.max() if len(counts) > 0 else 0)
+        handles.append(mpatches.Patch(color=color, label=cat))
 
-    ax.set_ylabel("Stage concurrency", fontsize=9)
-    ax.legend(handles=handles, loc="upper right", fontsize=8, ncol=2, framealpha=0.8)
+        # ---------- Annotation of peaks exceeding the threshold ----------
+        #  real_counts > max_concurrency ?
+        above = real_counts > max_concurrency
+        if np.any(above):
+            # using  the threshold 
+            
+            diff = np.diff(above.astype(int), prepend=0)
+            starts = np.where(diff == 1)[0]
+            ends   = np.where(diff == -1)[0]
+            if len(ends) < len(starts):
+                ends = np.append(ends, len(above) - 1)
+
+            for s, e in zip(starts, ends):
+                # max value peak
+                peak_val = int(real_counts[s:e+1].max())
+                # Position of the peak
+                peak_x = times[s + np.argmax(real_counts[s:e+1])]
+                # Position y
+                peak_y = offset + max_concurrency + 0.3
+
+                ax.text(
+                    peak_x, peak_y,
+                    f"{peak_val}",
+                    fontsize=3,
+                    ha='center', va='bottom',
+                    color=color,
+                    alpha=0.9,
+                    fontweight='bold',
+                    zorder=10,
+                )
+
+        max_c = float(display_counts.max()) if len(display_counts) else 0.0
+        offset += spacing + max_c
+    ax.set_yticks([])
+    ax.set_ylabel(f"Stage concurrency (capped at {max_concurrency})", fontsize=9)
+
+    # legend config
+    n_items = len(handles)
+    ncol = min(n_items, 6)
+    if n_items > 6:
+        ncol = min(8, (n_items + 1) // 2)
+
+    # ax.legend(
+    #     handles=handles,
+    #     loc='upper center',
+    #     bbox_to_anchor=(0.5, 1.14),
+    #     ncol=ncol,
+    #     fontsize=7,
+    #     frameon=False,
+    #     columnspacing=1.2,
+    #     handletextpad=0.4,
+    #     handlelength=1.2,
+    # )
+    ax.legend(
+    handles=handles,
+    loc='upper center',
+    bbox_to_anchor=(0.5, 1.25),   # move the legendary on the very top of the subplot subplot
+    ncol=17,                      # 49 éléments / 3 lignes ~ 16.3 -> 17 column
+    fontsize=7,
+    frameon=False,                # not a square
+    columnspacing=1.2,
+    handletextpad=0.4,
+    handlelength=1.2,
+    )
     ax.grid(axis="x", linestyle="--", linewidth=0.5, alpha=0.5)
