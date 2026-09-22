@@ -30,6 +30,9 @@ class BenchmonMNSyncVisualizer:
         self.args = args
         self.logger = logger
 
+        hostnames = [data.hostname for data in nodes_data]
+        self.commonprefix_hostname = os.path.commonprefix(hostnames)
+
         self.run_sync_plots(nodes_data=nodes_data)
 
 
@@ -121,6 +124,7 @@ class BenchmonMNSyncVisualizer:
         """
         ts_sync = []
         cpu_sync = []
+
         for data in nodes_data:
             # Check if CPU data is available
             if not hasattr(data.system_metrics, 'cpu_stamps') or len(data.system_metrics.cpu_stamps) == 0:
@@ -147,7 +151,7 @@ class BenchmonMNSyncVisualizer:
                 continue
 
             cpu = sum(cpu_data)
-            plt.plot(ts, cpu, label=data.hostname)
+            plt.plot(ts, cpu, label=data.hostname.replace(self.commonprefix_hostname, ""))
 
             ts_sync += [ts]
             cpu_sync += [cpu]
@@ -177,7 +181,7 @@ class BenchmonMNSyncVisualizer:
             ts = data.system_metrics.cpu_stamps
             spaces = ["user", "nice", "system", "iowait", "irq", "softirq", "steal", "guest", "guestnice"]
             cpu = sum([data.system_metrics.cpu_prof[np.iinfo(np.uint32).max][space] for space in spaces])
-            plt.plot(ts, cpu, label=data.hostname)
+            plt.plot(ts, cpu, label=data.hostname.replace(self.commonprefix_hostname, ""))
 
             ts_sync += [ts]
             cpu_sync += [cpu]
@@ -220,7 +224,7 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and frequency data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, cpufreq, label=data.hostname)
+            plt.plot(ts, cpufreq, label=data.hostname.replace(self.commonprefix_hostname, ""))
 
             ts_sync += [ts]
             cpufreq_sync += [cpufreq]
@@ -247,7 +251,7 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.cpufreq_stamps
             cpufreq = data.system_metrics.cpufreq_vals["mean"]
-            plt.plot(ts, cpufreq, label=data.hostname)
+            plt.plot(ts, cpufreq, label=data.hostname.replace(self.commonprefix_hostname, ""))
 
             ts_sync += [ts]
             cpufreq_sync += [cpufreq]
@@ -299,7 +303,8 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and memory data length mismatch for node {data.hostname}")
                 continue
 
-            plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem, label=data.hostname)
+            plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem,
+                             label=data.hostname.replace(self.commonprefix_hostname, ""))
 
             plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
             memtotal += [data.system_metrics.mem_prof["MemTotal"][0] / memunit]
@@ -337,7 +342,8 @@ class BenchmonMNSyncVisualizer:
             memunit = 1024**2
             ts = data.system_metrics.mem_stamps
             mem = (data.system_metrics.mem_prof["MemTotal"] - data.system_metrics.mem_prof["MemFree"]) / memunit
-            plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem, label=data.hostname)
+            plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem,
+                             label=data.hostname.replace(self.commonprefix_hostname, ""))
 
             plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
             memtotal += [data.system_metrics.mem_prof["MemTotal"][0] / memunit]
