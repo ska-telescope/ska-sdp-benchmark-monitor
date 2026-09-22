@@ -49,7 +49,7 @@ class BenchmonMNSyncVisualizer:
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         plt.ylabel(label)
-        plt.legend(loc="upper right", ncol=ceil(ncol), bbox_to_anchor=(1.05, 1))
+        plt.legend(loc="upper left", ncol=ceil(ncol), bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid(True)
 
 
