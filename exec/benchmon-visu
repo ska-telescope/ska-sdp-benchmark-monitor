@@ -15,7 +15,7 @@ def parsing() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Top-level traces repository path")
-    parser.add_argument("--recursive", action="store_true", default=False)
+    parser.add_argument("--recursive", action="store_true", default=False, help="Recursively visualize traces in nodes sub-directories")
 
     parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
     parser.add_argument("--influxdb", action="store_true", help="Visualize data directly from InfluxDB")
@@ -156,7 +156,7 @@ def main():
                 if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
                     traces_repos.append(f"{traces_repo}/{name}")
         if not traces_repos:
-            logger.warning(f"No *bennchmon_traces* directory found in {traces_repo}")
+            logger.warning(f"No *benchmon_traces* directory found in {traces_repo}")
 
         nodes_data = []
         for repo in traces_repos:
