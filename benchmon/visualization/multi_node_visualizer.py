@@ -151,7 +151,7 @@ class BenchmonMNSyncVisualizer:
                 continue
 
             cpu = sum(cpu_data)
-            plt.plot(ts, cpu, label=data.hostname.replace(self.commonprefix_hostname, ""))
+            plt.plot(ts, cpu, label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             ts_sync += [ts]
             cpu_sync += [cpu]
@@ -181,7 +181,7 @@ class BenchmonMNSyncVisualizer:
             ts = data.system_metrics.cpu_stamps
             spaces = ["user", "nice", "system", "iowait", "irq", "softirq", "steal", "guest", "guestnice"]
             cpu = sum([data.system_metrics.cpu_prof[np.iinfo(np.uint32).max][space] for space in spaces])
-            plt.plot(ts, cpu, label=data.hostname.replace(self.commonprefix_hostname, ""))
+            plt.plot(ts, cpu, label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             ts_sync += [ts]
             cpu_sync += [cpu]
@@ -224,7 +224,7 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and frequency data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, cpufreq, label=data.hostname.replace(self.commonprefix_hostname, ""))
+            plt.plot(ts, cpufreq, label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             ts_sync += [ts]
             cpufreq_sync += [cpufreq]
@@ -251,7 +251,7 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.cpufreq_stamps
             cpufreq = data.system_metrics.cpufreq_vals["mean"]
-            plt.plot(ts, cpufreq, label=data.hostname.replace(self.commonprefix_hostname, ""))
+            plt.plot(ts, cpufreq, label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             ts_sync += [ts]
             cpufreq_sync += [cpufreq]
@@ -304,7 +304,7 @@ class BenchmonMNSyncVisualizer:
                 continue
 
             plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem,
-                             label=data.hostname.replace(self.commonprefix_hostname, ""))
+                             label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
             memtotal += [data.system_metrics.mem_prof["MemTotal"][0] / memunit]
@@ -343,7 +343,7 @@ class BenchmonMNSyncVisualizer:
             ts = data.system_metrics.mem_stamps
             mem = (data.system_metrics.mem_prof["MemTotal"] - data.system_metrics.mem_prof["MemFree"]) / memunit
             plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem,
-                             label=data.hostname.replace(self.commonprefix_hostname, ""))
+                             label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
             memtotal += [data.system_metrics.mem_prof["MemTotal"][0] / memunit]
@@ -395,7 +395,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and network RX data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, net_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.net_rx_data)} MB)")
+            plt.plot(ts, net_rx, marker="v",
+                     label=f"rx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.net_rx_data)} MB)")
 
             ts_sync += [ts]
             net_rx_sync += [net_rx]
@@ -430,7 +432,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and network TX data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, net_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.net_tx_data)} MB)")
+            plt.plot(ts, net_tx, marker="^",
+                     label=f"tx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.net_tx_data)} MB)")
 
             ts_sync += [ts]
             net_tx_sync += [net_tx]
@@ -463,7 +467,8 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.net_stamps
             net_rx = data.system_metrics.net_rx_total
-            plt.plot(ts, net_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.net_rx_data)} MB)")
+            plt.plot(ts, net_rx, marker="v", label=f"rx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                                                   + f" ({int(data.system_metrics.net_rx_data)} MB)")
 
             ts_sync += [ts]
             net_rx_sync += [net_rx]
@@ -485,7 +490,9 @@ class BenchmonMNSyncVisualizer:
         for data in nodes_data:
             ts = data.system_metrics.net_stamps
             net_tx = data.system_metrics.net_tx_total
-            plt.plot(ts, net_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.net_tx_data)} MB)")
+            plt.plot(ts, net_tx, marker="^",
+                     label=f"tx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.net_tx_data)} MB)")
 
             ts_sync += [ts]
             net_tx_sync += [net_tx]
@@ -530,7 +537,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and disk read data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, disk_rd, marker="v", label=f"rd:{data.hostname} ({int(data.system_metrics.disk_rd_data)} MB)")
+            plt.plot(ts, disk_rd, marker="v",
+                     label=f"rd:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.disk_rd_data)} MB)")
 
             ts_sync += [ts]
             rd_sync += [disk_rd]
@@ -562,7 +571,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and disk write data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, disk_wr, marker="^", label=f"wr:{data.hostname} ({int(data.system_metrics.disk_wr_data)} MB)")
+            plt.plot(ts, disk_wr, marker="^",
+                     label=f"wr:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.disk_wr_data)} MB)")
 
             ts_sync += [ts]
             wr_sync += [disk_wr]
@@ -595,7 +606,9 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.disk_stamps
             disk_rd = data.system_metrics.disk_rd_total
-            plt.plot(ts, disk_rd, marker="v", label=f"rd:{data.hostname} ({int(data.system_metrics.disk_rd_data)} MB)")
+            plt.plot(ts, disk_rd, marker="v",
+                     label=f"rd:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.disk_rd_data)} MB)")
 
             ts_sync += [ts]
             rd_sync += [disk_rd]
@@ -615,7 +628,9 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.disk_stamps
             disk_wr = data.system_metrics.disk_wr_total
-            plt.plot(ts, disk_wr, marker="^", label=f"wr:{data.hostname} ({int(data.system_metrics.disk_wr_data)} MB)")
+            plt.plot(ts, disk_wr, marker="^",
+                     label=f"wr:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.disk_wr_data)} MB)")
 
             ts_sync += [ts]
             wr_sync += [disk_wr]
@@ -664,7 +679,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and InfiniBand RX data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, ib_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.ib_rx_data)} MB)")
+            plt.plot(ts, ib_rx, marker="v",
+                     label=f"rx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.ib_rx_data)} MB)")
 
             ts_sync += [ts]
             ib_rx_sync += [ib_rx]
@@ -700,7 +717,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and InfiniBand TX data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, ib_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.ib_tx_data)} MB)")
+            plt.plot(ts, ib_tx, marker="^",
+                     label=f"tx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.ib_tx_data)} MB)")
 
             ts_sync += [ts]
             ib_tx_sync += [ib_tx]
