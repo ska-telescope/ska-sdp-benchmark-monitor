@@ -7,6 +7,7 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+from math import ceil
 from scipy.interpolate import interp1d
 
 
@@ -33,6 +34,8 @@ class BenchmonMNSyncVisualizer:
         hostnames = [data.hostname for data in nodes_data]
         self.commonprefix_hostname = os.path.commonprefix(hostnames)
 
+        self.nelm_per_col = 10
+
         self.run_sync_plots(nodes_data=nodes_data)
 
 
@@ -46,7 +49,7 @@ class BenchmonMNSyncVisualizer:
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         plt.ylabel(label)
-        plt.legend(loc="upper right", ncol=ncol, bbox_to_anchor=(1.05, 1))
+        plt.legend(loc="upper right", ncol=ceil(ncol), bbox_to_anchor=(1.05, 1))
         plt.grid(True)
 
 
@@ -164,7 +167,7 @@ class BenchmonMNSyncVisualizer:
 
         yrng = 10
         plt.yticks(100 / yrng * np.arange(yrng + 1))
-        self.set_frame(label="Total CPU usage (%)")
+        self.set_frame(label="Total CPU usage (%)", ncol=len(cpu_sync) / self.nelm_per_col)
 
 
     def plot_sync_cpu_binary(self, nodes_data: list) -> None:
@@ -196,7 +199,7 @@ class BenchmonMNSyncVisualizer:
 
         yrng = 10
         plt.yticks(100 / yrng * np.arange(yrng + 1))
-        self.set_frame(label="Total CPU usage (%)")
+        self.set_frame(label="Total CPU usage (%)", ncol=len(cpu_sync) / self.nelm_per_col)
 
 
     def plot_sync_cpufreq(self, nodes_data: list) -> None:
@@ -234,7 +237,7 @@ class BenchmonMNSyncVisualizer:
         # Only sync if we have data
         if ts_sync and cpufreq_sync:
             self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
-        self.set_frame(label="Mean CPU frequency (GHz)")
+        self.set_frame(label="Mean CPU frequency (GHz)", ncol=len(cpufreq_sync) / self.nelm_per_col)
 
 
     def plot_sync_cpufreq_binary(self, nodes_data: list) -> None:
@@ -263,7 +266,7 @@ class BenchmonMNSyncVisualizer:
             return
 
         self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
-        self.set_frame(label="Mean CPU frequency (GHz)")
+        self.set_frame(label="Mean CPU frequency (GHz)", ncol=len(cpufreq_sync) / self.nelm_per_col)
 
 
     def plot_sync_mem(self, nodes_data: list) -> None:
@@ -324,7 +327,8 @@ class BenchmonMNSyncVisualizer:
                 if len(yticks) < self.args.fig_yrange:
                     break
             plt.yticks(yticks)
-        self.set_frame(label="Memory (GiB)")
+
+        self.set_frame(label="Memory (GiB)", ncol=len(mem_sync) / self.nelm_per_col)
 
 
     def plot_sync_mem_binary(self, nodes_data: list) -> None:
@@ -365,7 +369,7 @@ class BenchmonMNSyncVisualizer:
             if len(yticks) < self.args.fig_yrange:
                 break
         plt.yticks(yticks)
-        self.set_frame(label="Memory (GiB)")
+        self.set_frame(label="Memory (GiB)", ncol=len(mem_sync) / self.nelm_per_col)
 
 
     def plot_sync_net(self, nodes_data: list) -> None:
@@ -450,7 +454,7 @@ class BenchmonMNSyncVisualizer:
                               ls="--",
                               with_yrange=(tx_data > rx_data))
 
-        self.set_frame(label="Network Activity (MB/s)", ncol=2)
+        self.set_frame(label="Network Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_net_binary(self, nodes_data: list) -> None:
@@ -507,7 +511,7 @@ class BenchmonMNSyncVisualizer:
                           ls="--",
                           with_yrange=(tx_data > rx_data))
 
-        self.set_frame(label="Network Activity (MB/s)", ncol=2)
+        self.set_frame(label="Network Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_disk(self, nodes_data: list) -> None:
@@ -590,7 +594,7 @@ class BenchmonMNSyncVisualizer:
                               ls="--",
                               with_yrange=(wr_data > rd_data))
 
-        self.set_frame(label="Disk Activity (MB/s)", ncol=2)
+        self.set_frame(label="Disk Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_disk_binary(self, nodes_data: list) -> None:
@@ -655,7 +659,7 @@ class BenchmonMNSyncVisualizer:
                           ls="--",
                           with_yrange=(wr_data > rd_data))
 
-        self.set_frame(label="Disk Activity (MB/s)", ncol=2)
+        self.set_frame(label="Disk Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_ib(self, nodes_data: list) -> None:
@@ -741,7 +745,7 @@ class BenchmonMNSyncVisualizer:
                               ls="--",
                               with_yrange=(tx_data > rx_data))
 
-        self.set_frame(label="Infiniband Activity (MB/s)", ncol=2)
+        self.set_frame(label="Infiniband Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_pow(self, nodes_data: list) -> None:
