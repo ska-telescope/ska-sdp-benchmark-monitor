@@ -15,7 +15,8 @@ def parsing() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Top-level traces repository path")
-    parser.add_argument("--recursive", action="store_true", default=False, help="Recursively visualize traces in nodes sub-directories")
+    parser.add_argument("--recursive", action="store_true", default=False,
+                        help="Recursively visualize traces in nodes sub-directories")
 
     parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
     parser.add_argument("--influxdb", action="store_true", help="Visualize data directly from InfluxDB")
@@ -141,36 +142,36 @@ def main():
         args_str += f"\t--{key.replace('_', '-')} {value}\n"
     logger.debug(args_str)
 
-    try:
-        if args.influxdb:
-            from benchmon.visualization.visualizer_influxdb import BenchmonInfluxDBVisualizer
+    # try:
+    if args.influxdb:
+        from benchmon.visualization.visualizer_influxdb import BenchmonInfluxDBVisualizer
 
-            visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=traces_repo)
-            visualizer.run_plots()
-            logger.info("benchmon-visu closes")
-            return 0
-
-        traces_repos = []
-        if not args.test:
-            for name in os.listdir(traces_repo):
-                if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
-                    traces_repos.append(f"{traces_repo}/{name}")
-        if not traces_repos:
-            logger.warning(f"No *benchmon_traces* directory found in {traces_repo}")
-
-        nodes_data = []
-        for repo in traces_repos:
-            nodes_data.append(BenchmonVisualizer(args=args, logger=logger, traces_repo=repo))
-            nodes_data[-1].run_plots()
-
-        if args.recursive and nodes_data:
-            BenchmonMNSyncVisualizer(args, logger, nodes_data)
-
+        visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=traces_repo)
+        visualizer.run_plots()
         logger.info("benchmon-visu closes")
         return 0
-    except Exception as exc:
-        logger.error(f"benchmon-visu failed: {exc}")
-        return 1
+
+    traces_repos = []
+    if not args.test:
+        for name in os.listdir(traces_repo):
+            if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
+                traces_repos.append(f"{traces_repo}/{name}")
+    if not traces_repos:
+        logger.warning(f"No *benchmon_traces* directory found in {traces_repo}")
+
+    nodes_data = []
+    for repo in traces_repos:
+        nodes_data.append(BenchmonVisualizer(args=args, logger=logger, traces_repo=repo))
+        nodes_data[-1].run_plots()
+
+    if args.recursive and nodes_data:
+        BenchmonMNSyncVisualizer(args, logger, nodes_data)
+
+    logger.info("benchmon-visu closes")
+    return 0
+# except Exception as exc:
+    #     logger.error(f"benchmon-visu failed: {exc}")
+    #     return 1
 
 
 if __name__ == "__main__":
