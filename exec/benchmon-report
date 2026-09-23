@@ -71,17 +71,25 @@ def main():
     if output_dir == "":
         output_dir = "./"
 
-    Image.MAX_IMAGE_PIXELS = 5000000000
-    figure = Image.open(figure_path)
-    target_width = 1600
-    figure = figure.resize((target_width, int(figure.size[1] * target_width / figure.size[0])))
-    p = Path(figure_path)
-    name = p.stem
-    ext = p.suffix[1:]
-    out_name = f"{name}_resized.{ext}"
-    saved_fig_path = os.path.abspath(os.path.join(output_dir, out_name))
-    figure.save(saved_fig_path)
-
+    saved_fig_path = None
+    if figure_path:
+        try:
+            Image.MAX_IMAGE_PIXELS = 5000000000
+            figure = Image.open(figure_path)
+            target_width = 1600
+            figure = figure.resize((target_width, int(figure.size[1] * target_width / figure.size[0])))
+            p = Path(figure_path)
+            name = p.stem
+            ext = p.suffix[1:]
+            out_name = f"{name}_resized.{ext}"
+            saved_fig_path = os.path.abspath(os.path.join(output_dir, out_name))
+            figure.save(saved_fig_path)
+        except FileNotFoundError:
+            print(f"[WARNING] Figure '{figure_path}' not found, skipping.", file=sys.stderr)
+        except Exception as e:
+            print(f"[WARNING] Failed to process figure '{figure_path}': {e}. Skipping.", file=sys.stderr)
+    else:
+        print("[WARNING] benchmon-report no figure_path provided, skipping figure", file=sys.stderr)
     rg = report_generator.ReportGenerator(template_file_path=template_path)
     rg.write(hw_report_path, sw_report_path, ps_report_path, saved_fig_path, output_path)
 
