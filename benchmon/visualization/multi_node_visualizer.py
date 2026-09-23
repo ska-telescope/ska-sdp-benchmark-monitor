@@ -773,7 +773,7 @@ class BenchmonMNSyncVisualizer:
 
                 data.power_g5k_metrics.plot_g5k_pow_profiles(pre_label=f"{data.hostname}:")
 
-        self.set_frame(label="Power (W)", ncol=2)
+        self.set_frame(label="Power (W)")
 
 
     def sync_metrics(self,
