@@ -334,7 +334,7 @@ class SystemData:
             ALL_MEM_KEYS = "MemTotal,MemFree,MemAvailable,Buffers,Cached,SwapCached,Active,Inactive,Active(anon),Inactive(anon),Active(file),Inactive(file),Unevictable,Mlocked,SwapTotal,SwapFree,Dirty,Writeback,AnonPages,Mapped,Shmem,KReclaimable,Slab,SReclaimable,SUnreclaim,KernelStack,PageTables,NFS_Unstable,Bounce,WritebackTmp,CommitLimit,Committed_AS,VmallocTotal,VmallocUsed,VmallocChunk,Percpu,HardwareCorrupted,AnonHugePages,ShmemHugePages,ShmemPmdMapped,FileHugePages,FilePmdMapped,HugePages_Total,HugePages_Free,HugePages_Rsvd,HugePages_Surp,Hugepagesize,Hugetlb,DirectMap4k,DirectMap2M,DirectMap1G"  # noqa: F841, E501, N806, B950
 
             _chosen_keys = ["timestamp", "MemTotal", "MemFree", "Buffers", "Cached",
-                            "Slab", "SwapTotal", "SwapFree", "SwapCached"]
+                            "Slab", "SwapTotal", "SwapFree", "SwapCached", "Shmem"]
 
             self.logger.debug("Read Memory csv report..."); t0 = time.time()  # noqa: E702
             mem_report_lines, keys_with_idx = self.read_mem_csv_report(csv_mem_report=csv_mem_report)
@@ -374,9 +374,11 @@ class SystemData:
         total = self.mem_prof["MemTotal"] / memunit
         cached = (self.mem_prof["Buffers"] + self.mem_prof["Cached"] + self.mem_prof["Slab"]) / memunit
         used = - cached + (self.mem_prof["MemTotal"] - self.mem_prof["MemFree"]) / memunit
+        shmem = self.mem_prof["Shmem"] / memunit
         plt.fill_between(self.mem_stamps, total, alpha=alpha, label="MemTotal", color="b")
         plt.fill_between(self.mem_stamps, used, alpha=alpha * 3, label="MemUsed", color="b")
         plt.fill_between(self.mem_stamps, used, used + cached, alpha=alpha * 2, label="Cach/Buff", color="g")
+        plt.plot(self.mem_stamps, used + shmem, "--", label="Shmem", color="g")
 
         # Swap
         swap_total = self.mem_prof["SwapTotal"] / memunit
