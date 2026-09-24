@@ -7,11 +7,9 @@ stages:
   - pages
   - scan
 
-
 default:
   tags:
     - ${SKA_DEFAULT_RUNNER}
-
 
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
