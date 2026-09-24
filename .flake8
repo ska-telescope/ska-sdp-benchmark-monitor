@@ -15,7 +15,7 @@ import-order-style = pep8
 require-blank-line-before-return = True
 docstring-min-length = 15 # @hc
 
-filename = *.py,./exec/benchmon-run,./exec/benchmon-run,./exec/benchmon-software,./exec/benchmon-visu,./exec/benchmon-report
+filename = *.py,./exec/benchmon-check,./exec/benchmon-run,./exec/benchmon-software,./exec/benchmon-visu,./exec/benchmon-report
 
 exclude =
     .git,
@@ -27,7 +27,8 @@ exclude =
     .mypy_cache,
     .pytest_cache,
     mytest,
-    .make
+    .make,
+    .pyenv
 
 per-file-ignores =
     __init__.py: F401, D104

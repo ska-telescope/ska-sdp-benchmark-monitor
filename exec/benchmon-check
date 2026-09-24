@@ -19,15 +19,15 @@ base_command_check_set = {
 
 base_command_advice_set = {
     "bc": "The 'bc' command is not available. 'bc' is a basic calculator "
-           "utility. To install it, use the following command based on "
-           "your Linux distribution:\n"
+          "utility. To install it, use the following command based on "
+          "your Linux distribution:\n"
           "  - For Ubuntu/Debian: `sudo apt-get install bc`\n"
           "  - For CentOS/RHEL: `sudo yum install bc`\n"
           "  - For Fedora: `sudo dnf install bc`",
     "perf": "The 'perf' command is not available. 'perf' is a performance "
-             "analysis tool that is part of the Linux kernel tools. "
-             "To install it, use the following command based on your "
-             "Linux distribution:\n"
+            "analysis tool that is part of the Linux kernel tools. "
+            "To install it, use the following command based on your "
+            "Linux distribution:\n"
             "  - For Ubuntu/Debian: `sudo apt-get install linux-tools-common linux-tools-generic`\n"
             "  - For CentOS/RHEL: `sudo yum install perf`\n"
             "  - For Fedora: `sudo dnf install perf`"
@@ -55,7 +55,7 @@ perf_monitor_check_set = {
 
 perf_monitor_advice_set = {
     "call_command": "The 'perf record' command requires specific kernel settings to collect call "
-                   "graph data. To enable this, you need to modify the following kernel parameters:\n"
+                    "graph data. To enable this, you need to modify the following kernel parameters:\n"
                     "  - Set `kernel.perf_event_paranoid` to -1\n"
                     "  - Set `kernel.kptr_restrict` to 0\n"
                     "You can do this by running:\n"
@@ -66,6 +66,7 @@ perf_monitor_advice_set = {
                     "  - `kernel.kptr_restrict = 0`\n"
                     "Then, reload the configuration with `sudo sysctl -p`."
 }
+
 
 def cleanup():
     """Clean up temporary files and terminate running processes."""
@@ -79,8 +80,10 @@ def cleanup():
             except subprocess.TimeoutExpired:
                 proc.kill()
 
+
 # Register cleanup function to run at exit
 atexit.register(cleanup)
+
 
 def check_cmd(cmd, advice=None):
     """
@@ -106,6 +109,7 @@ def check_cmd(cmd, advice=None):
             log.info(f"Advice: {advice}")
         return False
 
+
 def check_binary_available(cmd, advice):
     """
     Check if the binary is available in the system PATH.
@@ -121,6 +125,7 @@ def check_binary_available(cmd, advice):
         log.info(f"Advice: {advice}")
         return False
     return True
+
 
 def check_benchmon_env():
     """
@@ -157,7 +162,8 @@ def check_benchmon_env():
                 continue
             else:
                 log.warning(f"Essential file '{file}' does not exist.")
-                log.info("Advice: Ensure that the system is properly configured and the necessary kernel modules are loaded.")
+                log.info("Advice: Ensure that the system is properly configured "
+                         "and the necessary kernel modules are loaded.")
                 return False
 
     # Check monitoring commands
@@ -176,6 +182,7 @@ def check_benchmon_env():
 
     return True
 
+
 def main():
     """
     Main function to check the benchmark environment and log the result.
@@ -184,6 +191,7 @@ def main():
         log.info("Benchmark environment is ready.")
     else:
         log.info("Benchmark environment is not ready. Please check the errors above.")
+
 
 if __name__ == "__main__":
     main()
