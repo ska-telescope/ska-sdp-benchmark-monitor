@@ -9,7 +9,6 @@ import os
 import pickle
 import sys
 import time
-from math import ceil
 
 import matplotlib.pyplot as plt
 import numpy as np
