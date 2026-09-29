@@ -288,7 +288,8 @@ class SystemDataBinary:
         # Order legend
         _order = [0, 4, 3, 2, 1]
         _handles, _labels = plt.gca().get_legend_handles_labels()
-        plt.legend([_handles[idx] for idx in _order], [_labels[idx] for idx in _order], loc=1)
+        plt.legend([_handles[idx] for idx in _order], [_labels[idx] for idx in _order],
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
@@ -329,7 +330,8 @@ class SystemDataBinary:
         plt.yticks(100 / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU Cores (%)")
         plt.grid()
-        plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu / 16), fontsize="6")
+        plt.legend(ncol=_ncpu // 16, fontsize="6",
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
@@ -470,7 +472,7 @@ class SystemDataBinary:
         plt.yticks(yticks)
 
         plt.ylabel("Memory (GiB)")
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid()
 
         if annotate_with_cmds:
@@ -639,7 +641,7 @@ class SystemDataBinary:
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu + 1))
 
         for idx, core in enumerate(cores):
-            plt.plot(self.cpufreq_stamps, self.cpufreq_prof[core], color=cm[idx], label=f"core-{core}")
+            plt.plot(self.cpufreq_stamps, self.cpufreq_prof[core], color=cm[idx], label=f"{core}")
 
         if not self.cpufreq_vals:
             self.logger.error("No CPU frequency data found.")
@@ -661,7 +663,8 @@ class SystemDataBinary:
         plt.yticks(cpu_freq_max / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU frequencies (GHz)")
         plt.grid()
-        plt.legend(loc=0, ncol=self.ncpu_freq // ceil(self.ncpu_freq / 16), fontsize="6")
+        plt.legend(ncol=self.ncpu_freq // 16, fontsize="6",
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0, )
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=cpu_freq_max)
@@ -849,7 +852,7 @@ class SystemDataBinary:
                 break
         plt.yticks(yticks)
         plt.ylabel("Network (MB/s)")
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid()
 
         if annotate_with_cmds:
@@ -1089,9 +1092,9 @@ class SystemDataBinary:
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         if is_with_iops:
-            plt.legend(hand + hand_twin, lab + lab_twin, loc=1)
+            plt.legend(hand + hand_twin, lab + lab_twin, loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         else:
-            plt.legend(loc=1)
+            plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds and not is_with_iops:
             annotate_with_cmds(ymax=diskmax)  # @todo
