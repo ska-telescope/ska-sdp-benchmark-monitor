@@ -5,7 +5,8 @@ Main Python script to generate a report from monitoring metrics
 
 import argparse
 import os
-import shutil
+from PIL import Image
+from pathlib import Path
 
 from benchmon.report import report_generator
 
@@ -67,12 +68,18 @@ def main():
     output_dir = os.path.dirname(output_path)
     if output_dir == "":
         output_dir = "./"
-    figure_filename = os.path.basename(figure_path)
-    destination_path = os.path.join(output_dir, figure_filename)
-    shutil.copy(figure_path, destination_path)
-    rg = report_generator.ReportGenerator(template_file_path=template_path)
 
-    rg.write(hw_report_path, sw_report_path, ps_report_path, figure_filename, output_path)
+    figure = Image.open(figure_path)
+    target_width = 1600
+    figure = figure.resize((target_width, int(figure.size[1] * target_width / figure.size[0])))
+    p = Path(figure_path)
+    name = p.stem
+    ext = p.suffix[1:]
+    figure_path = f"{name}_resized.{ext}"
+    figure.save(output_dir + "/" + figure_path)
+
+    rg = report_generator.ReportGenerator(template_file_path=template_path)
+    rg.write(hw_report_path, sw_report_path, ps_report_path, figure_path, output_path)
 
     return 0
 

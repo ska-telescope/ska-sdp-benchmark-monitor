@@ -28,6 +28,7 @@ requires-python = ">=3.8"
 dependencies = [
   "numpy",
   "matplotlib",
+  "pandoc",
   "ping3",
   "psutil",
   "requests",
