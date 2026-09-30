@@ -1006,8 +1006,9 @@ class SystemData:
                     array = self.disk_prof[blk][field]
                     label = f"{field[-2:]}:{blk}"
                     if is_diskdata_label:
-                        label += f" ({self.disk_data[blk][field]} MB)"
-                    if np.linalg.norm(array) > 1:
+                        label += f" ({self.disk_data[blk][field]} {disk_total_label_unit})"
+
+                    if has_visible_activity(array):
                         plt.fill_between(self.disk_stamps, array, label=label, alpha=alpha)
                         diskmax = max(diskmax, max(array))
 
