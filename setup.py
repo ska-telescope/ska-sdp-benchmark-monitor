@@ -74,6 +74,7 @@ setup(
     ],
     package_data={
         "benchmon.run": ["*.sh"],
+        "benchmon.visualization": ["*.json"],
     },
     include_package_data=True,
     cmdclass={

@@ -3,6 +3,15 @@
 #include "mem_monitor.h"
 #include "monitor_io.h"
 #include "pause_manager.h"
+#include "thread_safe_queue.hpp"
+#include <thread>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <charconv>
+#include <cstring>
+#include <cctype>
 
 namespace rt_monitor::mem
 {
@@ -17,21 +26,25 @@ namespace rt_monitor
 {
 template <> db_stream &db_stream::operator<< <mem::data_sample>(mem::data_sample sample)
 {
-    influxdb::Point point{"mem"};
-
+    static const std::string hostname = rt_monitor::io::get_hostname();
+    std::stringstream ss;
+    ss << "memory,hostname=" << hostname << " ";
+    
+    bool first = true;
     for (const auto [label, value] : sample.values_map)
     {
-        point.addField(label + std::string("(kiB)"), static_cast<long long int>(value));
+        if (!first) ss << ",";
+        std::string lower_label = label;
+        std::transform(lower_label.begin(), lower_label.end(), lower_label.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+        ss << lower_label << "=" << value << "i";
+        first = false;
     }
-    point.setTimestamp(sample.timestamp);
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (const std::runtime_error& e)
-    {
-        spdlog::error(std::string{"Error while pushing a memory sample: "} + e.what());
-    }
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+    
+    this->write_line(ss.str());
+    
+    spdlog::debug("Sending memory sample to InfluxDB");
 
     return *this;
 }
@@ -69,102 +82,81 @@ constexpr std::array<std::string_view, n_fields> field_names{
     "Unaccepted",    "HugePages_Total", "HugePages_Free", "HugePages_Rsvd", "HugePages_Surp",
     "Hugepagesize",  "Hugetlb",         "DirectMap4k",    "DirectMap2M",    "DirectMap1G"};
 
-data_sample read_mem_sample()
+data_sample read_mem_sample(int fd)
 {
     spdlog::trace("reading a memory monitoring sample");
     const auto now = std::chrono::system_clock::now();
 
-    std::ifstream input("/proc/meminfo");
-    if (!input.is_open()) {
-        spdlog::error("Failed to open /proc/meminfo");
-        return {};
-    }
+    char buffer[8192]; // 8KB should be enough for /proc/meminfo
+    ssize_t bytes_read = pread(fd, buffer, sizeof(buffer) - 1, 0);
+    if (bytes_read <= 0) return {};
+    buffer[bytes_read] = '\0';
+
     data_sample sample;
     sample.timestamp = now;
 
+    const char* ptr = buffer;
+    const char* end = buffer + bytes_read;
     int i = 0;
-    while (!input.eof() && i < 55)
+
+    while (ptr < end && i < 55)
     {
-        std::string line;
-        std::getline(input, line);
+        const char* eol = static_cast<const char*>(std::memchr(ptr, '\n', end - ptr));
+        const char* line_end = eol ? eol : end;
+
         if (enabled[i])
         {
-            const auto value_start = line.find_first_of("0123456789");
-            const auto value_end = line.find_last_of("0123456789") + 1;
-            uint64_t value = 0;
-            if (value_start == std::string::npos)
+            // Format: "MemTotal:       32847252 kB"
+            // Find colon
+            const char* colon = static_cast<const char*>(std::memchr(ptr, ':', line_end - ptr));
+            if (colon)
             {
-                continue;
+                const char* curr = colon + 1;
+                // Skip spaces
+                while (curr < line_end && std::isspace(*curr)) curr++;
+                
+                if (curr < line_end && std::isdigit(*curr))
+                {
+                    uint64_t value = 0;
+                    auto res = std::from_chars(curr, line_end, value);
+                    if (res.ec == std::errc())
+                    {
+                         sample.values_map[std::string(field_names[i])] = value;
+                    } 
+                    else 
+                    {
+                         sample.values_map[std::string(field_names[i])] = 0;
+                    }
+                }
             }
-            for (auto it = line.begin() + value_start; it != line.begin() + value_end; ++it)
-            {
-                value = value * 10 + static_cast<uint64_t>(*it - '0');
-            }
-
-            const auto label_end = line.find_first_of(':');
-            if (label_end == std::string::npos)
-            {
-                continue;
-            }
-            const std::string label = line.substr(0, label_end);
-            sample.values_map[label] = value;
         }
+        
+        ptr = eol ? eol + 1 : end;
         ++i;
     }
-
     return sample;
 }
 
-/*void read_mem_sample(std::ostream &file)
+void mem_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
 {
-    spdlog::trace("reading a memory monitoring sample");
-    const auto now = std::chrono::system_clock::now();
-    const auto duration = now.time_since_epoch();
-    const auto timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
-    io::write_binary(file, timestamp);
-
-    std::ifstream input("/proc/meminfo");
-
-    int i = 0;
-    while (!input.eof() && i < 55)
-    {
-        std::string line;
-        std::getline(input, line);
-        if (enabled[i])
-        {
-            auto value_start = line.find_first_of("0123456789");
-            auto value_end = line.find_last_of("0123456789") + 1;
-            uint64_t value = 0;
-            if (value_start != std::string::npos)
-            {
-                for (auto it = line.begin() + value_start; it != line.begin() + value_end; ++it)
-                {
-                    value = value * 10 + static_cast<uint64_t>(*it - '0');
-                }
-            }
-            io::write_binary(file, value);
-        }
-        ++i;
+    int fd = open("/proc/meminfo", O_RDONLY);
+    if (fd < 0) {
+        spdlog::error("Failed to open /proc/meminfo");
+        queue.stop();
+        return;
     }
-}*/
 
-template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream)
-{
     bool sampling_warning_provided = false;
-
     while (!pause_manager::stopped())
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("memory monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
+        pause_manager::wait_if_paused();
 
         const auto begin = std::chrono::high_resolution_clock::now();
-        const auto sample = read_mem_sample();
-        stream << sample;
+        auto sample = read_mem_sample(fd);
+        spdlog::debug("Collected memory sample");
+        queue.push(std::move(sample));
         const auto end = std::chrono::high_resolution_clock::now();
+        
         const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
         auto time_to_wait = time_interval - sampling_time;
         if (time_to_wait < 0.)
@@ -180,8 +172,25 @@ template <typename stream_type> void start_sampling(double time_interval, stream
             time_to_wait = 0.;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+        pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
+    close(fd);
+    queue.stop();
+    spdlog::trace("memory producer stopped");
+}
+
+template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream)
+{
+    ThreadSafeQueue<data_sample> queue;
+    std::thread producer_thread(mem_producer, time_interval, std::ref(queue));
+
+    data_sample sample;
+    while (queue.pop(sample))
+    {
+        if (pause_manager::stopped()) break;
+        stream << sample;
+    }
+    producer_thread.join();
     spdlog::trace("memory monitoring stopped");
 }
 

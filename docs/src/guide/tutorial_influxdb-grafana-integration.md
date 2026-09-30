@@ -25,25 +25,46 @@ benchmon-run ──▶ InfluxDB 3 ──▶ Grafana ──▶ Dashboards
 
 ## Install the Monitoring Stack
 
+After cloning the repository, **you must run the installer from inside the cloned repository** so it can locate the packaged dashboards via a relative path. A safe sequence is:
+
 ```bash
-$ benchmon-install-grafana --install-dir ~/benchmon-stack
+$ git clone <repo-url>
+$ cd ska-sdp-benchmark-monitor
+$ python -m venv .venv
+$ source .venv/bin/activate
+$ pip install .
+$ benchmon-install-grafana            # run from repository root
 ```
 
-Resulting layout:
+Installation directory selection (what the script actually does):
 
-- `~/benchmon-stack/grafana` – Grafana binaries, dashboards, `conf/custom.ini`.
-- `~/benchmon-stack/influxdb3` – InfluxDB3 binaries, `admin_token.json`, data directory.
+- No argument provided → defaults to `${HOME}/benchmon-stack`.
+- Provide a path argument without a flag → uses that path, e.g. `benchmon-install-grafana /opt/benchmon-stack`.
+- Provide `--install-dir <path>` → uses the supplied path, e.g. `benchmon-install-grafana --install-dir ~/bm-stack`.
+- Any other `-`-prefixed option is rejected with an error.
 
-Optional environment helpers:
+Resulting layout when no `--install-dir` is given (default `${HOME}/benchmon-stack`):
+
+- `${HOME}/benchmon-stack/grafana` – Grafana binaries, dashboards copied from `grafana/dashboards`, `conf/custom.ini`, plus created `data/` and `logs/` folders.
+- `${HOME}/benchmon-stack/influxdb3` – InfluxDB3 binaries (ports configured at runtime by `benchmon-start-grafana`).
+
+Resulting layout when `--install-dir /custom/path` (or positional `/custom/path`) is given:
+
+- `/custom/path/grafana` – Same content as above, but rooted in your chosen directory.
+- `/custom/path/influxdb3` – Same content as above.
+
+Optional environment helpers (set if you pick a custom install dir and want to avoid retyping paths):
 
 ```bash
-export BENCHMON_GRAFANA_PATH=~/benchmon-stack/grafana
-export BENCHMON_INFLUXDB_PATH=~/benchmon-stack/influxdb3
+export BENCHMON_GRAFANA_PATH=/custom/path/grafana
+export BENCHMON_INFLUXDB_PATH=/custom/path/influxdb3
 ```
 
 Persist them in your shell profile if desired.
 
 ## Start Grafana and InfluxDB
+
+> **Note:** If you installed the monitoring stack to a custom directory (using `--install-dir`), you need to define the `BENCHMON_GRAFANA_PATH` and `BENCHMON_INFLUXDB_PATH` environment variables pointing to the respective installation directories. You may also need to explicitly provide the `--dashboard-dir` argument if the automatic detection fails.
 
 ```bash
 $ benchmon-start-grafana \
@@ -89,6 +110,57 @@ benchmon-run --system --grafana \
 
 Metrics appear in InfluxDB immediately and dashboards refresh in real time.
 
+## End-to-End Example: Monitoring a Compute Workload
+
+This walkthrough demonstrates the full lifecycle of monitoring a computationally intensive task.
+
+**1. Prepare the Environment**
+
+First, ensure the monitoring stack is running. 
+
+```bash
+# Start InfluxDB and Grafana in the background
+benchmon-start-grafana --save-dir /tmp/benchmon-demo 
+
+# or using default directory
+benchmon-start-grafana
+```
+
+**2. Generate Load & Monitor**
+
+We will use `benchmon-run` to start benchmarking monitoring. In this example, we'll simulate a CPU-intensive task using `stress-ng` (or a simple shell loop if `stress-ng` isn't available). We enabled both system monitoring (`--system`) and Grafana streaming (`--grafana`).
+
+```bash
+# Example: Monitor a 60-second CPU load
+benchmon-run --system --grafana \
+             --save-dir /tmp/benchmon-demo/run-stress-test
+```
+
+Open a new terminal, run stree-ng
+```bash
+stress-ng --cpu 4 --timeout 60s
+# Note: If you don't have stress-ng, any command works:
+# sleep 60
+```
+**3. Visualise in Real-time**
+
+While the command above is running:
+
+The user opens the browser on the node where benchmon-run is running
+the user is accessing a server via ssh and then opening his browser on his own machine and an additional connection is need via ssh -L
+
+1.  Open your browser to `http://<hostname>:3000`.
+2.  Navigate to **Dashboards** > **System Monitoring**.
+3.  You will see the **CPU Usage** graph spike corresponding to the load generated in step 2. High-frequency metrics like CPU frequency will also reflect the processor's boost behavior.
+
+**4. Cleanup**
+
+Once the run is complete, stop the background services to free up resources.
+
+```bash
+benchmon-stop-grafana --save-dir /tmp/benchmon-demo
+```
+
 ## Stop the Stack
 
 ```bash
@@ -100,6 +172,41 @@ $ pkill -F /tmp/benchmon-demo/grafana-data/pids.json
 ```
 
 Logs remain under `/tmp/benchmon-demo/grafana-data/logs/`.
+
+
+## Run Influxdb and Grafana Remotely (AWS)
+
+#### Login into HEADNODE
+```bash
+srun -N 1 -n 1 -c 16 -p c7i-metal-24xl-noht-ond --pty bash
+
+# Please record the IP address of the node
+ifconfig 
+
+# Change to venv
+source <path/to/venv/bin/activate>
+
+cd ska-sdp-benchmark-monitor/
+pip uninstall ska-sdp-benchmark-monitor
+pip install .
+
+# Install Grafana and InfluxBD3 with deault value
+benchmon-install-grafana
+
+# Start InfluxDB and Grafana
+benchmon-start-grafana
+
+# Run Benchmark Monitoring (C++ version)
+rt-monitor --sampling-frequency 5 --batch-size 10000  --cpu --grafana http://localhost:8181?db=metrics --log-level debug
+
+
+# On the local notepad computer), forward SSH port
+# Note: 10.192.34.110 is an example IP addrss retrived by `ifconfig` cmd
+ssh -L 3000:10.192.34.110:3000 dp-hpc-headnode -N 
+
+```
+
+Open browser and visit: http://localhost:3000
 
 ## Command Line Options
 

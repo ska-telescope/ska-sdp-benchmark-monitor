@@ -3,11 +3,30 @@
 set -e
 
 # Input argument: installation directory
-if [ -n "$1" ]; then
-    INSTALL_DIR="$1"
-else
-    INSTALL_DIR="${HOME}/benchmon-stack"
-fi
+INSTALL_DIR="${HOME}/benchmon-stack"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        "--install-dir")
+            if [ -n "$2" ]; then
+                INSTALL_DIR="$2"
+                shift 2
+            else
+                echo "Error: --install-dir requires a path argument"
+                exit 1
+            fi
+            ;;
+        *)
+            if [[ "$1" == -* ]]; then
+                echo "Unknown option: $1"
+                exit 1
+            else
+                INSTALL_DIR="$1"
+                shift 1
+            fi
+            ;;
+    esac
+done
 
 GRAFANA_VERSION="12.1.1"
 GRAFANA_TAR="grafana_${GRAFANA_VERSION}_16903967602_linux_amd64.tar.gz"
@@ -50,4 +69,18 @@ else
 fi
 
 mkdir -p "${INSTALL_DIR}/grafana/data" "${INSTALL_DIR}/grafana/logs"
+
+# Configure Grafana (Enable Anonymous Access)
+echo "Configuring Grafana custom.ini..."
+cat <<EOF > "${INSTALL_DIR}/grafana/conf/custom.ini"
+[paths]
+data = ${INSTALL_DIR}/grafana/data
+logs = ${INSTALL_DIR}/grafana/logs
+
+[auth.anonymous]
+enabled = true
+org_role = Admin
+EOF
+
+echo "Installation completed successfully."
 

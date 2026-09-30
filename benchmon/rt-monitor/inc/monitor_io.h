@@ -31,6 +31,12 @@ inline std::ofstream make_buffer(std::string filename)
 }
 
 /**
+ * @brief Retrieves the hostname of the system.
+ * @return std::string The hostname.
+ */
+std::string get_hostname();
+
+/**
  * @brief Converts a CPU identifier string to an unsigned integer.
  *
  * @param str The CPU identifier string. If the string is "cpu", the function

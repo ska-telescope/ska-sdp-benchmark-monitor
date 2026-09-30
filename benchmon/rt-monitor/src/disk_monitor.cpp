@@ -1,11 +1,18 @@
 #include <filesystem>
-#include <scn/scan.h>
+#include <thread>
+#include <fcntl.h>
+#include <unistd.h>
+#include <charconv>
+#include <cstring>
+#include <cctype>
+#include <cstring>
 
 #include "db_stream.hpp"
 #include "file_stream.hpp"
 #include "monitor_io.h"
 #include "pause_manager.h"
 #include "spdlog/common.h"
+#include "thread_safe_queue.hpp"
 
 namespace rt_monitor::disk
 {
@@ -144,63 +151,43 @@ namespace rt_monitor
 {
 template <> db_stream &db_stream::operator<< <disk::data_sample>(disk::data_sample sample)
 {
-    auto point = influxdb::Point{"disk"}
-                     .addTag("device", sample.device)
-                     .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
-                     .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
-                     .addField("Read_operations/s", static_cast<long long int>(sample.rd_completed))
-                     .addField("Write_operations/s", static_cast<long long int>(sample.wr_completed))
-                     .setTimestamp(sample.timestamp);
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (std::runtime_error e)
-    {
-        spdlog::error(std::string{"Error while pushing a disk sample: "} + e.what());
-    }
-
+    static const std::string hostname = rt_monitor::io::get_hostname();
+    std::stringstream ss;
+    ss << "disk_stats,hostname=" << hostname << ",device=" << sample.device << " ";
+    ss << "sectors_read=" << sample.sectors_read << "i,"
+       << "sectors_written=" << sample.sectors_written << "i";
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+    this->write_line(ss.str());
     return *this;
 }
 
 template <> db_stream &db_stream::operator<< <disk::data_sample_diff>(disk::data_sample_diff sample)
 {
-    auto point = influxdb::Point{"disk"}
-                     .addTag("device", sample.device)
-                     .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
-                     .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
-                     .addField("Read_operations/s", static_cast<long long int>(sample.rd_completed))
-                     .addField("Write_operations/s", static_cast<long long int>(sample.wr_completed))
-                     .setTimestamp(sample.timestamp);
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (std::runtime_error e)
-    {
-        spdlog::error(std::string{"Error while pushing a disk sample: "} + e.what());
-    }
-
+    static const std::string hostname = rt_monitor::io::get_hostname();
+    std::stringstream ss;
+    ss << "disk,hostname=" << hostname << ",device=" << sample.device << " ";
+    ss << "Sectors_reads/s=" << sample.sectors_read << "i,"
+       << "Sectors_writes/s=" << sample.sectors_written << "i,"
+       << "Read_operations/s=" << sample.rd_completed << "i,"
+       << "Write_operations/s=" << sample.wr_completed << "i";
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+    this->write_line(ss.str());
     return *this;
 }
 
 template <> db_stream &db_stream::operator<< <disk::data_sample_cumulated>(disk::data_sample_cumulated sample)
 {
-    auto point = influxdb::Point{"disk"}
-                     .addTag("device", "total")
-                     .addField("Sectors_reads/s", static_cast<long long int>(sample.sectors_read))
-                     .addField("Sectors_writes/s", static_cast<long long int>(sample.sectors_written))
-                     .addField("Read_operations/s", static_cast<long long int>(sample.rd_completed))
-                     .addField("Write_operations/s", static_cast<long long int>(sample.wr_completed))
-                     .setTimestamp(sample.timestamp);
-    try
-    {
-        this->db_ptr_->write(std::move(point));
-    }
-    catch (std::runtime_error e)
-    {
-        spdlog::error(std::string{"Error while pushing a disk sample: "} + e.what());
-    }
+    static const std::string hostname = rt_monitor::io::get_hostname();
+    std::stringstream ss;
+    ss << "disk,hostname=" << hostname << ",device=total ";
+    ss << "Sectors_reads/s=" << sample.sectors_read << "i,"
+       << "Sectors_writes/s=" << sample.sectors_written << "i,"
+       << "Read_operations/s=" << sample.rd_completed << "i,"
+       << "Write_operations/s=" << sample.wr_completed << "i";
+    ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
+    this->write_line(ss.str());
+    
+    spdlog::debug("Sending cumulated disk sample to InfluxDB");
 
     return *this;
 }
@@ -286,36 +273,104 @@ std::vector<block_device_info> get_partition_block_sizes_binary()
     return entries;
 }
 
-void read_disk_samples(const std::unordered_map<std::string, size_t> &name_to_index,
+void read_disk_samples(int fd, const std::unordered_map<std::string, size_t> &name_to_index,
                        std::unordered_map<uint32_t, data_sample> &samples_set)
 {
     const auto now = std::chrono::system_clock::now();
 
-    std::ifstream input("/proc/diskstats");
-    std::string line;
-    while (std::getline(input, line))
+    if (lseek(fd, 0, SEEK_SET) == -1) return;
+
+    char buffer[65536]; // 64KB
+    ssize_t bytes_read = pread(fd, buffer, sizeof(buffer) - 1, 0);
+    if (bytes_read <= 0) return;
+    buffer[bytes_read] = '\0';
+
+    const char* ptr = buffer;
+    const char* end = buffer + bytes_read;
+
+    while (ptr < end)
     {
-        std::istringstream line_stream(line);
-        auto [major, minor, device, rd_completed, rd_merged, sectors_read, time_read, wr_completed, wr_merged,
-              sectors_written, time_write, io_in_progress, time_io, time_weighted_io, disc_completed, disc_merged,
-              sectors_discarded, time_discard, flush_requests, time_flush] =
-            scn::scan<uint32_t, uint32_t, std::string, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
-                      uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
-                      uint64_t, uint64_t>(line, "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}")
-                ->values();
+        const char* eol = static_cast<const char*>(std::memchr(ptr, '\n', end - ptr));
+        const char* line_end = eol ? eol : end;
+        
+        const char* curr = ptr;
+        
+        // Skip leading spaces
+        while (curr < line_end && std::isspace(*curr)) curr++;
+        if (curr >= line_end) { ptr = eol ? eol + 1 : end; continue; }
+
+        uint32_t major = 0, minor = 0;
+        
+        // 1. Major
+        auto res1 = std::from_chars(curr, line_end, major);
+        if (res1.ec != std::errc()) { ptr = eol ? eol + 1 : end; continue; }
+        curr = res1.ptr;
+        while (curr < line_end && std::isspace(*curr)) curr++;
+        
+        // 2. Minor
+        auto res2 = std::from_chars(curr, line_end, minor);
+        if (res2.ec != std::errc()) { ptr = eol ? eol + 1 : end; continue; }
+        curr = res2.ptr;
+        while (curr < line_end && std::isspace(*curr)) curr++;
+        
+        // 3. Device Name
+        const char* name_start = curr;
+        while (curr < line_end && !std::isspace(*curr)) curr++;
+        std::string device(name_start, curr - name_start);
+
         if (device.starts_with("loop") || device.starts_with("dm"))
         {
+            ptr = eol ? eol + 1 : end;
             continue;
         }
 
         const auto index_it = name_to_index.find(device);
         const uint32_t index =
             (index_it != name_to_index.cend()) ? index_it->second : std::numeric_limits<uint32_t>::max();
-        if (index == -1)
+        if (index == std::numeric_limits<uint32_t>::max()) // Fixed comparison to match type
         {
             spdlog::error("disk sample partition name not indexed {}", device);
+            ptr = eol ? eol + 1 : end;
             continue;
         }
+
+        // 4. Parse metrics
+        uint64_t v[17] = {0}; // rd_compl, rd_merged, s_read, t_read, wr_compl, wr_merged, s_written, t_write, io_prog, t_io, t_weighted, disc_compl, disc_merged, s_disc, t_disc, flush, t_flush
+        int count = 0;
+        
+        while (curr < line_end && count < 17) {
+             while (curr < line_end && std::isspace(*curr)) curr++;
+             if (curr >= line_end) break;
+             auto res = std::from_chars(curr, line_end, v[count]);
+             if (res.ec == std::errc()) {
+                 curr = res.ptr;
+                 count++;
+             } else {
+                 break;
+             }
+        }
+        
+        // Assign values
+        uint64_t rd_completed = v[0];
+        uint64_t rd_merged = v[1];
+        uint64_t sectors_read = v[2];
+        uint64_t time_read = v[3];
+        uint64_t wr_completed = v[4];
+        uint64_t wr_merged = v[5];
+        uint64_t sectors_written = v[6];
+        uint64_t time_write = v[7];
+        uint64_t io_in_progress = v[8];
+        uint64_t time_io = v[9];
+        uint64_t time_weighted_io = v[10];
+        uint64_t disc_completed = v[11];
+        uint64_t disc_merged = v[12];
+        uint64_t sectors_discarded = v[13];
+        uint64_t time_discard = v[14];
+        uint64_t flush_requests = v[15];
+        uint64_t time_flush = v[16];
+
+        // Continue with existing logic...
+
 
         data_sample sample{now,
                            major,
@@ -347,8 +402,55 @@ void read_disk_samples(const std::unordered_map<std::string, size_t> &name_to_in
                       minor, device, rd_completed, rd_merged, sectors_read, time_read, wr_completed, wr_merged,
                       sectors_written, time_write, io_in_progress, time_io, time_weighted_io, disc_completed,
                       disc_merged, sectors_discarded, time_discard, flush_requests, time_flush);
+
+        ptr = eol ? eol + 1 : end;
     }
 }
+
+
+void disk_producer(double time_interval, 
+                   const std::unordered_map<std::string, size_t>& name_to_index,
+                   ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>>& queue)
+{
+    int fd = open("/proc/diskstats", O_RDONLY);
+    if (fd < 0) {
+        spdlog::error("Failed to open /proc/diskstats");
+        queue.stop();
+        return;
+    }
+
+    bool sampling_warning_provided = false;
+    while (!pause_manager::stopped())
+    {
+        pause_manager::wait_if_paused();
+
+        const auto begin = std::chrono::high_resolution_clock::now();
+        
+        std::unordered_map<uint32_t, data_sample> samples;
+        read_disk_samples(fd, name_to_index, samples);
+        queue.push(std::move(samples));
+
+        const auto end = std::chrono::high_resolution_clock::now();
+        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+        auto time_to_wait = time_interval - sampling_time;
+        if (time_to_wait < 0.)
+        {
+            if (!sampling_warning_provided)
+            {
+                spdlog::warn("The sampling period of {} ms might be too low for disk monitoring. The last sampling "
+                             "time was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
+                             static_cast<int>(time_interval), sampling_time);
+                sampling_warning_provided = true;
+            }
+            time_to_wait = 0.;
+        }
+        pause_manager::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+    }
+    close(fd);
+    queue.stop();
+    spdlog::trace("disk producer stopped");
+}
+
 template <typename stream_type> void start_sampling(double time_interval, stream_type &&stream);
 
 template <> void start_sampling(const double time_interval, db_stream &&stream)
@@ -363,64 +465,23 @@ template <> void start_sampling(const double time_interval, db_stream &&stream)
         name_to_index[partition_info[i].name] = i;
     }
 
-    bool sampling_warning_provided = false;
-    std::array<std::unordered_map<uint32_t, data_sample>, 2> samples_sets;
-    size_t last_index = 0;
-    read_disk_samples(name_to_index, samples_sets[last_index]);
-    std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_interval)));
+    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
+    std::thread producer_thread(disk_producer, time_interval, std::cref(name_to_index), std::ref(queue));
 
-    while (!pause_manager::stopped())
+    std::unordered_map<uint32_t, data_sample> current_sample_set;
+    while (queue.pop(current_sample_set))
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("Disk monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
-
-        const auto begin = std::chrono::high_resolution_clock::now();
-
-        auto &last_sample_set = samples_sets[last_index];
-        auto &current_sample_set = samples_sets[1 - last_index];
-
-        data_sample_cumulated cumulated_sample_diff;
-        cumulated_sample_diff.timestamp = begin;
-        read_disk_samples(name_to_index, current_sample_set);
-
+        if (pause_manager::stopped()) break;
+        spdlog::debug("Collected disk samples for {} partitions", current_sample_set.size());
+        
         for (const auto [index, current_sample] : current_sample_set)
         {
-            const auto last_sample_it = last_sample_set.find(index);
-            if (last_sample_it != last_sample_set.end())
-            {
-                const auto &last_sample = last_sample_it->second;
-                data_sample_diff sample_diff{partition_info[index].block_size, current_sample - last_sample};
-                cumulated_sample_diff.rd_completed += sample_diff.rd_completed;
-                cumulated_sample_diff.wr_completed += sample_diff.wr_completed;
-                cumulated_sample_diff.sectors_read += sample_diff.sectors_read;
-                cumulated_sample_diff.sectors_written += sample_diff.sectors_written;
-            }
+            stream << current_sample;
         }
-
-        stream << cumulated_sample_diff;
-        const auto end = std::chrono::high_resolution_clock::now();
-        last_index = 1 - last_index;
-
-        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        auto time_to_wait = time_interval - sampling_time;
-        if (time_to_wait < 0.)
-        {
-            if (!sampling_warning_provided)
-            {
-                spdlog::warn("The sampling period of {} ms might be too low for disk monitoring. The last sampling "
-                             "time was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
-                             static_cast<int>(time_interval), sampling_time);
-                sampling_warning_provided = true;
-            }
-            time_to_wait = 0.;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
     }
-    spdlog::trace("CPU monitoring stopped");
+    
+    producer_thread.join();
+    spdlog::trace("disk monitoring stopped");
 }
 
 template <> void start_sampling(const double time_interval, file_stream &&stream)
@@ -435,8 +496,6 @@ template <> void start_sampling(const double time_interval, file_stream &&stream
         name_to_index[partition_info[i].name] = i;
     }
 
-    bool sampling_warning_provided = false;
-
     io::write_binary(stream.get_file(), static_cast<uint32_t>(partition_info.size()));
     for (const auto info : partition_info)
     {
@@ -446,38 +505,19 @@ template <> void start_sampling(const double time_interval, file_stream &&stream
         spdlog::debug("partition: {}, block size: {}", info.name, info.block_size);
     }
 
+    ThreadSafeQueue<std::unordered_map<uint32_t, data_sample>> queue;
+    std::thread producer_thread(disk_producer, time_interval, std::cref(name_to_index), std::ref(queue));
+
     std::unordered_map<uint32_t, data_sample> samples_set;
-    while (!pause_manager::stopped())
+    while (queue.pop(samples_set))
     {
-        if (pause_manager::paused())
-        {
-            spdlog::trace("disk monitoring paused");
-            std::unique_lock<std::mutex> lock(pause_manager::mutex());
-            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
-        }
-        const auto begin = std::chrono::high_resolution_clock::now();
-        read_disk_samples(name_to_index, samples_set);
+        if (pause_manager::stopped()) break;
         for (const auto &[index, sample] : samples_set)
         {
             stream << sample;
         }
-        const auto end = std::chrono::high_resolution_clock::now();
-        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-        auto time_to_wait = time_interval - sampling_time;
-        if (time_to_wait < 0.)
-        {
-            if (!sampling_warning_provided)
-            {
-                spdlog::warn(
-                    "The sampling period of {} ms might be too low for disk monitoring. The last sampling time "
-                    "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
-                    static_cast<int>(time_interval), sampling_time);
-                sampling_warning_provided = true;
-            }
-            time_to_wait = 0.;
-        }
-        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int64_t>(time_interval * 1000)));
     }
+    producer_thread.join();
     spdlog::trace("disk monitoring stopped");
 }
 } // namespace rt_monitor::disk
