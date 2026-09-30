@@ -22,7 +22,13 @@ def create_args(save_dir: str = "/tmp/benchmon_savedir_test",
                 call: bool = False,
                 call_mode: str = "dwarf,32",
                 call_profiling_frequency: int = 10,
-                call_keep_datafile: bool = False) -> argparse.ArgumentParser:
+                call_keep_datafile: bool = False,
+                csv: bool = True,
+                grafana: bool = False,
+                grafana_url: str = "http://localhost:8086",
+                grafana_job_name: str = "benchmon",
+                grafana_batch_size: int = 50,
+                grafana_send_interval: float = 2.0) -> argparse.ArgumentParser:
     """
     Create arguments for run_monitor test
     """

@@ -11,6 +11,9 @@ import time
 import psutil
 import requests
 
+from .influxdb_sender import InfluxDBSender, create_influxdb_config
+from .hp_processor import HighPerformanceDataProcessor
+
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
@@ -48,6 +51,23 @@ class RunMonitor:
         # G5K Power monitoring
         self.pow_filename_base = "pow_g5k_.csv"
         self.is_power_g5k = args.power_g5k
+
+        # CSV file output control
+        self.is_csv = args.csv
+
+        # InfluxDB integration
+        self.is_grafana = args.grafana
+
+        if self.is_grafana:
+            self.influxdb_config = create_influxdb_config(
+                influxdb_url=args.grafana_url,
+                enabled=args.grafana,
+                job_name=args.grafana_job_name,
+                batch_size=args.grafana_batch_size,
+                send_interval=args.grafana_send_interval
+            )
+            self.influxdb_sender = None
+            self.hp_processor = None
 
         # Profiling and callstack parameters
         self.call_filename = "call_report.txt"
@@ -90,6 +110,16 @@ class RunMonitor:
 
         os.makedirs(self.save_dir, exist_ok=True)
 
+        # Initialize InfluxDB components if enabled
+        if self.is_grafana:
+            self.influxdb_sender = InfluxDBSender(self.logger, self.influxdb_config)
+            pipe_path = f"{self.save_dir}/benchmon_data_pipe"
+            self.hp_processor = HighPerformanceDataProcessor(self.logger, self.influxdb_sender, pipe_path)
+
+            self.influxdb_sender.start()
+            self.hp_processor.start()
+            self.logger.info("InfluxDB integration enabled - HP processor started")
+
         if self.is_system:
             self.run_sys_monitoring()
 
@@ -121,25 +151,53 @@ class RunMonitor:
         self.logger.debug("Starting system monitoring")
 
         sh_repo = os.path.dirname(os.path.realpath(__file__))
-        exec_sh_file = lambda device: f"{sh_repo}/{device}_mon.sh"
+
+        # Setup pipe path for Grafana if needed
+        pipe_path = f"{self.save_dir}/benchmon_data_pipe" if self.is_grafana else ""
 
         # CPU + CPUfreq + Memory + Network + Disk monitoring processes
         for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):  # , "timing_mapping"):
 
-            msg = f"{exec_sh_file(device)} {freq} {self.save_dir}/{self.sys_filename(device)}"
-            self.logger.debug(f"Starting: {msg}")
+            # Determine which script to use
+            sh_repo = os.path.dirname(os.path.realpath(__file__))
 
-            self.sys_process += [
-                subprocess.Popen(
-                    args=["bash", exec_sh_file(device),
-                          f"{freq}",
-                          f"{self.save_dir}/{self.sys_filename(device)}"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True
-                )
-            ]
+            # Start CSV monitoring if enabled (default behavior)
+            if self.is_csv:
+                script_path = f"{sh_repo}/{device}_mon.sh"
+                csv_file = f"{self.save_dir}/{self.sys_filename(device)}"
+                args = ["bash", script_path, f"{freq}", csv_file]
+                msg = f"CSV script: {script_path} → {csv_file}"
 
+                self.logger.debug(f"Starting: {msg}")
+                self.sys_process += [
+                    subprocess.Popen(
+                        args=args,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True
+                    )
+                ]
+
+            # Start InfluxDB monitoring if enabled (independent of CSV)
+            if self.is_grafana:
+                hp_script_path = f"{sh_repo}/{device}_mon_hp.sh"
+                pipe_path = f"{self.save_dir}/benchmon_data_pipe"
+                hp_args = ["bash", hp_script_path, f"{freq}", "/dev/null", "true", pipe_path]
+                hp_msg = f"InfluxDB script: {hp_script_path} → InfluxDB"
+
+                self.logger.debug(f"Starting: {hp_msg}")
+                self.sys_process += [
+                    subprocess.Popen(
+                        args=hp_args,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True
+                    )
+                ]
+
+            # Skip if both CSV and Grafana are disabled
+            if not self.is_csv and not self.is_grafana:
+                self.logger.debug(f"Skipping {device} monitoring (both CSV and Grafana disabled)")
 
     def run_perf_pow(self):
         """
@@ -215,8 +273,14 @@ class RunMonitor:
         """
         Download grid5000 power consumption report
         """
-        _site = HOSTNAME.split(".")[1]
-        _cluster = HOSTNAME.split(".")[0]
+        # Check if hostname is in Grid5000 format
+        hostname_parts = HOSTNAME.split(".")
+        if len(hostname_parts) < 2 or "grid5000" not in HOSTNAME:
+            self.logger.info(f"Hostname {HOSTNAME} is not a Grid5000 node, skipping G5K power download")
+            return
+
+        _site = hostname_parts[1]
+        _cluster = hostname_parts[0]
 
         requests.packages.urllib3.disable_warnings(
             requests.packages.urllib3.exceptions.InsecureRequestWarning
@@ -249,6 +313,13 @@ class RunMonitor:
         """
         signum = signum
         frame = frame
+
+        # Stop InfluxDB components
+        if self.is_grafana:
+            if hasattr(self, 'hp_processor') and self.hp_processor:
+                self.hp_processor.stop()
+            if hasattr(self, 'influxdb_sender') and self.influxdb_sender:
+                self.influxdb_sender.stop()
 
         # kill perf (call)
         if self.perfcall_process:
