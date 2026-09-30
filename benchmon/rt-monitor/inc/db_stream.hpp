@@ -202,7 +202,7 @@ class db_stream
 
         if (query_pos != std::string::npos) {
             std::string query = rest.substr(query_pos + 1);
-            if (query.starts_with("db=")) {
+            if (query.rfind("db=", 0) == 0) {
                 db_name = query.substr(3);
             }
         }

@@ -100,7 +100,8 @@ std::vector<CpuSource> get_cpu_freq_sources()
     auto cpu_path_iterator = std::filesystem::directory_iterator("/sys/devices/system/cpu");
     for (const auto &entry : cpu_path_iterator)
     {
-        if (entry.is_directory() && entry.path().filename().string().starts_with("cpu"))
+        const std::string filename = entry.path().filename().string();
+        if (entry.is_directory() && filename.rfind("cpu", 0) == 0)
         {
             std::string online_path = entry.path().string() + "/online";
             bool is_online = true; // cpu0 often doesn't have 'online' file and is always online
