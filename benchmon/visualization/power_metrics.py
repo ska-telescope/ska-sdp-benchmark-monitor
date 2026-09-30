@@ -17,7 +17,7 @@ def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     Compute the total energy (Wh), based on the trapezoid rule.
     """
     # Handle empty data
-    if len(time_stamps) == 0 or len(power_stamps) == 0 or len(time_stamps) < 2 or len(power_stamps) < 2:
+    if len(time_stamps) < 2 or len(power_stamps) < 2:
         return 0.0
 
     # Ensure both lists have the same length
@@ -249,6 +249,7 @@ class PerfPowerData:
         events_style["power/energy-ram/"] = {"color": "C1", "ls": "-."}
         events_style["power/energy-pkg/"] = {"color": "k", "ls": "-"}
         events_style["power/energy-psys/"] = {"color": "b", "ls": "-"}
+        events_style["power/energy-gpu/"] = {"color": "g", "ls": ":"}
         ymax = 0
 
         for event in self.events:

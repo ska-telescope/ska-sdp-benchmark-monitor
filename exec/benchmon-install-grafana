@@ -1,0 +1,53 @@
+#!/bin/bash
+
+set -e
+
+# Input argument: installation directory
+if [ -n "$1" ]; then
+    INSTALL_DIR="$1"
+else
+    INSTALL_DIR="${HOME}/benchmon-stack"
+fi
+
+GRAFANA_VERSION="12.1.1"
+GRAFANA_TAR="grafana_${GRAFANA_VERSION}_16903967602_linux_amd64.tar.gz"
+GRAFANA_URL="https://dl.grafana.com/grafana/release/${GRAFANA_VERSION}/${GRAFANA_TAR}"
+
+INFLUXDB3_VERSION="3.4.2"
+INFLUXDB3_TAR="influxdb3-core-${INFLUXDB3_VERSION}_linux_amd64.tar.gz"
+INFLUXDB3_URL="https://dl.influxdata.com/influxdb/releases/${INFLUXDB3_TAR}"
+INFLUXDB3_PORT=8081
+
+echo "Creating install directory: $INSTALL_DIR"
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+
+# Download and extract Grafana
+if [ ! -d "grafana" ]; then
+    echo "Downloading Grafana..."
+    echo "URL:" $GRAFANA_URL
+    wget -c "$GRAFANA_URL"
+    echo "Extracting Grafana..."
+    tar -zxvf "$GRAFANA_TAR"
+    GRAFANA_DIR=$(tar -tf "$GRAFANA_TAR" | head -1 | cut -f1 -d"/")
+    mv "$GRAFANA_DIR" grafana
+    rm -f "$GRAFANA_TAR"
+else
+    echo "Grafana already installed."
+fi
+
+# Download and extract InfluxDB3
+if [ ! -d "influxdb3" ]; then
+    echo "Downloading InfluxDB3..."
+    wget -c "$INFLUXDB3_URL"
+    echo "Extracting InfluxDB3..."
+    tar -zxvf "$INFLUXDB3_TAR"
+    INFLUXDB3_DIR=$(tar -tf "$INFLUXDB3_TAR" | head -1 | cut -f1 -d"/")
+    mv "$INFLUXDB3_DIR" influxdb3
+    rm -f "$INFLUXDB3_TAR"
+else
+    echo "InfluxDB3 already installed."
+fi
+
+mkdir -p "${INSTALL_DIR}/grafana/data" "${INSTALL_DIR}/grafana/logs"
+

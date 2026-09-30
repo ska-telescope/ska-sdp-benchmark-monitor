@@ -7,12 +7,12 @@ import os
 import signal
 import subprocess
 import time
+from pathlib import Path
 
 import psutil
 import requests
 
-from .influxdb_sender import InfluxDBSender, create_influxdb_config
-from .hp_processor import HighPerformanceDataProcessor
+from .hp_collector import HighPerformanceCollector
 
 
 HOSTNAME = os.uname()[1]
@@ -28,14 +28,14 @@ class RunMonitor:
     def __init__(self, args, logger):
         """Docstring @todo."""
 
+        self.args = args
         self.logger = logger
-
         self.should_run = True
-
-        self.save_dir = args.save_dir
+        self.is_shutting_down = False
 
         self.save_dir_base = args.save_dir
-        self.save_dir = f"{self.save_dir}/benchmon_traces_{HOSTNAME}"
+        # This is the unique directory for this node's CSV files
+        self.save_dir = f"{self.save_dir_base}/benchmon_traces_{HOSTNAME}"
 
         self.verbose = args.verbose
 
@@ -61,16 +61,10 @@ class RunMonitor:
         # InfluxDB integration
         self.is_grafana = args.grafana
 
-        if self.is_grafana:
-            self.influxdb_config = create_influxdb_config(
-                influxdb_url=args.grafana_url,
-                enabled=args.grafana,
-                job_name=args.grafana_job_name,
-                batch_size=args.grafana_batch_size,
-                send_interval=args.grafana_send_interval
-            )
-            self.influxdb_sender = None
-            self.hp_processor = None
+        # --- REFACTOR: Use the new HighPerformanceCollector ---
+        self.hp_collector = None
+        # This is now just a placeholder; config is loaded in run()
+        self.influxdb_config = {}
 
         # Profiling and callstack parameters
         self.call_filename = "call_report.txt"
@@ -100,6 +94,15 @@ class RunMonitor:
         self.perfpow_process = None
         self.perfcall_process = None
 
+    def _check_control_node(self):
+        """Checks if the current node is the control node for post-processing."""
+        oar_check = subprocess.run(args=["oarprint", "host"],
+                                   capture_output=True,
+                                   shell=True,
+                                   text=True,
+                                   check=False).stdout.split("\n")[0] == HOSTNAME
+        slurm_check = os.environ.get("SLURM_NODEID") == "0"
+        self.is_benchmon_control_node = oar_check or slurm_check
 
     def run(self, timeout: int = None):
         """
@@ -113,16 +116,38 @@ class RunMonitor:
 
         os.makedirs(self.save_dir, exist_ok=True)
 
-        # Initialize InfluxDB components if enabled
+        # Check if this is the control node
+        self._check_control_node()
+
         if self.is_grafana:
-            self.influxdb_sender = InfluxDBSender(self.logger, self.influxdb_config)
-            pipe_path = f"{self.save_dir}/benchmon_data_pipe"
-            self.hp_processor = HighPerformanceDataProcessor(self.logger, self.influxdb_sender, pipe_path)
+            # --- REFACTOR: Load connection info from the correct shared path ---
+            connection_file = Path(self.save_dir_base) / "grafana-data" / "connection.json"
+            if not connection_file.is_file():
+                self.logger.error(f"Grafana connection file not found at {connection_file}")
+                self.logger.error("Hint: Run 'benchmon-start-grafana' before 'benchmon-run'.")
+                self.is_grafana = False  # Disable grafana features if config is missing
+            else:
+                with open(connection_file, "r") as f:
+                    conn_info = json.load(f)
+                if self.args.grafana_influxdb_url != "http://localhost:8181":
+                    conn_info["influxdb_url"] = self.args.grafana_influxdb_url
+                self.influxdb_config = {
+                    'url': conn_info.get("influxdb_url"),
+                    'token': conn_info.get("influxdb_token"),
+                    'database': 'metrics',
+                }
 
-            self.influxdb_sender.start()
-            self.hp_processor.start()
-            self.logger.info("InfluxDB integration enabled - HP processor started")
+        # --- REFACTOR: Initialize and start the new HP Collector ---
+        if self.is_grafana:
+            self.hp_collector = HighPerformanceCollector(
+                self.logger,
+                self.influxdb_config,
+                self.args.grafana_sample_interval,
+                self.args.grafana_batch_size
+            )
+            self.hp_collector.start()
 
+        # Start writer processes (Only for CSV now)
         if self.is_system:
             if self.binary_sys_monitoring:
                 self.run_sys_monitoring_binary()
@@ -135,18 +160,20 @@ class RunMonitor:
         if self.is_call:
             self.run_perf_call()
 
+        # --- FIX: Replace blocking wait() with a main loop ---
         if timeout:
+            self.logger.info(f"Running for a fixed duration of {timeout} seconds.")
             time.sleep(timeout)
-        elif self.is_system:
-            self.sys_process[0].wait()
-        elif self.is_power:
-            self.perfpow_process.wait()
-        elif self.is_call:
-            self.perfcall_process.wait()
+        else:
+            self.logger.info("Monitoring started. Press Ctrl+C to stop.")
+            try:
+                while self.should_run:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                self.logger.info("Ctrl+C received, initiating termination.")
+                self.should_run = False
 
-        self.terminate("", "")
-        self.post_process()
-
+        self._shutdown()
 
     def run_sys_monitoring(self):
         """
@@ -157,9 +184,6 @@ class RunMonitor:
         self.logger.debug("Starting system monitoring")
 
         sh_repo = os.path.dirname(os.path.realpath(__file__))
-
-        # Setup pipe path for Grafana if needed
-        pipe_path = f"{self.save_dir}/benchmon_data_pipe" if self.is_grafana else ""
 
         # CPU + CPUfreq + Memory + Network + Disk monitoring processes
         for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib", "timing_mapping"):
@@ -183,26 +207,7 @@ class RunMonitor:
                     )
                 ]
 
-            # Start InfluxDB monitoring if enabled (independent of CSV)
-            if self.is_grafana:
-                hp_script_path = f"{sh_repo}/{device}_mon_hp.sh"
-                pipe_path = f"{self.save_dir}/benchmon_data_pipe"
-                hp_args = ["bash", hp_script_path, f"{freq}", "/dev/null", "true", pipe_path]
-                hp_msg = f"InfluxDB script: {hp_script_path} → InfluxDB"
-
-                self.logger.debug(f"Starting: {hp_msg}")
-                self.sys_process += [
-                    subprocess.Popen(
-                        args=hp_args,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        text=True
-                    )
-                ]
-
-            # Skip if both CSV and Grafana are disabled
-            if not self.is_csv and not self.is_grafana:
-                self.logger.debug(f"Skipping {device} monitoring (both CSV and Grafana disabled)")
+            # The 'if self.is_grafana:' block is no longer needed here.
 
 
     def write_benchmon_pid(self, pids) -> None:
@@ -365,15 +370,22 @@ class RunMonitor:
         """
         Terminate background process after catching term signal
         """
-        signum = signum
-        frame = frame
+        # This method is now only for signal handling
+        self.logger.info(f"Signal {signum} received, initiating termination.")
+        self.should_run = False
 
-        # Stop InfluxDB components
-        if self.is_grafana:
-            if hasattr(self, 'hp_processor') and self.hp_processor:
-                self.hp_processor.stop()
-            if hasattr(self, 'influxdb_sender') and self.influxdb_sender:
-                self.influxdb_sender.stop()
+    def _shutdown(self):
+        """
+        Internal method to perform all shutdown operations once.
+        """
+        if self.is_shutting_down:
+            return
+        self.is_shutting_down = True
+        self.logger.info("Shutting down monitoring processes...")
+
+        # --- REFACTOR: Stop the new HP Collector ---
+        if self.is_grafana and self.hp_collector:
+            self.hp_collector.stop()
 
         # kill perf (call)
         if self.perfcall_process:
@@ -423,6 +435,8 @@ class RunMonitor:
 
             self.logger.debug(f"Terminated system monitoring with stdout: {process_stdout}")
 
+        # Perform post-processing after all processes are terminated
+        self.post_process()
 
     def post_process(self):
         """

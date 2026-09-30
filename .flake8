@@ -15,16 +15,16 @@ import-order-style = pep8
 require-blank-line-before-return = True
 docstring-min-length = 15 # @hc
 
-filename = *.py,./exec/benchmon-check,./exec/benchmon-run,./exec/benchmon-software,./exec/benchmon-visu,./exec/benchmon-report
-
-; filename=
-;     *.py,
-;     ./exec/benchmon-check,
-;     ./exec/benchmon-hardware,
-;     ./exec/benchmon-report,
-;     ./exec/benchmon-run,
-;     ./exec/benchmon-software,
-;     ./exec/benchmon-visu
+filename=
+    *.py,
+    ./exec/benchmon-check,
+    ./exec/benchmon-hardware,
+    ./exec/benchmon-report,
+    ./exec/benchmon-run,
+    ./exec/benchmon-run-grafana,
+    ./exec/benchmon-software,
+    ./exec/benchmon-stop-grafana,
+    ./exec/benchmon-visu
 
 exclude =
     .git,
