@@ -122,15 +122,39 @@ class BenchmonMNSyncVisualizer:
         ts_sync = []
         cpu_sync = []
         for data in nodes_data:
+            # Check if CPU data is available
+            if not hasattr(data.system_metrics, 'cpu_stamps') or len(data.system_metrics.cpu_stamps) == 0:
+                self.logger.warning(f"No CPU data available for node {data.hostname}")
+                continue
+
+            if not hasattr(data.system_metrics, 'cpu_prof') or 'cpu' not in data.system_metrics.cpu_prof:
+                self.logger.warning(f"No CPU profile data available for node {data.hostname}")
+                continue
+
             ts = data.system_metrics.cpu_stamps
             spaces = ["user", "nice", "system", "iowait", "irq", "softirq", "steal", "guest", "guestnice"]
-            cpu = sum([data.system_metrics.cpu_prof["cpu"][space] for space in spaces])
+
+            # Check if all required spaces exist in cpu_prof
+            cpu_data = []
+            for space in spaces:
+                if space in data.system_metrics.cpu_prof["cpu"]:
+                    cpu_data.append(data.system_metrics.cpu_prof["cpu"][space])
+                else:
+                    self.logger.warning(f"Missing CPU space '{space}' for node {data.hostname}")
+
+            if not cpu_data:
+                self.logger.warning(f"No valid CPU spaces found for node {data.hostname}")
+                continue
+
+            cpu = sum(cpu_data)
             plt.plot(ts, cpu, label=data.hostname)
 
             ts_sync += [ts]
             cpu_sync += [cpu]
 
-        self.sync_metrics(ts_list=ts_sync, dev_list=cpu_sync, opt="avg", label="average", color="k")
+        # Only sync if we have data
+        if ts_sync and cpu_sync:
+            self.sync_metrics(ts_list=ts_sync, dev_list=cpu_sync, opt="avg", label="average", color="k")
 
         yrng = 10
         plt.yticks(100 / yrng * np.arange(yrng + 1))
@@ -147,14 +171,31 @@ class BenchmonMNSyncVisualizer:
         ts_sync = []
         cpufreq_sync = []
         for data in nodes_data:
+            # Check if CPU frequency data is available
+            if not hasattr(data.system_metrics, 'cpufreq_stamps') or len(data.system_metrics.cpufreq_stamps) == 0:
+                self.logger.warning(f"No CPU frequency timestamps available for node {data.hostname}")
+                continue
+
+            if not hasattr(data.system_metrics, 'cpufreq_vals') or 'mean' not in data.system_metrics.cpufreq_vals:
+                self.logger.warning(f"No CPU frequency data available for node {data.hostname}")
+                continue
+
             ts = data.system_metrics.cpufreq_stamps
             cpufreq = data.system_metrics.cpufreq_vals["mean"]
+
+            # Check if arrays have same length
+            if len(ts) != len(cpufreq):
+                self.logger.warning(f"Timestamp and frequency data length mismatch for node {data.hostname}")
+                continue
+
             plt.plot(ts, cpufreq, label=data.hostname)
 
             ts_sync += [ts]
             cpufreq_sync += [cpufreq]
 
-        self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
+        # Only sync if we have data
+        if ts_sync and cpufreq_sync:
+            self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
         self.set_frame(label="Mean CPU frequency (GHz)")
 
 
@@ -169,9 +210,34 @@ class BenchmonMNSyncVisualizer:
         ts_sync = []
         mem_sync = []
         for data in nodes_data:
+            # Check if memory data is available
+            if not hasattr(data.system_metrics, 'mem_stamps') or len(data.system_metrics.mem_stamps) == 0:
+                self.logger.warning(f"No memory timestamps available for node {data.hostname}")
+                continue
+
+            if not hasattr(data.system_metrics, 'mem_prof') or not data.system_metrics.mem_prof:
+                self.logger.warning(f"No memory profile data available for node {data.hostname}")
+                continue
+
+            # Check if required memory fields exist
+            if 'MemTotal' not in data.system_metrics.mem_prof or 'MemFree' not in data.system_metrics.mem_prof:
+                self.logger.warning(f"Missing MemTotal or MemFree data for node {data.hostname}")
+                continue
+
+            if (len(data.system_metrics.mem_prof["MemTotal"]) == 0
+                    or len(data.system_metrics.mem_prof["MemFree"]) == 0):
+                self.logger.warning(f"Empty memory data arrays for node {data.hostname}")
+                continue
+
             memunit = 1024**2
             ts = data.system_metrics.mem_stamps
             mem = (data.system_metrics.mem_prof["MemTotal"] - data.system_metrics.mem_prof["MemFree"]) / memunit
+
+            # Check if arrays have same length
+            if len(ts) != len(mem):
+                self.logger.warning(f"Timestamp and memory data length mismatch for node {data.hostname}")
+                continue
+
             plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem, label=data.hostname)
 
             plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
@@ -179,14 +245,17 @@ class BenchmonMNSyncVisualizer:
 
             ts_sync += [ts]
             mem_sync += [mem]
-        plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
-        self.sync_metrics(ts_list=ts_sync, dev_list=mem_sync, label="sum", color="k", ls="-.")
 
-        for powtwo in range(25):
-            yticks = np.arange(0, sum(memtotal) + 2**powtwo, 2**powtwo, dtype="i")
-            if len(yticks) < self.args.fig_yrange:
-                break
-        plt.yticks(yticks)
+        if memtotal and len(memtotal) > 1:  # Check if we have any memory data
+            if ts_sync and mem_sync:
+                plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
+                self.sync_metrics(ts_list=ts_sync, dev_list=mem_sync, label="sum", color="k", ls="-.")
+
+            for powtwo in range(25):
+                yticks = np.arange(0, sum(memtotal) + 2**powtwo, 2**powtwo, dtype="i")
+                if len(yticks) < self.args.fig_yrange:
+                    break
+            plt.yticks(yticks)
         self.set_frame(label="Memory (GiB)")
 
 
@@ -201,38 +270,72 @@ class BenchmonMNSyncVisualizer:
         net_rx_sync = []
         rx_data = 0
         for data in nodes_data:
+            # Check if network data is available
+            if not hasattr(data.system_metrics, 'net_stamps') or len(data.system_metrics.net_stamps) == 0:
+                self.logger.warning(f"No network timestamps available for node {data.hostname}")
+                continue
+
+            if (not hasattr(data.system_metrics, 'net_rx_total')
+                    or not hasattr(data.system_metrics, 'net_rx_data')):
+                self.logger.warning(f"No network RX data available for node {data.hostname}")
+                continue
+
             ts = data.system_metrics.net_stamps
             net_rx = data.system_metrics.net_rx_total
+
+            # Check if arrays have same length
+            if len(ts) != len(net_rx):
+                self.logger.warning(f"Timestamp and network RX data length mismatch for node {data.hostname}")
+                continue
+
             plt.plot(ts, net_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.net_rx_data)} MB)")
 
             ts_sync += [ts]
             net_rx_sync += [net_rx]
             rx_data += data.system_metrics.net_rx_data
 
-        self.sync_metrics(ts_list=ts_sync,
-                          dev_list=net_rx_sync,
-                          label=f"rx:sum ({int(rx_data)} MB)",
-                          marker="v",
-                          ls="--")
+        if ts_sync and net_rx_sync:
+            self.sync_metrics(ts_list=ts_sync,
+                              dev_list=net_rx_sync,
+                              label=f"rx:sum ({int(rx_data)} MB)",
+                              marker="v",
+                              ls="--")
 
         ts_sync = []
         net_tx_sync = []
         tx_data = 0
         for data in nodes_data:
+            # Check if network TX data is available
+            if not hasattr(data.system_metrics, 'net_stamps') or len(data.system_metrics.net_stamps) == 0:
+                self.logger.warning(f"No network timestamps available for node {data.hostname}")
+                continue
+
+            if (not hasattr(data.system_metrics, 'net_tx_total')
+                    or not hasattr(data.system_metrics, 'net_tx_data')):
+                self.logger.warning(f"No network TX data available for node {data.hostname}")
+                continue
+
             ts = data.system_metrics.net_stamps
             net_tx = data.system_metrics.net_tx_total
+
+            # Check if arrays have same length
+            if len(ts) != len(net_tx):
+                self.logger.warning(f"Timestamp and network TX data length mismatch for node {data.hostname}")
+                continue
+
             plt.plot(ts, net_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.net_tx_data)} MB)")
 
             ts_sync += [ts]
             net_tx_sync += [net_tx]
             tx_data += data.system_metrics.net_tx_data
 
-        self.sync_metrics(ts_list=ts_sync,
-                          dev_list=net_tx_sync,
-                          label=f"tx:sum ({int(tx_data)} MB)",
-                          marker="^",
-                          ls="--",
-                          with_yrange=(tx_data > rx_data))
+        if ts_sync and net_tx_sync:
+            self.sync_metrics(ts_list=ts_sync,
+                              dev_list=net_tx_sync,
+                              label=f"tx:sum ({int(tx_data)} MB)",
+                              marker="^",
+                              ls="--",
+                              with_yrange=(tx_data > rx_data))
 
         self.set_frame(label="Network Activity (MB/s)")
 
@@ -248,33 +351,69 @@ class BenchmonMNSyncVisualizer:
         rd_sync = []
         rd_data = 0
         for data in nodes_data:
+            # Check if disk read data is available
+            if not hasattr(data.system_metrics, 'disk_stamps') or len(data.system_metrics.disk_stamps) == 0:
+                self.logger.warning(f"No disk timestamps available for node {data.hostname}")
+                continue
+
+            if (not hasattr(data.system_metrics, 'disk_rd_total')
+                    or not hasattr(data.system_metrics, 'disk_rd_data')):
+                self.logger.warning(f"No disk read data available for node {data.hostname}")
+                continue
+
             ts = data.system_metrics.disk_stamps
             disk_rd = data.system_metrics.disk_rd_total
+
+            # Check if arrays have same length
+            if len(ts) != len(disk_rd):
+                self.logger.warning(f"Timestamp and disk read data length mismatch for node {data.hostname}")
+                continue
+
             plt.plot(ts, disk_rd, marker="v", label=f"rd:{data.hostname} ({int(data.system_metrics.disk_rd_data)} MB)")
 
             ts_sync += [ts]
             rd_sync += [disk_rd]
             rd_data += data.system_metrics.disk_rd_data
-        self.sync_metrics(ts_list=ts_sync, dev_list=rd_sync, label=f"rd:sum ({int(rd_data)} MB)", marker="v", ls="--")
+
+        if ts_sync and rd_sync:
+            self.sync_metrics(ts_list=ts_sync, dev_list=rd_sync,
+                              label=f"rd:sum ({int(rd_data)} MB)", marker="v", ls="--")
 
         ts_sync = []
         wr_sync = []
         wr_data = 0
         for data in nodes_data:
+            # Check if disk write data is available
+            if not hasattr(data.system_metrics, 'disk_stamps') or len(data.system_metrics.disk_stamps) == 0:
+                self.logger.warning(f"No disk timestamps available for node {data.hostname}")
+                continue
+
+            if (not hasattr(data.system_metrics, 'disk_wr_total')
+                    or not hasattr(data.system_metrics, 'disk_wr_data')):
+                self.logger.warning(f"No disk write data available for node {data.hostname}")
+                continue
+
             ts = data.system_metrics.disk_stamps
             disk_wr = data.system_metrics.disk_wr_total
+
+            # Check if arrays have same length
+            if len(ts) != len(disk_wr):
+                self.logger.warning(f"Timestamp and disk write data length mismatch for node {data.hostname}")
+                continue
+
             plt.plot(ts, disk_wr, marker="^", label=f"wr:{data.hostname} ({int(data.system_metrics.disk_wr_data)} MB)")
 
             ts_sync += [ts]
             wr_sync += [disk_wr]
             wr_data += data.system_metrics.disk_wr_data
 
-        self.sync_metrics(ts_list=ts_sync,
-                          dev_list=wr_sync,
-                          label=f"wr:sum ({int(wr_data)} MB)",
-                          marker="^",
-                          ls="--",
-                          with_yrange=(wr_data > rd_data))
+        if ts_sync and wr_sync:
+            self.sync_metrics(ts_list=ts_sync,
+                              dev_list=wr_sync,
+                              label=f"wr:sum ({int(wr_data)} MB)",
+                              marker="^",
+                              ls="--",
+                              with_yrange=(wr_data > rd_data))
 
         self.set_frame(label="Disk Activity (MB/s)")
 
@@ -290,39 +429,73 @@ class BenchmonMNSyncVisualizer:
         ib_rx_sync = []
         rx_data = 0
         for data in nodes_data:
+            # Check if InfiniBand RX data is available
+            if not hasattr(data.system_metrics, 'ib_stamps') or len(data.system_metrics.ib_stamps) == 0:
+                self.logger.warning(f"No InfiniBand timestamps available for node {data.hostname}")
+                continue
+
+            if (not hasattr(data.system_metrics, 'ib_rx_total')
+                    or not hasattr(data.system_metrics, 'ib_rx_data')):
+                self.logger.warning(f"No InfiniBand RX data available for node {data.hostname}")
+                continue
+
             ts = data.system_metrics.ib_stamps
             ib_rx = data.system_metrics.ib_rx_total
+
+            # Check if arrays have same length
+            if len(ts) != len(ib_rx):
+                self.logger.warning(f"Timestamp and InfiniBand RX data length mismatch for node {data.hostname}")
+                continue
+
             plt.plot(ts, ib_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.ib_rx_data)} MB)")
 
             ts_sync += [ts]
             ib_rx_sync += [ib_rx]
             rx_data += data.system_metrics.ib_rx_data
 
-        self.sync_metrics(ts_list=ts_sync,
-                          dev_list=ib_rx_sync,
-                          label=f"rx:sum ({int(rx_data)} MB)",
-                          marker="v",
-                          ls="--",
-                          with_yrange=True)
+        if ts_sync and ib_rx_sync:
+            self.sync_metrics(ts_list=ts_sync,
+                              dev_list=ib_rx_sync,
+                              label=f"rx:sum ({int(rx_data)} MB)",
+                              marker="v",
+                              ls="--",
+                              with_yrange=True)
 
         ts_sync = []
         ib_tx_sync = []
         tx_data = 0
         for data in nodes_data:
+            # Check if InfiniBand TX data is available
+            if not hasattr(data.system_metrics, 'ib_stamps') or len(data.system_metrics.ib_stamps) == 0:
+                self.logger.warning(f"No InfiniBand timestamps available for node {data.hostname}")
+                continue
+
+            if (not hasattr(data.system_metrics, 'ib_tx_total')
+                    or not hasattr(data.system_metrics, 'ib_tx_data')):
+                self.logger.warning(f"No InfiniBand TX data available for node {data.hostname}")
+                continue
+
             ts = data.system_metrics.ib_stamps
             ib_tx = data.system_metrics.ib_tx_total
+
+            # Check if arrays have same length
+            if len(ts) != len(ib_tx):
+                self.logger.warning(f"Timestamp and InfiniBand TX data length mismatch for node {data.hostname}")
+                continue
+
             plt.plot(ts, ib_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.ib_tx_data)} MB)")
 
             ts_sync += [ts]
             ib_tx_sync += [ib_tx]
             tx_data += data.system_metrics.ib_tx_data
 
-        self.sync_metrics(ts_list=ts_sync,
-                          dev_list=ib_tx_sync,
-                          label=f"tx:sum ({int(tx_data)} MB)",
-                          marker="^",
-                          ls="--",
-                          with_yrange=(tx_data > rx_data))
+        if ts_sync and ib_tx_sync:
+            self.sync_metrics(ts_list=ts_sync,
+                              dev_list=ib_tx_sync,
+                              label=f"tx:sum ({int(tx_data)} MB)",
+                              marker="^",
+                              ls="--",
+                              with_yrange=(tx_data > rx_data))
 
         self.set_frame(label="Infiniband Activity (MB/s)")
 
@@ -336,10 +509,20 @@ class BenchmonMNSyncVisualizer:
         """
         if self.args.pow:
             for data in nodes_data:
+                # Check if power performance metrics are available
+                if not hasattr(data, 'power_perf_metrics'):
+                    self.logger.warning(f"No power performance metrics available for node {data.hostname}")
+                    continue
+
                 data.power_perf_metrics.plot_events(pre_label=f"{data.hostname}:")
 
         if self.args.pow_g5k:
             for data in nodes_data:
+                # Check if G5K power metrics are available
+                if not hasattr(data, 'power_g5k_metrics'):
+                    self.logger.warning(f"No G5K power metrics available for node {data.hostname}")
+                    continue
+
                 data.power_g5k_metrics.plot_g5k_pow_profiles(pre_label=f"{data.hostname}:")
 
         self.set_frame(label="Power (W)")
@@ -361,19 +544,41 @@ class BenchmonMNSyncVisualizer:
             marker      (str)   sync plot marker
             color       (str)   sync plot line color
         """
+        # Check if we have data to sync
+        if not ts_list or not dev_list:
+            self.logger.warning("No data available for sync operation")
+            return
+
+        if len(ts_list) != len(dev_list):
+            self.logger.warning("Timestamp and device lists have different lengths")
+            return
+
+        # Check if all arrays are non-empty
+        valid_pairs = []
+        for ts, dev in zip(ts_list, dev_list):
+            if len(ts) > 0 and len(dev) > 0 and len(ts) == len(dev):
+                valid_pairs.append((ts, dev))
+            else:
+                self.logger.warning("Skipping invalid timestamp/device pair in sync")
+
+        if not valid_pairs:
+            self.logger.warning("No valid data pairs for sync operation")
+            return
+
         SYNC_FREQ = 1  # noqa: N806
-        ts_sync = np.unique(np.round(np.concatenate(ts_list), SYNC_FREQ))
+        all_ts = [ts for ts, _ in valid_pairs]
+        ts_sync = np.unique(np.round(np.concatenate(all_ts), SYNC_FREQ))
         dev_sync = np.zeros_like(ts_sync)
 
-        for ts, dev in zip(ts_list, dev_list):
+        for ts, dev in valid_pairs:
             interpolator = interp1d(ts, dev, kind="linear", fill_value="extrapolate", bounds_error=False)
             dev_sync += interpolator(ts_sync)
 
-        divider = len(ts_list) if opt == "avg" else 1
+        divider = len(valid_pairs) if opt == "avg" else 1
 
         plt.plot(ts_sync, dev_sync / divider, label=label, color=color, ls=ls, marker=marker)
 
-        if with_yrange:
+        if with_yrange and len(dev_sync) > 0:
             maxval = max(dev_sync / divider)
             for powtwo in range(25):
                 yticks = np.arange(0, maxval + 2**powtwo, 2**powtwo, dtype="i")
