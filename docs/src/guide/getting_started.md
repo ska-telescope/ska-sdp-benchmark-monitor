@@ -22,7 +22,7 @@ kernel.kptr_restrict = 0
 ```
 
 ### Installing `hpctoolkit`
-to generate software performance metrics or collect execution traces, HPCToolkit is required. It can be installed following the following instructions https://hpctoolkit.org/software-instructions.html
+to generate software performance metrics or collect execution traces, HPCToolkit is required. It can be installed using the following [instructions]([https://hpctoolkit.org/software-instructions.html])
 
 ---
 
