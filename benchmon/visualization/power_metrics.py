@@ -17,7 +17,7 @@ def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     Compute the total energy (Wh), based on the trapezoid rule.
     """
     # Handle empty data
-    if not time_stamps or not power_stamps or len(time_stamps) < 2 or len(power_stamps) < 2:
+    if len(time_stamps) == 0 or len(power_stamps) == 0 or len(time_stamps) < 2 or len(power_stamps) < 2:
         return 0.0
 
     # Ensure both lists have the same length
