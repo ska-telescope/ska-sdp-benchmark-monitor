@@ -1,0 +1,88 @@
+#include <chrono>
+#include <cstdint>
+#include <fstream>
+#include <ostream>
+#include <sched.h>
+#include <scn/scan.h>
+#include <spdlog/spdlog.h>
+#include <thread>
+
+#include "cpu_monitor.h"
+#include "monitor_io.h"
+#include "pause_manager.h"
+
+namespace rt_monitor::cpu
+{
+void read_cpu_sample(std::ostream &stream)
+{
+    spdlog::trace("reading a CPU monitoring sample");
+    const auto now = std::chrono::system_clock::now();
+    const auto duration = now.time_since_epoch();
+    const uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+
+    std::ifstream file("/proc/stat");
+    std::string line;
+    while (std::getline(file, line))
+    {
+        if (!line.starts_with("cpu"))
+            break;
+
+        const auto result = scn::scan<std::string, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t,
+                                      uint64_t, uint64_t, uint64_t>(line, "{} {} {} {} {} {} {} {} {} {} {}");
+        if (!result)
+            continue;
+        const auto [cpuid_value, user_value, nice_value, system_value, idle_value, iowait_value, irq_value,
+                    softirq_value, steal_value, guest_value, guestnice_value] = result->values();
+        const auto cpuid = io::cpuid_str_to_uint(cpuid_value);
+
+        io::write_binary(stream, timestamp);
+        io::write_binary(stream, cpuid);
+        io::write_binary(stream, user_value);
+        io::write_binary(stream, nice_value);
+        io::write_binary(stream, system_value);
+        io::write_binary(stream, idle_value);
+        io::write_binary(stream, iowait_value);
+        io::write_binary(stream, irq_value);
+        io::write_binary(stream, softirq_value);
+        io::write_binary(stream, steal_value);
+        io::write_binary(stream, guest_value);
+        io::write_binary(stream, guestnice_value);
+    }
+}
+
+void start(const double time_interval, const std::string &out_path)
+{
+    bool sampling_warning_provided = false;
+
+    auto file = io::make_buffer(out_path);
+    while (!pause_manager::stopped())
+    {
+        if (pause_manager::paused())
+        {
+            spdlog::trace("CPU monitoring paused");
+            std::unique_lock<std::mutex> lock(pause_manager::mutex());
+            pause_manager::condition_variable().wait(lock, [] { return !pause_manager::paused().load(); });
+        }
+
+        const auto begin = std::chrono::high_resolution_clock::now();
+        read_cpu_sample(file);
+        const auto end = std::chrono::high_resolution_clock::now();
+        const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+        auto time_to_wait = time_interval - sampling_time;
+        if (time_to_wait < 0.)
+        {
+            if (!sampling_warning_provided)
+            {
+                spdlog::warn("The sampling period of {} ms might be too low for CPU monitoring. The last sampling time "
+                             "was {} ms. Samples might be missed. Consider reducing the sampling frequency.",
+                             static_cast<int>(time_interval), sampling_time);
+                sampling_warning_provided = true;
+            }
+            time_to_wait = 0.;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(time_to_wait)));
+    }
+    spdlog::trace("CPU monitoring stopped");
+}
+} // namespace rt_monitor::cpu

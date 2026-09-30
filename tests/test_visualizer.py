@@ -10,6 +10,7 @@ from benchmon.visualization import BenchmonVisualizer
 
 
 def create_args(traces_repo: str = "",
+                binary: bool = False,
                 cpu: bool = False,
                 cpu_all: bool = False,
                 cpu_cores_full: str = "",
@@ -52,7 +53,7 @@ def create_args(traces_repo: str = "",
                 fig_yrange: int = 11,
                 verbose: bool = False,
                 test: bool = False):
-    """Create argument namespace for visuaalization"""
+    """Create argument namespace for visualization"""
 
     return argparse.Namespace(**locals())
 

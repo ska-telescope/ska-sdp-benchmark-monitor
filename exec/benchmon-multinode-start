@@ -20,7 +20,7 @@ if command -v scontrol &> /dev/null; then
 elif command -v oarprint &> /dev/null; then
     hosts=$(oarprint host | awk -F "." '{print $1}')
 else
-    echo "netheir scontrol nor oarprint found"
+    echo "neither scontrol nor oarprint found"
     exit 1
 fi
 
