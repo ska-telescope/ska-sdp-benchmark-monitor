@@ -13,11 +13,9 @@ log = logging.getLogger(__name__)
 _running_processes = []
 
 base_command_check_set = {
-    "bc": "bc",
-    "perf": "perf",
-    "hpctoolkit": "hpcrun",
-    "hpctoolkit": "hpcstruct",
-    "hpctoolkit": "hpcprof"
+    "bc": ["bc"],
+    "perf": ["perf"],
+    "hpctoolkit": ["hpcrun", "hpcstruct", "hpcprof"]
 }
 
 base_command_advice_set = {
@@ -144,10 +142,11 @@ def check_benchmon_env():
         bool: True if the environment is ready, False otherwise.
     """
     # Check base commands
-    for name, cmd in base_command_check_set.items():
+    for name, cmds in base_command_check_set.items():
         advice = base_command_advice_set.get(name, "No advice available.")
-        if not check_binary_available(cmd, advice):
-            return False
+        for cmd in cmds:
+            if not check_binary_available(cmd, advice):
+                return False
 
     # Check essential files
     essential_files = [
@@ -176,17 +175,18 @@ def check_benchmon_env():
 
     # Check monitoring commands
     for check_set, advice_set in [(sys_monitor_check_set, {}), (perf_monitor_check_set, perf_monitor_advice_set)]:
-        for name, cmd in check_set.items():
-            advice = advice_set.get(name, None)
-            if not check_cmd(cmd, advice):
-                if name in ["cpufreq", "ib", "power_command"]:
-                    log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
-                    if advice:
-                        log.info(f"Optional Advice: {advice}")
-                    continue
-                else:
-                    log.warning(f"Command '{name}' failed to run: {cmd}")
-                    return False
+        for name, cmds in check_set.items():
+            for cmd in cmds:
+                advice = advice_set.get(name, None)
+                if not check_cmd(cmd, advice):
+                    if name in ["cpufreq", "ib", "power_command"]:
+                        log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
+                        if advice:
+                            log.info(f"Optional Advice: {advice}")
+                        continue
+                    else:
+                        log.warning(f"Command '{name}' failed to run: {cmd}")
+                        return False
 
     return True
 
