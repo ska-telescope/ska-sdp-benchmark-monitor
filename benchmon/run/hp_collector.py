@@ -261,9 +261,40 @@ class HighPerformanceCollector:
             except Exception as e:
                 self.logger.warning(f"Network producer error: {e}")
 
+    @staticmethod
+    def _read_int_file(path: str) -> int:
+        with open(path, "r") as f:
+            return int(f.read().strip())
+
+    def _disk_sector_size(self, device: str) -> int:
+        base_path = os.path.join("/sys/class/block", device)
+        candidates = [
+            os.path.join(base_path, "queue", "physical_block_size"),
+            os.path.join(base_path, "queue", "hw_sector_size"),
+        ]
+
+        if os.path.exists(base_path):
+            real_path = os.path.realpath(base_path)
+            parent_path = os.path.dirname(real_path)
+            candidates.extend(
+                [
+                    os.path.join(parent_path, "queue", "physical_block_size"),
+                    os.path.join(parent_path, "queue", "hw_sector_size"),
+                ]
+            )
+
+        for candidate in candidates:
+            try:
+                return self._read_int_file(candidate)
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+
+        return 512
+
     def _disk_producer(self, q: queue.Queue):
         """Producer for Disk metrics from /proc/diskstats."""
         batch_list = []
+        sector_sizes = {}
         while not self.stop_event.wait(self.interval):
             try:
                 with open("/proc/diskstats", "r") as f:
@@ -280,9 +311,14 @@ class HighPerformanceCollector:
 
                     sectors_read = parts[5]
                     sectors_written = parts[9]
+                    sector_size = sector_sizes.get(device)
+                    if sector_size is None:
+                        sector_size = self._disk_sector_size(device)
+                        sector_sizes[device] = sector_size
                     lp = (
                         f"disk_stats,hostname={self.hostname},device={device} "
-                        f"sectors_read={sectors_read}i,sectors_written={sectors_written}i {timestamp}"
+                        f"sectors_read={sectors_read}i,sectors_written={sectors_written}i,"
+                        f"sector_size={sector_size}i {timestamp}"
                     )
                     batch_list.append(lp)
 

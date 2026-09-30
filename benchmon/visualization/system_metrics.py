@@ -838,7 +838,7 @@ class SystemData:
 
         # get major blocks and associated sector size
         self.maj_blks_sects = dict(zip(disk_report_lines[_sect_blk_indx][0::2],
-                                       [int(sect) for sect in disk_report_lines[_sect_blk_indx][1::2]]))
+                                   [int(sect) for sect in disk_report_lines[_sect_blk_indx][1::2]]))
 
         # all disk blocks
         ts_0 = disk_report_lines[_samples_idx][0]
@@ -982,8 +982,13 @@ class SystemData:
         """
         alpha = 0.5
         diskmax = 0.0
+        bandwidth_ylabel = getattr(self, "disk_bandwidth_ylabel", "Disk bandwidth (MB/s)")
+        disk_total_label_unit = getattr(self, "disk_total_label_unit", "MB")
 
-        if (len(self.disk_stamps) < 1):
+        def has_visible_activity(array):
+            return len(array) > 0 and np.any(np.nan_to_num(array, nan=0.0) > 0)
+
+        if len(self.disk_stamps) < 1:
             self.logger.warning("Empty disk journal, generating empty plot")
         self.disk_rd_total = np.zeros_like(self.disk_stamps)
         self.disk_wr_total = np.zeros_like(self.disk_stamps)
@@ -1018,7 +1023,7 @@ class SystemData:
             if len(yticks) < self.yrange:
                 break
         plt.yticks(yticks)
-        plt.ylabel("Disk bandwidth (MB/s)")
+        plt.ylabel(bandwidth_ylabel)
         plt.grid()
         hand, lab = plt.gca().get_legend_handles_labels()
 
@@ -1039,7 +1044,7 @@ class SystemData:
                         label = f"{field[:3]}:{blk}"
                         if is_diskdata_label:
                             label += f" ({self.disk_data[blk][field]:.3e} op)"
-                        if np.linalg.norm(array) > 1:
+                        if has_visible_activity(array):
                             pltt.plot(self.disk_stamps, array, label=label, ls="-")
             pltt.set_ylabel("Disk operations per second (IOPS)")
             pltt.grid()

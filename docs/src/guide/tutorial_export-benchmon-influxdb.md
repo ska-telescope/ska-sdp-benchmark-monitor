@@ -71,18 +71,20 @@ graph TD
 
 ### Collecting Data
 
-**benchmon-start-grafana** is use to start collecting data and streaming to InfluxDB. The default value of --save-dir is **~\bench
+`benchmon-start-grafana` starts the local InfluxDB + Grafana stack used by Benchmon. The default value of `--save-dir` is `./benchmon_traces_`.
 
 ```bash
 # 1. Start the stack (InfluxDB + Grafana) with a specified directory
-benchmon-start-grafana --save-dir /tmp/demo
+benchmon-start-grafana --save-dir /tmp/demo --influxdb-query-file-limit 2000
 
 # or use default data storage directory (./benchmon_traces_)
-benchmon-start-grafana
+benchmon-start-grafana --influxdb-query-file-limit 2000
 
 # 2. Run Benchmon (Stream to InfluxDB)
 benchmon-run --system --grafana --save-dir /tmp/demo/run1
 ```
+
+`--influxdb-query-file-limit` is the number of parquet files that a single InfluxDB query may scan. Increase it when you plan to visualize all data in a large database without providing `--start-time` and `--end-time`. A value of `1000` can still be too small for large single-run databases; `2000` is a practical next step before moving to a narrower time window. The value is applied when `benchmon-start-grafana` launches InfluxDB, so you must restart the stack after changing it. This flag affects query/read limits only; it does not change import or write batching.
 
 ### Visualizing Data
 
@@ -90,6 +92,7 @@ Once `benchmon-run` starts, data appears immediately in InfluxDB. Open one of th
 
 *   **System Overview**: CPU, Memory, Network I/O.
 *   **Detailed Views**: Per-core frequency, disk IOPS.
+*   If a measurement table is missing from the database, benchmon skips the corresponding plot instead of failing the entire visualization run.
 
 For a step-by-step guide on setting up the visualization stack, see the [InfluxDB + Grafana Integration Tutorial](tutorial_influxdb-grafana-integration.md).
 

@@ -182,6 +182,12 @@ def main():
         help="Base directory for traces. Defaults to current directory."
     )
     parser.add_argument("--influxdb-port", type=int, default=8181, help="Port for InfluxDB")
+    parser.add_argument(
+        "--influxdb-query-file-limit",
+        type=int,
+        default=None,
+        help="Maximum number of parquet files InfluxDB may scan per query.",
+    )
     parser.add_argument("--grafana-port", type=int, default=3000, help="Port for Grafana")
     # --- MODIFICATION: Remove hardcoded default ---
     parser.add_argument(
@@ -191,6 +197,9 @@ def main():
         help="Directory containing dashboard JSON files. Defaults to internal package dashboards."
     )
     args = parser.parse_args()
+
+    if args.influxdb_query_file_limit is not None and args.influxdb_query_file_limit < 1:
+        parser.error("--influxdb-query-file-limit must be a positive integer")
 
     # --- MODIFICATION: Programmatically find default dashboard directory ---
     if args.dashboard_dir is None:
@@ -262,16 +271,26 @@ def main():
     node_id = "benchmon-node-id"
     logger.info(f"Using node-id: {node_id}")
 
+    influxdb_command = [
+        INFLUXDB_BINARY, "serve",
+        "--object-store", "file",
+        "--node-id", node_id,
+        "--http-bind", f"0.0.0.0:{influxdb_port}",
+        "--data-dir", str(influxdb_data_dir),
+        "--without-auth"
+    ]
+    if args.influxdb_query_file_limit is not None:
+        influxdb_command.extend([
+            "--query-file-limit", str(args.influxdb_query_file_limit)
+        ])
+        logger.info(
+            "InfluxDB query file limit set to %s parquet files per query.",
+            args.influxdb_query_file_limit,
+        )
+
     with open(influx_log_file, "w") as log:
         influx_process = subprocess.Popen(
-            [
-                INFLUXDB_BINARY, "serve",
-                "--object-store", "file",
-                "--node-id", node_id,
-                "--http-bind", f"0.0.0.0:{influxdb_port}",
-                "--data-dir", str(influxdb_data_dir),
-                "--without-auth"
-            ],
+            influxdb_command,
             stdout=log, stderr=subprocess.STDOUT
         )
     pids["influxdb"] = influx_process.pid
