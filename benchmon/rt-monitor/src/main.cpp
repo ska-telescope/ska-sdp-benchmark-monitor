@@ -1,20 +1,15 @@
-#include <csignal>
+#include <InfluxDBFactory.h>
 #include <future>
-#include <mutex>
-#include <spdlog/spdlog.h>
-#include <stdexcept>
-#include <string>
-#include <unordered_map>
-#include <vector>
 
 #include "cpu_monitor.h"
 #include "cpufreq_monitor.h"
+#include "db_stream.hpp"
+#include "file_stream.hpp"
 #include "disk_monitor.h"
 #include "mem_monitor.h"
 #include "net_monitor.h"
 #include "pause_manager.h"
 #include "spdlog/common.h"
-#include "spdlog/logger.h"
 
 namespace rt_monitor
 {
@@ -26,6 +21,7 @@ struct monitor_config
     bool enable_mem = false;
     bool enable_net = false;
     double sampling_frequency = 0.0;
+    std::string grafana_address = "";
     spdlog::level::level_enum log_level = spdlog::level::err;
     std::unordered_map<std::string, std::string> output_files;
 };
@@ -65,11 +61,14 @@ monitor_config parse_arguments(int argc, char **argv)
 {
     if (argc < 3)
     {
-        spdlog::error("Usage: {} sampling-frequency <Hz> [--cpu <cpu_output_file_path>] [--cpu-freq <cpu_freq_output_file_path>] "
-               "[--disk <disk_output_file_path>] [--mem <mem_output_file_path>] [--net <net_output_file_path>] "
-               "[--log-level <trace/debug/info/warn/error/critical/off]", argv[0]);
+        spdlog::error("Usage: {} --sampling-frequency <Hz> [--cpu <cpu_output_file_path>] [--cpu-freq "
+                      "<cpu_freq_output_file_path>] "
+                      "[--disk <disk_output_file_path>] [--mem <mem_output_file_path>] [--net <net_output_file_path>] "
+                      "[--log-level <trace/debug/info/warn/error/critical/off] [--grafana <db address>] ",
+                      argv[0]);
         spdlog::error("Example: {} sampling-frequency 100 --cpu cpu_output.bin --cpu-freq cpu_freq_output.bin "
-                     "--disk disk_output.bin --mem mem_output.bin --net net_output.bin", argv[0]);
+                      "--disk disk_output.bin --mem mem_output.bin --net net_output.bin",
+                      argv[0]);
         exit(1);
     }
 
@@ -142,6 +141,14 @@ monitor_config parse_arguments(int argc, char **argv)
             }
             config.log_level = parse_log_level(argv[++i]);
         }
+        else if (arg == "--grafana")
+        {
+            if (i + 1 >= argc)
+            {
+                throw std::invalid_argument("Missing value for --grafana");
+            }
+            config.grafana_address = argv[++i];
+        }
         else
         {
             throw std::invalid_argument("Unknown argument: " + arg);
@@ -190,29 +197,88 @@ int main(int argc, char **argv)
         std::vector<std::future<void>> tasks;
         if (config.enable_cpu)
         {
-            tasks.emplace_back(std::async(
-                std::launch::async, [&]() { rt_monitor::cpu::start(time_interval, config.output_files["cpu"]); }));
+            if (config.grafana_address.empty())
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() {
+                    file_stream stream(config.output_files["cpu"]);
+                    rt_monitor::cpu::start_sampling(time_interval, std::move(stream));
+                }));
+            }
+            else
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
+                    db_stream stream(config.grafana_address);
+                    rt_monitor::cpu::start_sampling(time_interval, std::move(stream));
+                }));
+            }
         }
         if (config.enable_cpufreq)
         {
-            tasks.emplace_back(std::async(std::launch::async, [&]() {
-                rt_monitor::cpufreq::start(time_interval, config.output_files["cpu-freq"]);
-            }));
+            if (config.grafana_address.empty())
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() {
+                    file_stream stream(config.output_files["cpu-freq"]);
+                    rt_monitor::cpufreq::start_sampling(time_interval, std::move(stream));
+                }));
+            }
+            else
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
+                    db_stream stream(config.grafana_address);
+                    rt_monitor::cpufreq::start_sampling(time_interval, std::move(stream));
+                }));
+            }
         }
         if (config.enable_disk)
         {
-            tasks.emplace_back(std::async(
-                std::launch::async, [&]() { rt_monitor::disk::start(time_interval, config.output_files["disk"]); }));
+            if (config.grafana_address.empty())
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() {
+                    file_stream stream(config.output_files["disk"]);
+                    rt_monitor::disk::start_sampling(time_interval, std::move(stream));
+                }));
+            }
+            else
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
+                    db_stream stream(config.grafana_address);
+                    rt_monitor::disk::start_sampling(time_interval, std::move(stream));
+                }));
+            }
         }
         if (config.enable_mem)
         {
-            tasks.emplace_back(std::async(
-                std::launch::async, [&]() { rt_monitor::mem::start(time_interval, config.output_files["mem"]); }));
+            if (config.grafana_address.empty())
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() {
+                    file_stream stream(config.output_files["mem"]);
+                    rt_monitor::mem::start_sampling(time_interval, std::move(stream));
+                }));
+            }
+            else
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
+                    db_stream stream(config.grafana_address);
+                    rt_monitor::mem::start_sampling(time_interval, std::move(stream));
+                }));
+            }
         }
         if (config.enable_net)
         {
-            tasks.emplace_back(std::async(
-                std::launch::async, [&]() { rt_monitor::net::start(time_interval, config.output_files["net"]); }));
+            if (config.grafana_address.empty())
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() {
+                    file_stream stream(config.output_files["net"]);
+                    rt_monitor::net::start_sampling(time_interval, std::move(stream));
+                }));
+            }
+            else
+            {
+                tasks.emplace_back(std::async(std::launch::async, [&]() mutable {
+                    db_stream stream(config.grafana_address);
+                    rt_monitor::net::start_sampling(time_interval, std::move(stream));
+                }));
+            }
         }
 
         pause_manager::resume();

@@ -37,7 +37,8 @@ exclude =
     .pytest_cache,
     mytest,
     .make,
-    .pyenv
+    libs,
+    .pyenv,
 
 per-file-ignores =
     __init__.py: F401, D104
