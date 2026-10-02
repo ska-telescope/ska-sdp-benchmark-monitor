@@ -13,9 +13,36 @@ from math import ceil
 
 import numpy as np
 import matplotlib.pyplot as plt
+from benchmon.visualization import system_binary_reader
+
+logger = logging.getLogger(__name__)
 
 
-class SystemData:
+def read_binary_samples(file_path: str, sampler_type: system_binary_reader.generic_sample):
+    samples_list = []
+    sampler = sampler_type()
+    with open(file_path, "rb") as file:
+        while data := file.read(sampler.get_pack_size()):
+            try:
+                sample = sampler.binary_to_dict(data)
+                samples_list.append(sample)
+            except ValueError:
+                logger.error(f"invalid binary sample read, size was {len(data)} and {sampler.get_pack_size()}"
+                             "was expected.")
+    return samples_list
+
+
+def read_c_string(file):
+    chars = []
+    while True:
+        byte = file.read(1)
+        if not byte or byte == b'\n':
+            break
+        chars.append(byte)
+    return b''.join(chars).decode('utf-8')
+
+
+class SystemDataBinary:
     """
     System resource monitoring database
     """
@@ -23,24 +50,26 @@ class SystemData:
     def __init__(self,
                  logger: logging.Logger,
                  traces_repo: str,
-                 csv_cpu_report: str,
-                 csv_cpufreq_report: str,
-                 csv_mem_report: str,
-                 csv_net_report: str,
-                 csv_disk_report: str,
-                 csv_ib_report: str):
+                 is_binary: bool,
+                 cpu_report: str,
+                 cpufreq_report: str,
+                 mem_report: str,
+                 net_report: str,
+                 disk_report: str,
+                 ib_report: str):
         """
         Construct and profile system resource usage profile
         """
         self.logger = logger
         self.traces_repo = traces_repo
+        self.is_binary = is_binary
 
-        if csv_cpu_report:
+        if cpu_report:
             self.ncpu = 0
             self.cpus = []
             self.cpu_prof = {}
             self.cpu_stamps = np.array([])
-            self.cpu_profile_valid = self.get_cpu_profile(csv_cpu_report=csv_cpu_report) == 0
+            self.cpu_profile_valid = self.get_cpu_profile(cpu_report=cpu_report) == 0
 
         if csv_cpufreq_report:
             self.ncpu_freq = 0
@@ -97,9 +126,10 @@ class SystemData:
         self.xlim = None
         self.yrange = None
 
+
     def read_cpu_csv_report(self, csv_cpu_report: str):
         """
-        Read cpu report
+        Read CPU report from CSV file
         """
         # Read line of cpu csv report
         t0 = time.time()
@@ -149,7 +179,62 @@ class SystemData:
 
         return cpu_ts_raw, timestamps_raw
 
-    def get_cpu_profile(self, csv_cpu_report=str) -> int:
+
+    def read_cpu_bin_report(self, bin_cpu_report: str):
+        """
+        Read CPU report from binary file
+        """
+        t0 = time.time()
+        self.logger.debug(f"\t open+read = {round(time.time() - t0, 3)} s")
+
+        samples_list = read_binary_samples(bin_cpu_report, system_binary_reader.hf_cpu_sample)
+
+        self.cpus = []
+        ts_0 = samples_list[0]["timestamp"]
+        ts = ts_0
+        idx = 0
+        while ts == ts_0:
+            self.cpus.append(samples_list[idx]["cpu"])
+            idx += 1
+            ts = samples_list[idx]["timestamp"]
+
+        ncpu_glob = len(self.cpus)
+        self.ncpu = ncpu_glob - 1
+
+        cpu_metric_keys = {key for key, _, _ in system_binary_reader.hf_cpu_sample().field_definitions}
+
+        # Init cpu time series
+        cpu_ts_raw = {}
+        for cpu in self.cpus:
+            cpu_ts_raw[cpu] = {key: [] for key in cpu_metric_keys}
+
+        # Read lines
+        timestamps_raw = []
+
+        t0 = time.time()
+        for data in samples_list:
+            for key in cpu_metric_keys:
+                cpu_ts_raw[data["cpu"]][key].append(data[key])
+
+        self.logger.debug(f"\t fill dict = {round(time.time() - t0, 3)} s")
+
+        t0 = time.time()
+        timestamps_raw = [float(data["timestamp"] / 1e9) for data in samples_list[1::ncpu_glob]]
+        self.logger.debug(f"\t ts_raw = {round(time.time() - t0, 3)} s")
+
+        return cpu_ts_raw, timestamps_raw
+
+    def get_cpu_profile(self, report=str) -> int:
+        """
+        Get CPU profile
+        """
+        if self.is_binary:
+            return self.get_cpu_profile_binary(bin_cpu_report=report)
+        else:
+            return self.get_cpu_profile_csv(csv_cpu_report=report)
+
+
+    def get_cpu_profile_csv(self, csv_cpu_report=str) -> int:
         """
         Get cpu profile
         """
@@ -228,6 +313,97 @@ class SystemData:
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
+
+    def get_cpu_profile_bin(self, bin_cpu_report=str) -> bool:
+        """
+        Get cpu profile
+        """
+        cpu_pkl = f"{self.traces_repo}/pkl_dir/cpu_prof.pkl"
+        ts_pkl = f"{self.traces_repo}/pkl_dir/cpu_stamps.pkl"
+        try:
+            if os.access(cpu_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+                self.logger.debug("Load CPU profile..."); t0 = time.time()  # noqa: E702
+
+                with open(cpu_pkl, "rb") as _pf:
+                    self.cpu_prof = pickle.load(_pf)
+                with open(ts_pkl, "rb") as _pf:
+                    self.cpu_stamps = pickle.load(_pf)
+                self.ncpu = len(self.cpu_prof) - 1
+
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+                return True
+
+            else:
+                max_int = np.iinfo(np.uint32).max
+                self.logger.debug("Read CPU report..."); t0 = time.time()  # noqa: E702
+                cpu_ts_raw, timestamps_raw = self.read_cpu_bin_report(bin_cpu_report=bin_cpu_report)
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+                if not cpu_ts_raw or not timestamps_raw:
+                    self.logger.error("Failed to read CPU binary report or got empty data.")
+                    return False
+
+                self.logger.debug("Create CPU profile..."); t0 = time.time()  # noqa: E702
+                nstamps = len(timestamps_raw) - 1
+
+                if nstamps <= 0:
+                    self.logger.error("Not enough CPU timestamp data to create profile.")
+                    return False
+
+                t0i = time.time()
+                timestamps = np.zeros(nstamps)
+                for stamp in range(nstamps):
+                    timestamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
+                self.logger.debug(f"\t ts = {round(time.time() - t0i, 3)} s")
+
+                t0i = time.time()
+                cpu_ts = {}
+                for key in cpu_ts_raw.keys():
+                    cpu_ts[key] = {metric_key: np.zeros(nstamps) for metric_key in cpu_ts_raw[max_int].keys()}
+                self.logger.debug(f"\t init dict = {round(time.time() - t0i, 3)} s")
+
+                t0i = time.time()
+                for stamp in range(nstamps):
+                    for key, metric_key in itertools.product(cpu_ts_raw.keys(), cpu_ts_raw[max_int].keys()):
+                        cpu_ts[key][metric_key][stamp] = (
+                            cpu_ts_raw[key][metric_key][stamp + 1] - cpu_ts_raw[key][metric_key][stamp]
+                        )
+                self.logger.debug(f"\t compute spaces = {round(time.time() - t0i, 3)} s")
+
+                t0i = time.time()
+                for key in cpu_ts.keys():
+                    for stamp in range(nstamps):
+                        cpu_total = 0
+                        for metric_key in cpu_ts[max_int].keys():
+                            if metric_key != "timestamp":
+                                cpu_total += cpu_ts[key][metric_key][stamp]
+
+                        if cpu_total == 0:
+                            self.logger.error(f"CPU total is zero at stamp {stamp} for key {key}.")
+                            False
+
+                        for metric_key in cpu_ts[max_int].keys():
+                            if metric_key != "timestamp":
+                                cpu_ts[key][metric_key][stamp] = cpu_ts[key][metric_key][stamp] / cpu_total * 100
+                self.logger.debug(f"\t compute percents = {round(time.time() - t0i, 3)} s")
+
+                self.cpu_prof = cpu_ts
+                self.cpu_stamps = timestamps
+
+                t0i = time.time()
+                with open(cpu_pkl, "wb") as _pf:
+                    pickle.dump(self.cpu_prof, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.cpu_stamps, _pf)
+                self.logger.debug(f"\t save profile = {round(time.time() - t0i, 3)} s")
+
+                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+
+        except Exception as e:
+            self.logger.error(f"Exception in get_cpu_profile: {e}")
+            return False
+
+        return True
 
     def plot_cpu(self, number="", annotate_with_cmds=None) -> int:
         """

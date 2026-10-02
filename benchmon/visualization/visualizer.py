@@ -81,10 +81,8 @@ class BenchmonVisualizer:
         if self.args.annotate_with_log == "ical":
             self.ical_stages = read_ical_log_file(self.traces_repo)
 
-        if args.binary:
-            self.load_system_metrics_binary()
-        else:
-            self.load_system_metrics()
+        self.load_system_metrics()
+
         self.load_power_metrics()
         self.load_call_metrics()
 
@@ -98,6 +96,7 @@ class BenchmonVisualizer:
         """
         Load system metrics
         """
+        # try:
         is_cores_full = bool(self.args.cpu_cores_full)
         is_net = self.args.net or self.args.net_all or self.args.net_data
         is_disk = self.args.disk or self.args.disk_iops or self.args.disk_iops
@@ -107,7 +106,7 @@ class BenchmonVisualizer:
         self.is_any_sys = self.args.cpu or self.args.cpu_all or self.args.cpu_freq or \
             is_cores_full or self.args.mem or is_net or is_disk or self.args.ib
 
-        csv_reports = {}
+        reports = {}
         conds = {
             "mem": self.args.mem,
             "cpu": self.args.cpu or self.args.cpu_all or is_cores_full,
@@ -117,62 +116,31 @@ class BenchmonVisualizer:
             "ib": self.args.ib
         }
         for key in conds.keys():
-            csv_reports[f"csv_{key}_report"] = f"{self.traces_repo}/{key}_report.csv" if conds[key] else None
+            if self.args.binary:
+                if key == "ib": continue
+                reports[f"{key}_report"] = f"{self.traces_repo}/{key}_report.bin" if conds[key] else None
+            else:
+                reports[f"{key}_report"] = f"{self.traces_repo}/{key}_report.csv" if conds[key] else None
 
         if self.is_any_sys:
-            self.system_metrics = SystemData(logger=self.logger,
-                                             traces_repo=self.traces_repo,
-                                             **csv_reports)
+            if self.args.binary:
+                self.system_metrics = SystemDataBinary(logger=self.logger,
+                                                       traces_repo=self.traces_repo,
+                                                       is_binary=self.args.binary,
+                                                       **reports)
+            else:
+                self.system_metrics = SystemData(logger=self.logger,
+                                                 traces_repo=self.traces_repo,
+                                                 is_binary=self.args.binary,
+                                                 **reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
             + self.args.mem + is_net + is_disk + self.args.ib
 
-
-    def load_system_metrics_binary(self) -> bool:
-        """
-        Load system metrics
-
-        Returns:
-            bool: True if loading was successful, False otherwise
-        """
-        try:
-            is_cores_full = bool(self.args.cpu_cores_full)
-            is_net = self.args.net or self.args.net_all or self.args.net_data
-            is_disk = self.args.disk or self.args.disk_iops or self.args.disk_iops
-
-            _n_cores_full = len(self.args.cpu_cores_full.split(",")) if is_cores_full else 0
-
-            self.is_any_sys = self.args.cpu or self.args.cpu_all or self.args.cpu_freq or \
-                is_cores_full or self.args.mem or is_net or is_disk or self.args.ib
-
-            conds = {
-                "mem": self.args.mem,
-                "cpu": self.args.cpu or self.args.cpu_all or is_cores_full,
-                "cpufreq": self.args.cpu_freq,
-                "net": is_net,
-                "disk": is_disk,
-                "ib": self.args.ib
-            }
-
-            bin_reports = {}
-            for key in conds.keys():
-                if key == "ib":
-                    continue
-                bin_reports[f"bin_{key}_report"] = f"{self.traces_repo}/{key}_report.bin" if conds[key] else None
-            if self.is_any_sys:
-                self.system_metrics = SystemDataBinary(logger=self.logger,
-                                                       traces_repo=self.traces_repo,
-                                                       **bin_reports)
-
-            self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
-                + self.args.mem + is_net + is_disk + self.args.ib
-
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to load system metrics: {e}")
-            self.system_metrics = None
-            return False
-
+        # except Exception as e:
+        #     self.logger.error(f"Failed to load system metrics: {e}")
+        #     self.system_metrics = None
+        #     return False
 
     def load_power_metrics(self) -> None:
         """
