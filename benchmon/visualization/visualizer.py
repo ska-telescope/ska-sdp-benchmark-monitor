@@ -634,6 +634,9 @@ class BenchmonVisualizer:
 
             # Figure saving parameters
             dpi = {"unset": "figure", "low": 200, "medium": 600, "high": 1200}
+            if self.args.fig_dpi.isdigit():
+                dpi[self.args.fig_dpi] = int(self.args.fig_dpi)
+
             figpath = f"{self.traces_repo}" if self.args.fig_path is None else self.args.fig_path
 
             try:
