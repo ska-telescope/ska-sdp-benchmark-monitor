@@ -72,6 +72,7 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--fig-fmt", type=str, default="svg", help="Figure format")
     parser.add_argument("--fig-name", type=str, default="benchmon_fig", help="Figure name")
     parser.add_argument("--fig-dpi", type=str, default="unset", help="Quality of figure: low, medium, high")
+    parser.add_argument("--fig-rast", action="store_true", help="Rasterize vectorized formats (eg. svg, pdf)")
     parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
     parser.add_argument("--fig-width", type=float, default=25.6, help="Figure width")
     parser.add_argument("--fig-height-unit", type=float, default=3, help="Figure height unit for each subplot")

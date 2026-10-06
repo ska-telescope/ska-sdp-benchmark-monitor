@@ -639,6 +639,9 @@ class BenchmonVisualizer:
 
             figpath = f"{self.traces_repo}" if self.args.fig_path is None else self.args.fig_path
 
+            if self.args.fig_rast:
+                fig.set_rasterized(True)
+
             try:
                 for fmt in self.args.fig_fmt.split(","):
                     figname = f"{figpath}/{self.args.fig_name}.{fmt}"
