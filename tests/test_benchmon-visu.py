@@ -40,6 +40,7 @@ def test_unit_benchmon_visu():
            "--fig-fmt", "png,svg",
            "--fig-name", "myfig",
            "--fig-dpi", "high",
+           "--fig-rast",
            "--fig-call-legend-ncol", "8",
            "--fig-width", "25.6",
            "--fig-height-unit", "3",
