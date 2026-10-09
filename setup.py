@@ -8,6 +8,10 @@ from setuptools.command.build_py import build_py as _build_py
 
 class build_rtmonitor(_build_py):
     def run(self):
+        if os.environ.get("BUILD_RTMONITOR") != "1":
+            super().run()
+            return
+
         try:
             subprocess.check_call(["cmake", "--version"])
         except (OSError, subprocess.CalledProcessError):
