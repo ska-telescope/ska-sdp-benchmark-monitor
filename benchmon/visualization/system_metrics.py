@@ -30,13 +30,14 @@ class SystemData:
         csv_net_report: str,
         csv_disk_report: str,
         csv_ib_report: str,
+        use_pkl: bool = False,
     ):
         """
         Construct and profile system resource usage profile
         """
         self.logger = logger
         self.traces_repo = traces_repo
-
+        self.use_pkl = use_pkl
         if csv_cpu_report:
             self.ncpu = 0
             self.cpus = []
@@ -178,7 +179,7 @@ class SystemData:
         cpu_pkl = f"{self.traces_repo}/pkl_dir/cpu_prof.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/cpu_stamps.pkl"
 
-        if os.access(cpu_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+        if self.use_pkl and os.access(cpu_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
             self.logger.debug("Load CPU profile...")
             t0 = time.time()  # noqa: E702
 
@@ -263,10 +264,11 @@ class SystemData:
             self.cpu_stamps = timestamps
 
             t0i = time.time()
-            with open(cpu_pkl, "wb") as _pf:
-                pickle.dump(self.cpu_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.cpu_stamps, _pf)
+            if self.use_pkl:
+                with open(cpu_pkl, "wb") as _pf:
+                    pickle.dump(self.cpu_prof, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.cpu_stamps, _pf)
             self.logger.debug(
                 f"\t save profile = {round(time.time() - t0i, 3)} s"
             )
@@ -460,7 +462,7 @@ class SystemData:
         mem_pkl = f"{self.traces_repo}/pkl_dir/mem_prof.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/mem_stamps.pkl"
 
-        if os.access(mem_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+        if self.use_pkl and os.access(mem_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
             self.logger.debug("Load Memory profile...")
             t0 = time.time()  # noqa: E702
 
@@ -517,10 +519,11 @@ class SystemData:
             self.mem_prof = memory_dict
             self.mem_stamps = memory_dict["timestamp"]
 
-            with open(mem_pkl, "wb") as _pf:
-                pickle.dump(self.mem_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.mem_stamps, _pf)
+            if self.use_pkl:
+                with open(mem_pkl, "wb") as _pf:
+                    pickle.dump(self.mem_prof, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.mem_stamps, _pf)
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
@@ -610,7 +613,7 @@ class SystemData:
         ts_pkl = f"{self.traces_repo}/pkl_dir/cpufreq_stamps.pkl"
         freqvals_pkl = f"{self.traces_repo}/pkl_dir/cpufreq_vals.pkl"
 
-        if os.access(cpufreq_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
+        if self.use_pkl and os.access(cpufreq_pkl, os.R_OK) and os.access(ts_pkl, os.R_OK):
             self.logger.debug("Load CPU profile...")
             t0 = time.time()  # noqa: E702
 
@@ -736,12 +739,13 @@ class SystemData:
             self.cpufreq_vals["min"] = self.cpufreq_min
             self.cpufreq_vals["max"] = self.cpufreq_max
 
-            with open(cpufreq_pkl, "wb") as _pf:
-                pickle.dump(self.cpufreq_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.cpufreq_stamps, _pf)
-            with open(freqvals_pkl, "wb") as _pf:
-                pickle.dump(self.cpufreq_vals, _pf)
+            if self.use_pkl:
+                with open(cpufreq_pkl, "wb") as _pf:
+                    pickle.dump(self.cpufreq_prof, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.cpufreq_stamps, _pf)
+                with open(freqvals_pkl, "wb") as _pf:
+                    pickle.dump(self.cpufreq_vals, _pf)
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
@@ -880,7 +884,8 @@ class SystemData:
         ts_pkl = f"{self.traces_repo}/pkl_dir/net_stamps.pkl"
 
         if (
-            os.access(net_pkl, os.R_OK)
+            self.use_pkl
+            and os.access(net_pkl, os.R_OK)
             and os.access(dat_pkl, os.R_OK)
             and os.access(ts_pkl, os.R_OK)
         ):
@@ -948,12 +953,13 @@ class SystemData:
                             - net_ts_raw[key][metric_key][stamp]
                         ) / (timestamps_raw[stamp + 1] - timestamps_raw[stamp])
 
-            with open(net_pkl, "wb") as _pf:
-                pickle.dump(self.net_prof, _pf)
-            with open(dat_pkl, "wb") as _pf:
-                pickle.dump(self.net_data, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.net_stamps, _pf)
+            if self.use_pkl:
+                with open(net_pkl, "wb") as _pf:
+                    pickle.dump(self.net_prof, _pf)
+                with open(dat_pkl, "wb") as _pf:
+                    pickle.dump(self.net_data, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.net_stamps, _pf)
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
@@ -1182,7 +1188,7 @@ class SystemData:
         maj_pkl = f"{self.traces_repo}/pkl_dir/disk_maj.pkl"
         ts_pkl = f"{self.traces_repo}/pkl_dir/disk_stamps.pkl"
 
-        if all(
+        if self.use_pkl and all(
             os.access(pkl_file, os.R_OK)
             for pkl_file in (disk_pkl, dat_pkl, maj_pkl, ts_pkl)
         ):
@@ -1306,14 +1312,15 @@ class SystemData:
                     )
 
             # Save profiles
-            with open(disk_pkl, "wb") as _pf:
-                pickle.dump(self.disk_prof, _pf)
-            with open(dat_pkl, "wb") as _pf:
-                pickle.dump(self.disk_data, _pf)
-            with open(maj_pkl, "wb") as _pf:
-                pickle.dump(self.maj_blks_sects, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.disk_stamps, _pf)
+            if self.use_pkl:
+                with open(disk_pkl, "wb") as _pf:
+                    pickle.dump(self.disk_prof, _pf)
+                with open(dat_pkl, "wb") as _pf:
+                    pickle.dump(self.disk_data, _pf)
+                with open(maj_pkl, "wb") as _pf:
+                    pickle.dump(self.maj_blks_sects, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.disk_stamps, _pf)
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
@@ -1472,7 +1479,8 @@ class SystemData:
         ts_pkl = f"{self.traces_repo}/pkl_dir/ib_stamps.pkl"
 
         if (
-            os.access(ib_pkl, os.R_OK)
+            self.use_pkl
+            and os.access(ib_pkl, os.R_OK)
             and os.access(dat_pkl, os.R_OK)
             and os.access(ts_pkl, os.R_OK)
         ):
@@ -1552,13 +1560,13 @@ class SystemData:
                         )
                         / BYTES_UNIT
                     )
-
-            with open(ib_pkl, "wb") as _pf:
-                pickle.dump(self.ib_prof, _pf)
-            with open(dat_pkl, "wb") as _pf:
-                pickle.dump(self.ib_data, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.ib_stamps, _pf)
+            if self.use_pkl:
+                with open(ib_pkl, "wb") as _pf:
+                    pickle.dump(self.ib_prof, _pf)
+                with open(dat_pkl, "wb") as _pf:
+                    pickle.dump(self.ib_data, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.ib_stamps, _pf)
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 

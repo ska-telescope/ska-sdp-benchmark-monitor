@@ -1,3 +1,10 @@
+## Unreleased
+### Added
+- `--pkl-cache` option in `benchmon-visu` to enable pickle caching
+
+### Changed
+- Pickle caching is now disabled by default
+
 ## 0.2.0 - 2025-08-08
 ### Added
 - InfluxDB integration for real-time monitoring

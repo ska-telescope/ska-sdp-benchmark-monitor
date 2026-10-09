@@ -58,7 +58,8 @@ class BenchmonVisualizer:
         self.logger = logger
 
         self.traces_repo = traces_repo
-        os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
+        if args.pkl_cache:
+            os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
 
         self.hostname = os.path.basename(os.path.realpath(traces_repo))[16:]
         self.system_metrics = None
@@ -122,6 +123,7 @@ class BenchmonVisualizer:
         if self.is_any_sys:
             self.system_metrics = SystemData(logger=self.logger,
                                              traces_repo=self.traces_repo,
+                                             use_pkl=self.args.pkl_cache,
                                              **csv_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \

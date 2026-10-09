@@ -17,6 +17,8 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Top-level traces repository path")
     parser.add_argument("--recursive", action="store_true", default=False)
 
+    parser.add_argument("--pkl-cache", action="store_true", default=False,
+                        help="Cache computed profiles as pickle files in <traces_repo>/pkl_dir (disabled by default)")
     parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
     parser.add_argument("--influxdb", action="store_true", help="Visualize data directly from InfluxDB")
     parser.add_argument("--influxdb-url", type=str, default="", help="InfluxDB URL")
