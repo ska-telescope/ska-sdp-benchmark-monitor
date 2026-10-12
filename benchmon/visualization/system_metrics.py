@@ -42,7 +42,7 @@ def read_c_string(file):
     return b''.join(chars).decode('utf-8')
 
 
-class SystemDataBinary:
+class SystemData:
     """
     System resource monitoring database
     """
@@ -80,10 +80,10 @@ class SystemDataBinary:
             self.cpufreq_max = None
             self.cpufreq_profile_valid = self.get_cpufreq_prof(csv_cpufreq_report=csv_cpufreq_report) == 0
 
-        if csv_mem_report:
+        if mem_report:
             self.mem_prof = {}
             self.mem_stamps = np.array([])
-            self.mem_profile_valid = self.get_mem_profile(csv_mem_report=csv_mem_report) == 0
+            self.mem_profile_valid = self.get_mem_profile(mem_report=mem_report) == 0
 
         if csv_net_report:
             self.net_prof = {}
@@ -224,6 +224,7 @@ class SystemDataBinary:
 
         return cpu_ts_raw, timestamps_raw
 
+
     def get_cpu_profile(self, report=str) -> int:
         """
         Get CPU profile
@@ -313,6 +314,7 @@ class SystemDataBinary:
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
         return 0
+
 
     def get_cpu_profile_bin(self, bin_cpu_report=str) -> bool:
         """
@@ -479,7 +481,7 @@ class SystemDataBinary:
         for idx, core in enumerate(cores):
             core_name = f"cpu{core}"
 
-            cpu_usr = self.cpu_prof[core_name]["user"] \
+            cpu_usr = self.cpu_prof[    ]["user"] \
                 + self.cpu_prof[core_name]["nice"]
 
             cpu_sys = self.cpu_prof[core_name]["system"] \
@@ -516,6 +518,30 @@ class SystemDataBinary:
         keys_with_idx = {key: idx for idx, key in enumerate(mem_report_lines[0][:-1])}
 
         return mem_report_lines, keys_with_idx
+
+
+    def read_mem_bin_report(self, bin_mem_report: str):
+        """
+        Read memory report
+        """
+        hf = system_binary_reader.hf_mem_sample()
+        samples_list = []
+        with open(bin_mem_report, "rb") as file:
+            while data := file.read(hf.get_pack_size()):
+                try:
+                    samples_list.append(hf.binary_to_dict(data))
+                except ValueError as err:
+                    logger.error(err)
+
+        return samples_list
+
+
+    def read_mem_report(self, mem_report: str):
+        if self.is_binary:
+            self.read_mem_bin_report(mem_report)
+        else:
+            self.read_mem_csv_report(mem_report)
+
 
     def get_mem_profile(self, csv_mem_report: str) -> int:
         """
