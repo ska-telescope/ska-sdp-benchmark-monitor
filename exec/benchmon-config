@@ -10,5 +10,5 @@ import os
 import benchmon
 
 # Print shell export to make BENCHMON_LIB_PATH accessible in calling shell
-BENCHMON_LIB_PATH=os.path.dirname(benchmon.__file__)
+BENCHMON_LIB_PATH = os.path.dirname(benchmon.__file__)
 print(f'export BENCHMON_LIB_PATH="{BENCHMON_LIB_PATH}"')
