@@ -23,6 +23,7 @@ filename=
     ./exec/benchmon-run,
     ./exec/benchmon-run-grafana,
     ./exec/benchmon-software,
+    ./exec/benchmon-start-grafana,
     ./exec/benchmon-stop-grafana,
     ./exec/benchmon-visu
 

@@ -22,21 +22,25 @@ GRAFANA_BINARY = f"{GRAFANA_PATH}/bin/grafana-server"
 
 logger = logging.getLogger(__name__)
 
+
 def suppress_connection_errors():
     """Temporarily suppress connection errors during wait."""
     original_log_level = logging.getLogger().getEffectiveLevel()
     logging.getLogger().setLevel(logging.CRITICAL)
     return original_log_level
 
+
 def restore_log_level(original_log_level):
     """Restore the original log level."""
     logging.getLogger().setLevel(original_log_level)
+
 
 def is_port_in_use(port: int) -> bool:
     """Checks if a TCP port is in use on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('localhost', port)) == 0
-    
+
+
 def pick_available_port(requested: int, service: str) -> int:
     """Return the first free port at or above the requested value."""
     candidate = requested
@@ -51,6 +55,7 @@ def pick_available_port(requested: int, service: str) -> int:
     if candidate != requested:
         logger.info(f"{service} port changed from {requested} to {candidate}.")
     return candidate
+
 
 def setup_influxdb_datasource(grafana_port: int, influxdb_port: int) -> bool:
     """
@@ -174,6 +179,7 @@ def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path) -> bool:
 
     return success
 
+
 def main():
     parser = argparse.ArgumentParser(description="Start Benchmon Grafana/InfluxDB Stack")
     parser.add_argument(
@@ -208,8 +214,6 @@ def main():
         if fallback_path.is_dir():
             args.dashboard_dir = fallback_path
             logger.info(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
-  
-
 
     # --- MODIFICATION: Align directory logic with benchmon-run ---
     # The traces_dir is now the primary directory, not a subdirectory.
@@ -261,12 +265,12 @@ def main():
         sys.exit(1)
 
     pids = {}
-    
+
     # 4. Start InfluxDB
     influxdb_port = pick_available_port(args.influxdb_port, "InfluxDB")
     logger.info(f"Starting InfluxDB on port {influxdb_port}...")
     influx_log_file = log_dir / "influxdb.log"
-    
+
     # --- MODIFICATION: Use short hostname for node-id, like in the shell script ---
     node_id = "benchmon-node-id"
     logger.info(f"Using node-id: {node_id}")
@@ -344,6 +348,7 @@ def main():
     logger.info(f"\nInfluxDB ready at http://{hostname}:{influxdb_port}")
     logger.info(f"Grafana ready at http://{hostname}:{grafana_port}\n")
     logger.info("Monitoring stack started and configured successfully.")
+
 
 if __name__ == "__main__":
     main()
