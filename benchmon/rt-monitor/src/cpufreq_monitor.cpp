@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <charconv>
 #include <vector>
+#include <algorithm>
 
 #include "cpufreq_monitor.h"
 #include "db_stream.hpp"
@@ -33,14 +34,14 @@ namespace rt_monitor
 template <> db_stream &db_stream::operator<< <cpufreq::data_sample>(cpufreq::data_sample sample)
 {
     static const std::string hostname = rt_monitor::io::get_hostname();
-    
+
     std::stringstream ss;
     ss << "cpu_freq,hostname=" << hostname << ",cpu=cpu" << sample.cpuid << " ";
     ss << "value=" << sample.frequency << "i";
     ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
 
     this->write_line(ss.str());
-    
+
     spdlog::trace("Buffering cpufreq sample for core {} to InfluxDB", sample.cpuid);
 
     return *this;
@@ -50,7 +51,7 @@ template <> db_stream &db_stream::operator<< <std::vector<cpufreq::data_sample>>
 {
     if (samples.empty()) return *this;
     static const std::string hostname = rt_monitor::io::get_hostname();
-    
+
     // Pre-calculate timestamp string once for the whole batch
     auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(samples[0].timestamp.time_since_epoch()).count();
     std::string timestamp_str = std::to_string(timestamp_ns);
@@ -65,10 +66,10 @@ template <> db_stream &db_stream::operator<< <std::vector<cpufreq::data_sample>>
         line += std::to_string(sample.frequency);
         line += "i ";
         line += timestamp_str;
-        
+
         this->write_line(line);
     }
-    
+
     spdlog::trace("Buffered {} cpufreq samples for InfluxDB", samples.size());
     return *this;
 }
@@ -105,7 +106,7 @@ std::vector<CpuSource> get_cpu_freq_sources()
         {
             std::string online_path = entry.path().string() + "/online";
             bool is_online = true; // cpu0 often doesn't have 'online' file and is always online
-            
+
             if (std::filesystem::exists(online_path))
             {
                 std::ifstream online_file(online_path);
@@ -135,7 +136,7 @@ std::vector<CpuSource> get_cpu_freq_sources()
     }
 
     std::sort(indexed_paths.begin(), indexed_paths.end());
-    
+
     for (const auto &[index, path] : indexed_paths)
     {
         int fd = open(path.c_str(), O_RDONLY);
@@ -205,7 +206,7 @@ void read_cpu_frequency_samples(const std::vector<CpuSource> &sources,
     }
 }
 
-void cpufreq_producer(double time_interval, 
+void cpufreq_producer(double time_interval,
                       const std::vector<CpuSource>& sources,
                       ThreadSafeQueue<std::vector<data_sample>>& queue)
 {
@@ -215,7 +216,7 @@ void cpufreq_producer(double time_interval,
         pause_manager::wait_if_paused();
 
         const auto begin = std::chrono::high_resolution_clock::now();
-        
+
         std::vector<data_sample> samples;
         read_cpu_frequency_samples(sources, samples);
         queue.push(std::move(samples));
@@ -261,12 +262,12 @@ template <typename stream_type> void start_sampling(double time_interval, stream
         stream << samples;
     }
     producer_thread.join();
-    
+
     // Cleanup FDs
     for(const auto& source : sources) {
         close(source.fd);
     }
-    
+
     spdlog::trace("CPU frequency monitoring stopped");
 }
 
