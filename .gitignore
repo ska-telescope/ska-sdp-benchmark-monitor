@@ -222,6 +222,9 @@ exec/share
 exec/rt-monitor
 .pyenv
 .vscode
+compile_commands.json
 benchmon/visualization/system_metrics-org.py
+
 # End of https://www.toptal.com/developers/gitignore/api/pycharm+all,python
+
 
