@@ -30,15 +30,6 @@ class build_rtmonitor(_build_py):
         super().run()
 
 
-if not os.path.exists("pytest.ini"):
-    with open("pytest.ini", "w") as f:
-        f.write("""\
-[pytest]
-addopts = -vsra --cov=benchmon/run --cov=benchmon/visualization --cov-report=term-missing
-testpaths = tests
-python_files = test_*.py
-""")
-
 setup(
     name="ska-sdp-benchmark-monitor",
     version="0.0.0",
