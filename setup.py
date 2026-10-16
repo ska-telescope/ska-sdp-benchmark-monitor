@@ -18,6 +18,10 @@ class build_rtmonitor(_build_py):
         build_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "build", "rt-monitor")
         os.makedirs(build_dir, exist_ok=True)
 
+        # check if the directory "./exec/__pycache__" exists, if so remove it (@hard-coded)
+        if os.path.isdir(f"{build_dir}/../../exec/__pycache__"):
+            subprocess.check_call(["rm", "-rf", f"{build_dir}/../../exec/__pycache__"])
+
         # Run cmake and build/install
         subprocess.check_call([
             "cmake",
