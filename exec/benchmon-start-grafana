@@ -13,14 +13,9 @@ from requests.auth import HTTPBasicAuth
 import logging
 
 
-# Get application paths from environment variables, with sensible defaults
-INFLUXDB_PATH = os.environ.get("BENCHMON_INFLUXDB_PATH", "./benchmon-stack/influxdb3")
-GRAFANA_PATH = os.environ.get("BENCHMON_GRAFANA_PATH", "./benchmon-stack/grafana")
-
-INFLUXDB_BINARY = f"{INFLUXDB_PATH}/influxdb3"
-GRAFANA_BINARY = f"{GRAFANA_PATH}/bin/grafana-server"
 
 logger = logging.getLogger(__name__)
+
 
 def suppress_connection_errors():
     """Temporarily suppress connection errors during wait."""
@@ -28,15 +23,18 @@ def suppress_connection_errors():
     logging.getLogger().setLevel(logging.CRITICAL)
     return original_log_level
 
+
 def restore_log_level(original_log_level):
     """Restore the original log level."""
     logging.getLogger().setLevel(original_log_level)
+
 
 def is_port_in_use(port: int) -> bool:
     """Checks if a TCP port is in use on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('localhost', port)) == 0
-    
+
+
 def pick_available_port(requested: int, service: str) -> int:
     """Return the first free port at or above the requested value."""
     candidate = requested
@@ -51,6 +49,7 @@ def pick_available_port(requested: int, service: str) -> int:
     if candidate != requested:
         logger.info(f"{service} port changed from {requested} to {candidate}.")
     return candidate
+
 
 def setup_influxdb_datasource(grafana_port: int, influxdb_port: int) -> bool:
     """
@@ -174,6 +173,7 @@ def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path) -> bool:
 
     return success
 
+
 def main():
     parser = argparse.ArgumentParser(description="Start Benchmon Grafana/InfluxDB Stack")
     parser.add_argument(
@@ -196,7 +196,28 @@ def main():
         default=None,
         help="Directory containing dashboard JSON files. Defaults to internal package dashboards."
     )
+
+    parser.add_argument(
+        "--grafana-path",
+        type=Path,
+        default=os.environ.get("BENCHMON_GRAFANA_PATH", "./benchmon-stack/grafana"),
+        help="Path to Grafana installation. Defaults to ./benchmon-stack/grafana "
+             "or BENCHMON_GRAFANA_PATH environment variable."
+    )
+
+    parser.add_argument(
+        "--influxdb-path",
+        type=Path,
+        default=os.environ.get("BENCHMON_INFLUXDB_PATH", "./benchmon-stack/influxdb3"),
+        help="Path to InfluxDB installation. Defaults to ./benchmon-stack/influxdb3 "
+             "or BENCHMON_INFLUXDB_PATH environment variable."
+    )
+
     args = parser.parse_args()
+
+    influxdb3_binary = f"{args.influxdb_path}/influxdb3"
+    grafana_binary = f"{args.grafana_path}/bin/grafana-server"
+
 
     if args.influxdb_query_file_limit is not None and args.influxdb_query_file_limit < 1:
         parser.error("--influxdb-query-file-limit must be a positive integer")
@@ -208,7 +229,6 @@ def main():
         if fallback_path.is_dir():
             args.dashboard_dir = fallback_path
             logger.info(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
-  
 
 
     # --- MODIFICATION: Align directory logic with benchmon-run ---
@@ -243,12 +263,12 @@ def main():
     connection_file = runtime_dir / "connection.json"
 
     # 2. Check for required binaries
-    if not Path(INFLUXDB_BINARY).is_file():
-        logger.error(f"InfluxDB binary not found at {INFLUXDB_BINARY}")
+    if not Path(influxdb3_binary).is_file():
+        logger.error(f"InfluxDB binary not found at {influxdb3_binary}")
         logger.error("Hint: Set the BENCHMON_INFLUXDB_PATH environment variable.")
         sys.exit(1)
-    if not Path(GRAFANA_BINARY).is_file():
-        logger.error(f"Grafana binary not found at {GRAFANA_BINARY}")
+    if not Path(grafana_binary).is_file():
+        logger.error(f"Grafana binary not found at {grafana_binary}")
         logger.error("Hint: Set the BENCHMON_GRAFANA_PATH environment variable.")
         sys.exit(1)
 
@@ -261,18 +281,18 @@ def main():
         sys.exit(1)
 
     pids = {}
-    
+
     # 4. Start InfluxDB
     influxdb_port = pick_available_port(args.influxdb_port, "InfluxDB")
     logger.info(f"Starting InfluxDB on port {influxdb_port}...")
     influx_log_file = log_dir / "influxdb.log"
-    
+
     # --- MODIFICATION: Use short hostname for node-id, like in the shell script ---
     node_id = "benchmon-node-id"
     logger.info(f"Using node-id: {node_id}")
 
     influxdb_command = [
-        INFLUXDB_BINARY, "serve",
+        influxdb3_binary, "serve",
         "--object-store", "file",
         "--node-id", node_id,
         "--http-bind", f"0.0.0.0:{influxdb_port}",
@@ -306,8 +326,8 @@ def main():
         grafana_env.setdefault("GF_SECURITY_ADMIN_USER", "admin")
         grafana_env.setdefault("GF_SECURITY_ADMIN_PASSWORD", "admin123")
         grafana_process = subprocess.Popen(
-            [GRAFANA_BINARY, f"--config={GRAFANA_PATH}/conf/defaults.ini",
-             f"--homepath={GRAFANA_PATH}", f"cfg:server.http_port={grafana_port}"],
+            [grafana_binary, f"--config={args.grafana_path}/conf/defaults.ini",
+             f"--homepath={args.grafana_path}", f"cfg:server.http_port={grafana_port}"],
             stdout=log, stderr=subprocess.STDOUT, env=grafana_env
         )
     pids["grafana"] = grafana_process.pid
@@ -344,6 +364,7 @@ def main():
     logger.info(f"\nInfluxDB ready at http://{hostname}:{influxdb_port}")
     logger.info(f"Grafana ready at http://{hostname}:{grafana_port}\n")
     logger.info("Monitoring stack started and configured successfully.")
+
 
 if __name__ == "__main__":
     main()
