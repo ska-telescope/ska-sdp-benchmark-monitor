@@ -1,6 +1,4 @@
-#!/bin/bash
-
-set -e
+#!/bin/bash -e
 
 # Input argument: installation directory
 INSTALL_DIR="${HOME}/benchmon-stack"
@@ -41,6 +39,7 @@ INFLUXDB3_TAR="influxdb3-core-${INFLUXDB3_VERSION}_linux_amd64.tar.gz"
 INFLUXDB3_URL="https://dl.influxdata.com/influxdb/releases/${INFLUXDB3_TAR}"
 INFLUXDB3_PORT=8081
 
+INSTALL_DIR=$(realpath "${INSTALL_DIR}")
 echo "Creating install directory: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
