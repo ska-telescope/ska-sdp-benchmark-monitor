@@ -16,6 +16,10 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        "-h"|"--help")
+            echo "Usage: benchmon-install-grafana [--install-dir <path>]"
+            exit 0
+            ;;
         *)
             if [[ "$1" == -* ]]; then
                 echo "Unknown option: $1"
@@ -47,7 +51,7 @@ if [ ! -d "grafana" ]; then
     echo "URL:" $GRAFANA_URL
     wget -c "$GRAFANA_URL"
     echo "Extracting Grafana..."
-    tar -zxvf "$GRAFANA_TAR"
+    tar -zxf "$GRAFANA_TAR"
     GRAFANA_DIR=$(tar -tf "$GRAFANA_TAR" | head -1 | cut -f1 -d"/")
     mv "$GRAFANA_DIR" grafana
     rm -f "$GRAFANA_TAR"
@@ -60,7 +64,7 @@ if [ ! -d "influxdb3" ]; then
     echo "Downloading InfluxDB3..."
     wget -c "$INFLUXDB3_URL"
     echo "Extracting InfluxDB3..."
-    tar -zxvf "$INFLUXDB3_TAR"
+    tar -zxf "$INFLUXDB3_TAR"
     INFLUXDB3_DIR=$(tar -tf "$INFLUXDB3_TAR" | head -1 | cut -f1 -d"/")
     mv "$INFLUXDB3_DIR" influxdb3
     rm -f "$INFLUXDB3_TAR"
