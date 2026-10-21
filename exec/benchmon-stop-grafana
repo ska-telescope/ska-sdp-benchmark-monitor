@@ -19,13 +19,12 @@ def main():
     parser.add_argument(
         "--save-dir",
         type=Path,
+        required=True,
         help="Base directory for traces. Defaults to current directory."
     )
     args = parser.parse_args()
 
-    # --- Align directory logic with benchmon-run-grafana ---
-    base_dir = args.save_dir if args.save_dir is not None else Path("./benchmon_traces_")
-    runtime_dir = base_dir / "grafana-data"
+    runtime_dir = args.save_dir / "grafana-data"
     log_dir = runtime_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
