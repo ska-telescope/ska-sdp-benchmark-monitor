@@ -12,9 +12,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 import logging
 
-
-
-logger = logging.getLogger(__name__)
+from benchmon.run.run_utils import RunUtils
 
 
 def parse_args() -> argparse.Namespace:
@@ -101,23 +99,28 @@ def is_port_in_use(port: int) -> bool:
         return s.connect_ex(('localhost', port)) == 0
 
 
-def pick_available_port(requested: int, service: str) -> int:
+def pick_available_port(requested: int, service: str, logger: logging.Logger) -> int:
     """Return the first free port at or above the requested value."""
     candidate = requested
+
     attempts = 0
-    while attempts < 100 and is_port_in_use(candidate):
-        logger.info(f"Port {candidate} already in use for {service}, trying {candidate + 1}...")
+    max_attempts = 100
+    while attempts < max_attempts and is_port_in_use(candidate):
+        logger.debug(f"Port {candidate} already in use for {service}, trying {candidate + 1}...")
         candidate += 1
         attempts += 1
-    if attempts >= 100:
+
+    if attempts >= max_attempts:
         logger.error(f"Could not find a free port for {service} starting from {requested}.")
         sys.exit(1)
+
     if candidate != requested:
         logger.info(f"{service} port changed from {requested} to {candidate}.")
+
     return candidate
 
 
-def setup_influxdb_datasource(grafana_port: int, influxdb_port: int) -> bool:
+def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, logger: logging.Logger) -> bool:
     """
     Configures Grafana to use InfluxDB as a data source.
     """
@@ -198,7 +201,7 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int) -> bool:
     return datasource_ready
 
 
-def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path) -> bool:
+def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, logger: logging.Logger) -> bool:
     """
     Uploads dashboards from the specified directory to Grafana.
     """
@@ -247,11 +250,21 @@ def main():
 
     args = parse_args()
 
+    # Runtime directories
+    runtime_dir = args.save_dir / "grafana-data"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+
+    # Setup logging
+    log_dir = runtime_dir / "logs"  # @hardcoded
+    log_dir.mkdir(exist_ok=True)    # @hardcoded
+    logger = RunUtils.create_logger(save_dir=log_dir, verbose=args.verbose, logfilename="benchmon-start-grafana.log")
+
     influxdb3_binary = f"{args.influxdb_path}/influxdb3"
     grafana_binary = f"{args.grafana_path}/bin/grafana-server"
 
-    if args.influxdb_query_file_limit is not None and args.influxdb_query_file_limit < 1:
-        parser.error("--influxdb-query-file-limit must be a positive integer")
+    if not isinstance(args.influxdb_query_file_limit, int) or args.influxdb_query_file_limit < 1:
+        logger.error("--influxdb-query-file-limit must be a positive integer")
+        sys.exit(1)
 
     # --- MODIFICATION: Programmatically find default dashboard directory ---
     if args.dashboard_dir is None:
@@ -262,60 +275,34 @@ def main():
             logger.info(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
 
 
-    # 1. Prepare runtime directory inside the traces directory
-    runtime_dir = args.save_dir / "grafana-data"
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-
-    influxdb_data_dir = runtime_dir / "influxdb_data"
-    influxdb_data_dir.mkdir(exist_ok=True)
-
-    log_dir = runtime_dir / "logs"
-    log_dir.mkdir(exist_ok=True)
-
-    # Configure logging to save to file
-    log_file = log_dir / "benchmon-start-grafana.log"
-    file_handler = logging.FileHandler(log_file)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-    logger.setLevel(logging.INFO)
-
-
-    pid_file = runtime_dir / "pids.json"
-    connection_file = runtime_dir / "connection.json"
-
-    # 2. Check for required binaries
+    # [InfluxDB] Check for the binary
     if not Path(influxdb3_binary).is_file():
-        logger.error(f"InfluxDB binary not found at {influxdb3_binary}")
-        logger.error("Hint: Set the BENCHMON_INFLUXDB_PATH environment variable.")
-        sys.exit(1)
-    if not Path(grafana_binary).is_file():
-        logger.error(f"Grafana binary not found at {grafana_binary}")
-        logger.error("Hint: Set the BENCHMON_GRAFANA_PATH environment variable.")
+        logger.error(f"InfluxDB binary not found at {influxdb3_binary} \n"
+                     "Hint: Set the BENCHMON_INFLUXDB_PATH environment variable "
+                     "or use --influxdb-path to specify the path.")
         sys.exit(1)
 
-    # 3. Check ports
-    if is_port_in_use(args.influxdb_port):
-        logger.error(f"Port {args.influxdb_port} for InfluxDB is already in use.")
+    # [Grafana] Check for the binary
+    if not Path(grafana_binary).is_file():
+        logger.error(f"Grafana binary not found at {grafana_binary} \n"
+                     "Hint: Set the BENCHMON_GRAFANA_PATH environment variable "
+                     "or use --grafana-path to specify the path.")
         sys.exit(1)
-    if is_port_in_use(args.grafana_port):
-        logger.error(f"Port {args.grafana_port} for Grafana is already in use.")
-        sys.exit(1)
+
 
     pids = {}
 
-    # 4. Start InfluxDB
-    influxdb_port = pick_available_port(args.influxdb_port, "InfluxDB")
+    # [InfluxDB] Create data directory
+    influxdb_data_dir = runtime_dir / "influxdb_data"
+    influxdb_data_dir.mkdir(exist_ok=True)
+
+    # [InfluxDB] Set port
+    influxdb_port = pick_available_port(args.influxdb_port, "InfluxDB", logger)
     logger.info(f"Starting InfluxDB on port {influxdb_port}...")
-    influx_log_file = log_dir / "influxdb.log"
 
-    # --- MODIFICATION: Use short hostname for node-id, like in the shell script ---
+    # [InfluxDB] Create the execution command with the specified parameters
     node_id = "benchmon-node-id"
-    logger.info(f"Using node-id: {node_id}")
-
+    logger.info(f"InfluxDB using node-id: {node_id}")
     influxdb_command = [
         influxdb3_binary, "serve",
         "--object-store", "file",
@@ -324,70 +311,89 @@ def main():
         "--data-dir", str(influxdb_data_dir),
         "--without-auth"
     ]
-    if args.influxdb_query_file_limit is not None:
+    """Bash helper
+    influxdb server --object-store file --node-id benchmon-node-id \
+                    --http-bind 0.0.0.0:<port> --data-dir <influxdb_datadir> \
+                    --without-auth
+                    --query-file-limit <limit>
+    """
+
+    # [InfluxDB] Check if --influxdb-query-file-limit is set and append to command
+    if args.influxdb_query_file_limit:
         influxdb_command.extend([
             "--query-file-limit", str(args.influxdb_query_file_limit)
         ])
-        logger.info(
-            "InfluxDB query file limit set to %s parquet files per query.",
-            args.influxdb_query_file_limit,
-        )
+        logger.info(f"InfluxDB query file limit set to {args.influxdb_query_file_limit} parquet files per query.")
 
-    with open(influx_log_file, "w") as log:
-        influx_process = subprocess.Popen(
-            influxdb_command,
-            stdout=log, stderr=subprocess.STDOUT
-        )
+    # [InfluxDB] Run the process, redirect the log, get PID
+    influx_log_file = log_dir / "influxdb.log"
+    with open(influx_log_file, "w") as log:  # @hardcoded log should be directed to verbose global logger
+        influx_process = subprocess.Popen(influxdb_command, stdout=log, stderr=subprocess.STDOUT)
     pids["influxdb"] = influx_process.pid
     logger.info(f"InfluxDB started with PID: {influx_process.pid}. Log: {influx_log_file}")
     logger.info(f"InfluxDB data directory: {influxdb_data_dir} Database: metrics")
 
-    # 5. Start Grafana
-    grafana_port = pick_available_port(args.grafana_port, "Grafana")
+    # [Grafana] Set port
+    grafana_port = pick_available_port(args.grafana_port, "Grafana", logger)
     logger.info(f"Starting Grafana on port {grafana_port}...")
+
+    # [Grafana] Create the execution command with the specified parameters
+    grafana_command = [
+        grafana_binary,
+        "--config", f"{args.grafana_path}/conf/defaults.ini",
+        "--homepath", f"{args.grafana_path}",
+        f"cfg:server.http_port={grafana_port}"
+    ]
+    """Bash helper
+    export GF_SECURITY_ADMIN_USER=admin
+    export GF_SECURITY_ADMIN_PASSWORD=admin123
+    grafana-server --config <grafana_path>/conf/defaults.ini \
+                   --homepath <grafana_path> \
+                   cfg:server.http_port=<port>
+    """
+
+    # [Grafana] Set environment variables for admin user and password
+    grafana_env = os.environ.copy()
+    grafana_env.setdefault("GF_SECURITY_ADMIN_USER", "admin")
+    grafana_env.setdefault("GF_SECURITY_ADMIN_PASSWORD", "admin123")
+
+    # [Grafana] Run the process, redirect the log, get PID
     grafana_log_file = log_dir / "grafana.log"
     with open(grafana_log_file, "w") as log:
-        grafana_env = os.environ.copy()
-        grafana_env.setdefault("GF_SECURITY_ADMIN_USER", "admin")
-        grafana_env.setdefault("GF_SECURITY_ADMIN_PASSWORD", "admin123")
-        grafana_process = subprocess.Popen(
-            [grafana_binary, f"--config={args.grafana_path}/conf/defaults.ini",
-             f"--homepath={args.grafana_path}", f"cfg:server.http_port={grafana_port}"],
-            stdout=log, stderr=subprocess.STDOUT, env=grafana_env
-        )
+        grafana_process = subprocess.Popen(grafana_command, stdout=log, stderr=subprocess.STDOUT, env=grafana_env)
     pids["grafana"] = grafana_process.pid
     logger.info(f"Grafana started with PID: {grafana_process.pid}. Log: {grafana_log_file}")
 
-    # 6. Write PID and connection info files
+    # Write PID file
+    pid_file = runtime_dir / "pids.json"
     with open(pid_file, "w") as f:
         json.dump(pids, f)
     logger.info(f"PIDs saved to {pid_file}")
 
-    # --- MODIFICATION: Use hostname instead of IP address ---
+    # Write connection info file
     hostname = socket.gethostname()
     connection_info = {
         "influxdb_url": f"http://{hostname}:{influxdb_port}",
         "grafana_url": f"http://{hostname}:{grafana_port}",
         "influxdb_token": ""  # Placeholder for token
     }
-    with open(connection_file, "w") as f:
+    connecfile = runtime_dir / "connection.json"
+    with open(connecfile, "w") as f:
         json.dump(connection_info, f)
-    logger.info(f"Connection info saved to {connection_file}")
-
-    logger.info("\n--- Post-start Configuration ---")
+    logger.info(f"Connection info saved to {connecfile}")
 
     # Setup InfluxDB data source in Grafana
-    if not setup_influxdb_datasource(args.grafana_port, influxdb_port):
+    if not setup_influxdb_datasource(args.grafana_port, influxdb_port, logger):
         logger.error("Failed to set up InfluxDB data source in Grafana.")
         sys.exit(1)
 
     # Upload dashboards
-    if not setup_grafana_dashboards(args.grafana_port, fallback_path):
+    if not setup_grafana_dashboards(args.grafana_port, fallback_path, logger):
         logger.error("Failed to upload one or more dashboards to Grafana.")
         sys.exit(1)
 
-    logger.info(f"\nInfluxDB ready at http://{hostname}:{influxdb_port}")
-    logger.info(f"Grafana ready at http://{hostname}:{grafana_port}\n")
+    logger.info(f"InfluxDB is ready at http://{hostname}:{influxdb_port}")
+    logger.info(f"Grafana is ready at http://{hostname}:{grafana_port}")
     logger.info("Monitoring stack started and configured successfully.")
 
 
