@@ -17,6 +17,60 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def parse_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments for starting the Benchmon Grafana/InfluxDB stack.
+    """
+    parser = argparse.ArgumentParser(description="Start Benchmon Grafana/InfluxDB Stack")
+
+    parser.add_argument(
+        "--save-dir",
+        type=Path,
+        help="Base directory for traces. Defaults to current directory."
+    )
+
+    parser.add_argument(
+        "--influxdb-port",
+        type=int,
+        default=8181,
+        help="Port for InfluxDB"
+    )
+
+    parser.add_argument(
+        "--influxdb-query-file-limit",
+        type=int,
+        default=None,
+        help="Maximum number of parquet files InfluxDB may scan per query.",
+    )
+
+    parser.add_argument("--grafana-port", type=int, default=3000, help="Port for Grafana")
+
+    parser.add_argument(
+        "--dashboard-dir",
+        type=Path,
+        default=None,
+        help="Directory containing dashboard JSON files. Defaults to internal package dashboards."
+    )
+
+    parser.add_argument(
+        "--grafana-path",
+        type=Path,
+        default=os.environ.get("BENCHMON_GRAFANA_PATH", "./benchmon-stack/grafana"),
+        help="Path to Grafana installation. Defaults to ./benchmon-stack/grafana "
+             "or BENCHMON_GRAFANA_PATH environment variable."
+    )
+
+    parser.add_argument(
+        "--influxdb-path",
+        type=Path,
+        default=os.environ.get("BENCHMON_INFLUXDB_PATH", "./benchmon-stack/influxdb3"),
+        help="Path to InfluxDB installation. Defaults to ./benchmon-stack/influxdb3 "
+             "or BENCHMON_INFLUXDB_PATH environment variable."
+    )
+
+    return parser.parse_args()
+
+
 def suppress_connection_errors():
     """Temporarily suppress connection errors during wait."""
     original_log_level = logging.getLogger().getEffectiveLevel()
@@ -175,49 +229,14 @@ def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Start Benchmon Grafana/InfluxDB Stack")
-    parser.add_argument(
-        "--save-dir",
-        type=Path,
-        help="Base directory for traces. Defaults to current directory."
-    )
-    parser.add_argument("--influxdb-port", type=int, default=8181, help="Port for InfluxDB")
-    parser.add_argument(
-        "--influxdb-query-file-limit",
-        type=int,
-        default=None,
-        help="Maximum number of parquet files InfluxDB may scan per query.",
-    )
-    parser.add_argument("--grafana-port", type=int, default=3000, help="Port for Grafana")
-    # --- MODIFICATION: Remove hardcoded default ---
-    parser.add_argument(
-        "--dashboard-dir",
-        type=Path,
-        default=None,
-        help="Directory containing dashboard JSON files. Defaults to internal package dashboards."
-    )
+    """
+    Main function to start InfluxDB and Grafana, configure them, and upload dashboards.
+    """
 
-    parser.add_argument(
-        "--grafana-path",
-        type=Path,
-        default=os.environ.get("BENCHMON_GRAFANA_PATH", "./benchmon-stack/grafana"),
-        help="Path to Grafana installation. Defaults to ./benchmon-stack/grafana "
-             "or BENCHMON_GRAFANA_PATH environment variable."
-    )
-
-    parser.add_argument(
-        "--influxdb-path",
-        type=Path,
-        default=os.environ.get("BENCHMON_INFLUXDB_PATH", "./benchmon-stack/influxdb3"),
-        help="Path to InfluxDB installation. Defaults to ./benchmon-stack/influxdb3 "
-             "or BENCHMON_INFLUXDB_PATH environment variable."
-    )
-
-    args = parser.parse_args()
+    args = parse_args()
 
     influxdb3_binary = f"{args.influxdb_path}/influxdb3"
     grafana_binary = f"{args.grafana_path}/bin/grafana-server"
-
 
     if args.influxdb_query_file_limit is not None and args.influxdb_query_file_limit < 1:
         parser.error("--influxdb-query-file-limit must be a positive integer")
