@@ -348,6 +348,10 @@ def main():
         f"cfg:server.http_port={grafana_port}"
     ]
 
+    # [Grafana] hardcoded admin credentials for local development
+    GF_SECURITY_ADMIN_USER = "admin"
+    GF_SECURITY_ADMIN_PASSWORD = "admin123"
+
     # [Grafana] Bash helper for reference
     """Bash helper
     export GF_SECURITY_ADMIN_USER=admin
@@ -356,13 +360,14 @@ def main():
                    --homepath <grafana_path> \
                    cfg:server.http_port=<port>
     """
-    logger.debug("Grafana command:\n GF_SECURITY_ADMIN_USER=admin GF_SECURITY_ADMIN_PASSWORD=admin123 "
+    logger.debug(f"Grafana command:\n GF_SECURITY_ADMIN_USER={GF_SECURITY_ADMIN_USER} "
+                 f"GF_SECURITY_ADMIN_PASSWORD={GF_SECURITY_ADMIN_PASSWORD} "
                  f"{' '.join(grafana_command)}")
 
     # [Grafana] Set environment variables for admin user and password
     grafana_env = os.environ.copy()
-    grafana_env.setdefault("GF_SECURITY_ADMIN_USER", "admin")
-    grafana_env.setdefault("GF_SECURITY_ADMIN_PASSWORD", "admin123")
+    grafana_env.setdefault("GF_SECURITY_ADMIN_USER", GF_SECURITY_ADMIN_USER)
+    grafana_env.setdefault("GF_SECURITY_ADMIN_PASSWORD", GF_SECURITY_ADMIN_PASSWORD)
 
     # [Grafana] Run the process, redirect the log, get PID
     grafana_log_file = log_dir / "grafana.log"
