@@ -378,7 +378,7 @@ def main():
     logger.info(f"PIDs saved to {pid_file}")
 
     # Write connection info file
-    hostname = socket.gethostname()
+    hostname = socket.gethostname().split(".")[0]
     connection_info = {
         "influxdb_url": f"http://{hostname}:{influxdb_port}",
         "grafana_url": f"http://{hostname}:{grafana_port}",
@@ -401,6 +401,8 @@ def main():
 
     logger.info(f"InfluxDB is ready at http://{hostname}:{influxdb_port}")
     logger.info(f"Grafana is ready at http://{hostname}:{grafana_port}")
+    logger.debug(f"Local port forwarding:\n ssh -L {influxdb_port}:{hostname}:{influxdb_port} "
+                 f"-L {grafana_port}:{hostname}:{grafana_port} <user>@<frontend>")
     logger.info("Monitoring stack started and configured successfully.")
 
 
