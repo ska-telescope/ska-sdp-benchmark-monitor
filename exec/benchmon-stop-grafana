@@ -6,9 +6,8 @@ import os
 import signal
 import sys
 from pathlib import Path
-import logging
 
-logger = logging.getLogger(__name__)
+from benchmon.run.run_utils import RunUtils
 
 
 def main():
@@ -27,17 +26,7 @@ def main():
     runtime_dir = args.save_dir / "grafana-data"
     log_dir = runtime_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-
-    # Configure logging to save to file
-    log_file = log_dir / "benchmon-stop-grafana.log"
-    file_handler = logging.FileHandler(log_file)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-    logger.setLevel(logging.INFO)
+    logger = RunUtils.create_logger(save_dir=log_dir, verbose=True, logfilename="benchmon-stop-grafana.log")
 
     pid_file = runtime_dir / "pids.json"
 
@@ -71,7 +60,7 @@ def main():
     except OSError as e:
         logger.warning(f"Could not remove PID file: {e}")
 
-    logger.info("\nMonitoring stack stopped.")
+    logger.info("Monitoring stack stopped.")
 
 
 if __name__ == "__main__":
