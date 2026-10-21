@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
         "--influxdb-port",
         type=int,
         default=8181,
-        help="Port for InfluxDB"
+        help="Port for InfluxDB. Default: 8181"
     )
 
     parser.add_argument(
@@ -44,7 +44,12 @@ def parse_args() -> argparse.Namespace:
         help="Maximum number of parquet files InfluxDB may scan per query.",
     )
 
-    parser.add_argument("--grafana-port", type=int, default=3000, help="Port for Grafana")
+    parser.add_argument(
+        "--grafana-port",
+        type=int,
+        default=3000,
+        help="Port for Grafana. Default: 3000"
+    )
 
     parser.add_argument(
         "--dashboard-dir",
@@ -67,6 +72,12 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("BENCHMON_INFLUXDB_PATH", "./benchmon-stack/influxdb3"),
         help="Path to InfluxDB installation. Defaults to ./benchmon-stack/influxdb3 "
              "or BENCHMON_INFLUXDB_PATH environment variable."
+    )
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging"
     )
 
     return parser.parse_args()
