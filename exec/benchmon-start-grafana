@@ -259,9 +259,7 @@ def main():
     log_dir.mkdir(exist_ok=True)    # @hardcoded
     logger = RunUtils.create_logger(save_dir=log_dir, verbose=args.verbose, logfilename="benchmon-start-grafana.log")
 
-    influxdb3_binary = f"{args.influxdb_path}/influxdb3"
-    grafana_binary = f"{args.grafana_path}/bin/grafana-server"
-
+    # Validate the --influxdb-query-file-limit argument
     if not isinstance(args.influxdb_query_file_limit, int) or args.influxdb_query_file_limit < 1:
         logger.error("--influxdb-query-file-limit must be a positive integer")
         sys.exit(1)
@@ -276,6 +274,7 @@ def main():
 
 
     # [InfluxDB] Check for the binary
+    influxdb3_binary = f"{(args.influxdb_path / 'influxdb3').resolve()}"  # Resolved absolute path
     if not Path(influxdb3_binary).is_file():
         logger.error(f"InfluxDB binary not found at {influxdb3_binary} \n"
                      "Hint: Set the BENCHMON_INFLUXDB_PATH environment variable "
@@ -283,13 +282,14 @@ def main():
         sys.exit(1)
 
     # [Grafana] Check for the binary
+    grafana_binary = f"{(args.grafana_path / 'bin/grafana-server').resolve()}"  # Resolved absolute path
     if not Path(grafana_binary).is_file():
         logger.error(f"Grafana binary not found at {grafana_binary} \n"
                      "Hint: Set the BENCHMON_GRAFANA_PATH environment variable "
                      "or use --grafana-path to specify the path.")
         sys.exit(1)
 
-
+    # PIDs dict for influxdb and grafana processes
     pids = {}
 
     # [InfluxDB] Create data directory
@@ -311,12 +311,6 @@ def main():
         "--data-dir", str(influxdb_data_dir),
         "--without-auth"
     ]
-    """Bash helper
-    influxdb server --object-store file --node-id benchmon-node-id \
-                    --http-bind 0.0.0.0:<port> --data-dir <influxdb_datadir> \
-                    --without-auth
-                    --query-file-limit <limit>
-    """
 
     # [InfluxDB] Check if --influxdb-query-file-limit is set and append to command
     if args.influxdb_query_file_limit:
@@ -324,6 +318,15 @@ def main():
             "--query-file-limit", str(args.influxdb_query_file_limit)
         ])
         logger.info(f"InfluxDB query file limit set to {args.influxdb_query_file_limit} parquet files per query.")
+
+    # [InfluxDB] Bash helper for reference
+    """Bash helper
+    influxdb server --object-store file --node-id benchmon-node-id \
+                    --http-bind 0.0.0.0:<port> --data-dir <influxdb_datadir> \
+                    --without-auth
+                    --query-file-limit <limit>
+    """
+    logger.debug(f"InfluxDB command:\n{' '.join(influxdb_command)}")
 
     # [InfluxDB] Run the process, redirect the log, get PID
     influx_log_file = log_dir / "influxdb.log"
@@ -344,6 +347,8 @@ def main():
         "--homepath", f"{args.grafana_path}",
         f"cfg:server.http_port={grafana_port}"
     ]
+
+    # [Grafana] Bash helper for reference
     """Bash helper
     export GF_SECURITY_ADMIN_USER=admin
     export GF_SECURITY_ADMIN_PASSWORD=admin123
@@ -351,6 +356,8 @@ def main():
                    --homepath <grafana_path> \
                    cfg:server.http_port=<port>
     """
+    logger.debug("Grafana command:\n GF_SECURITY_ADMIN_USER=admin GF_SECURITY_ADMIN_PASSWORD=admin123 "
+                 f"{' '.join(grafana_command)}")
 
     # [Grafana] Set environment variables for admin user and password
     grafana_env = os.environ.copy()
