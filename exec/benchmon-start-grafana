@@ -81,18 +81,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def suppress_connection_errors():
-    """Temporarily suppress connection errors during wait."""
-    original_log_level = logging.getLogger().getEffectiveLevel()
-    logging.getLogger().setLevel(logging.CRITICAL)
-    return original_log_level
-
-
-def restore_log_level(original_log_level):
-    """Restore the original log level."""
-    logging.getLogger().setLevel(original_log_level)
-
-
 def is_port_in_use(port: int) -> bool:
     """Checks if a TCP port is in use on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -120,46 +108,43 @@ def pick_available_port(requested: int, service: str, logger: logging.Logger) ->
     return candidate
 
 
-def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, logger: logging.Logger) -> bool:
+def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple[str, str],
+                              logger: logging.Logger) -> bool:
     """
     Configures Grafana to use InfluxDB as a data source.
     """
 
+    # Initialize Grafana session
     grafana_url = f"http://localhost:{grafana_port}"
-
     logger.info("Waiting for Grafana to be ready...")
-    original_log_level = suppress_connection_errors()
-
     session = requests.Session()
-    session.auth = HTTPBasicAuth("admin", "admin123")
+    session.auth = HTTPBasicAuth(*auth)
 
+    # Wait for Grafana to be ready
     start_time = time.time()
     grafana_ready = False
-    while time.time() - start_time < 60:
+    timeout = 60
+    while time.time() - start_time < timeout:
         try:
-            response = session.get(
-                f"{grafana_url}/api/health",
-                timeout=60
-            )
+            response = session.get(f"{grafana_url}/api/health", timeout=timeout)  # Check Grafana health endpoint
+            logger.debug(f"Grafana health check response: {response.status_code}")
             if response.status_code == 200:
                 grafana_ready = True
                 break
-        except requests.RequestException:
+        except requests.RequestException as e:
+            logger.debug(f"Grafana health check failed: {e}")
             pass
         logger.info("Grafana not ready yet, retrying in 2 seconds...")
         time.sleep(2)
 
-    restore_log_level(original_log_level)
-
     if not grafana_ready:
         logger.error("Grafana did not become available in time. Please check logs.")
-        # Consider stopping the services here if Grafana fails to start
+        logger.error("Consider stopping the services here if Grafana fails to start.")
         sys.exit(1)
 
     logger.info("Grafana is up. Configuring datasource and dashboards...")
 
-    # Configure datasource
-
+    # Configure the payload for the InfluxDB datasource
     payload = {
         "name": "InfluxDB v3 SQL",
         "type": "influxdb",
@@ -180,12 +165,10 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, logger: log
         "secureJsonData": {}
     }
 
-    datasource_ready = False
-
     response = session.get(f"{grafana_url}/api/datasources/uid/{payload['uid']}")
     if response.status_code == 200:
         logger.info("Datasource already exists, skipping creation.")
-        datasource_ready = True
+        return True
     else:
         response = session.post(
             f"{grafana_url}/api/datasources",
@@ -194,11 +177,10 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, logger: log
         )
         if response.status_code in (200, 201):
             logger.info("Datasource created successfully.")
-            datasource_ready = True
+            return True
         else:
             logger.error(f"Error creating datasource: {response.status_code} {response.text}")
-
-    return datasource_ready
+            return False
 
 
 def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, logger: logging.Logger) -> bool:
@@ -395,7 +377,9 @@ def main():
     logger.info(f"Connection info saved to {connecfile}")
 
     # Setup InfluxDB data source in Grafana
-    if not setup_influxdb_datasource(args.grafana_port, influxdb_port, logger):
+    if not setup_influxdb_datasource(grafana_port=args.grafana_port, influxdb_port=influxdb_port,
+                                     auth=(GF_SECURITY_ADMIN_USER, GF_SECURITY_ADMIN_PASSWORD),
+                                     logger=logger):
         logger.error("Failed to set up InfluxDB data source in Grafana.")
         sys.exit(1)
 
