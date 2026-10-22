@@ -183,13 +183,14 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
             return False
 
 
-def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, logger: logging.Logger) -> bool:
+def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, auth: tuple[str, str],
+                             logger: logging.Logger) -> bool:
     """
     Uploads dashboards from the specified directory to Grafana.
     """
     grafana_url = f"http://localhost:{grafana_port}"
     session = requests.Session()
-    session.auth = HTTPBasicAuth("admin", "admin123")
+    session.auth = HTTPBasicAuth(*auth)
 
     if not dashboard_dir.is_dir():
         logger.error(f"Dashboard directory {dashboard_dir} does not exist or is not a directory.")
@@ -220,9 +221,9 @@ def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, logger: log
             logger.info(f"Dashboard {dashboard_file.name} uploaded successfully.")
         else:
             logger.error(f"Error uploading dashboard {dashboard_file.name}: {response.status_code} {response.text}")
-            success = False
+            return False
 
-    return success
+    return True
 
 
 def main():
@@ -384,7 +385,9 @@ def main():
         sys.exit(1)
 
     # Upload dashboards
-    if not setup_grafana_dashboards(args.grafana_port, fallback_path, logger):
+    if not setup_grafana_dashboards(grafana_port=args.grafana_port, dashboard_dir=fallback_path,
+                                    auth=(GF_SECURITY_ADMIN_USER, GF_SECURITY_ADMIN_PASSWORD),
+                                    logger=logger):
         logger.error("Failed to upload one or more dashboards to Grafana.")
         sys.exit(1)
 
