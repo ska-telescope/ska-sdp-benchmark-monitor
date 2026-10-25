@@ -20,6 +20,25 @@ struct data_sample
     std::chrono::time_point<std::chrono::system_clock> timestamp;
     std::unordered_map<std::string, uint64_t> values_map;
 };
+
+constexpr size_t n_fields = 55;
+constexpr std::array<bool, n_fields> enabled{
+    true,  true,  false, true,  true,  true,  false, false, false, false, false, false, false, false,
+    true,  true,  false, false, false, false, false, false, false, false, true,  false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false};
+constexpr std::array<std::string_view, n_fields> field_names{
+    "MemTotal",      "MemFree",         "MemAvailable",   "Buffers",        "Cached",
+    "SwapCached",    "Active",          "Inactive",       "Active(anon",    "Inactive(anon",
+    "Active(file",   "Inactive(file",   "Unevictable",    "Mlocked",        "SwapTotal",
+    "SwapFree",      "Zswap",           "Zswapped",       "Dirty",          "Writeback",
+    "AnonPages",     "Mapped",          "Shmem",          "KReclaimable",   "Slab",
+    "SReclaimable",  "SUnreclaim",      "KernelStack",    "PageTables",     "SecPageTables",
+    "NFS_Unstable",  "Bounce",          "WritebackTmp",   "CommitLimit",    "Committed_AS",
+    "VmallocTotal",  "VmallocUsed",     "VmallocChunk",   "Percpu",         "HardwareCorrupted",
+    "AnonHugePages", "ShmemHugePages",  "ShmemPmdMapped", "FileHugePages",  "FilePmdMapped",
+    "Unaccepted",    "HugePages_Total", "HugePages_Free", "HugePages_Rsvd", "HugePages_Surp",
+    "Hugepagesize",  "Hugetlb",         "DirectMap4k",    "DirectMap2M",    "DirectMap1G"};
 } // namespace rt_monitor::mem
 
 namespace rt_monitor
@@ -53,9 +72,16 @@ template <> file_stream &file_stream::operator<< <mem::data_sample>(mem::data_sa
 {
     io::write_binary(this->file_, static_cast<uint64_t>(sample.timestamp.time_since_epoch().count()));
 
-    for (const auto [label, value] : sample.values_map)
+    // The binary reader expects enabled fields in field_names order.  Iterating
+    // values_map directly would use the unordered_map's unspecified order.
+    for (size_t i = 0; i < mem::n_fields; ++i)
     {
-        io::write_binary(this->file_, value);
+        if (!mem::enabled[i])
+        {
+            continue;
+        }
+        const auto it = sample.values_map.find(std::string(mem::field_names[i]));
+        io::write_binary(this->file_, it != sample.values_map.end() ? it->second : uint64_t{0});
     }
     return *this;
 }
@@ -63,24 +89,6 @@ template <> file_stream &file_stream::operator<< <mem::data_sample>(mem::data_sa
 
 namespace rt_monitor::mem
 {
-constexpr size_t n_fields = 55;
-constexpr std::array<bool, n_fields> enabled{
-    true,  true,  false, true,  true,  true,  false, false, false, false, false, false, false, false,
-    true,  true,  false, false, false, false, false, false, false, false, true,  false, false, false,
-    false, false, false, false, false, false, false, false, false, false, false, false, false, false,
-    false, false, false, false, false, false, false, false, false, false, false, false, false};
-constexpr std::array<std::string_view, n_fields> field_names{
-    "MemTotal",      "MemFree",         "MemAvailable",   "Buffers",        "Cached",
-    "SwapCached",    "Active",          "Inactive",       "Active(anon",    "Inactive(anon",
-    "Active(file",   "Inactive(file",   "Unevictable",    "Mlocked",        "SwapTotal",
-    "SwapFree",      "Zswap",           "Zswapped",       "Dirty",          "Writeback",
-    "AnonPages",     "Mapped",          "Shmem",          "KReclaimable",   "Slab",
-    "SReclaimable",  "SUnreclaim",      "KernelStack",    "PageTables",     "SecPageTables",
-    "NFS_Unstable",  "Bounce",          "WritebackTmp",   "CommitLimit",    "Committed_AS",
-    "VmallocTotal",  "VmallocUsed",     "VmallocChunk",   "Percpu",         "HardwareCorrupted",
-    "AnonHugePages", "ShmemHugePages",  "ShmemPmdMapped", "FileHugePages",  "FilePmdMapped",
-    "Unaccepted",    "HugePages_Total", "HugePages_Free", "HugePages_Rsvd", "HugePages_Surp",
-    "Hugepagesize",  "Hugetlb",         "DirectMap4k",    "DirectMap2M",    "DirectMap1G"};
 
 data_sample read_mem_sample(int fd)
 {
