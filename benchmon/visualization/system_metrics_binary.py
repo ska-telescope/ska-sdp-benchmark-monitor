@@ -23,8 +23,9 @@ def read_binary_samples(file_path: str, sampler_type: system_binary_reader.gener
                 sample = sampler.binary_to_dict(data)
                 samples_list.append(sample)
             except ValueError:
-                logger.error(f"invalid binary sample read, size was {len(data)} and {sampler.get_pack_size()}"
-                             "was expected.")
+                logger.warning(f"ignoring trailing partial binary sample: got {len(data)} of "
+                               f"{sampler.get_pack_size()} bytes.")
+                break
     return samples_list
 
 
@@ -36,6 +37,26 @@ def read_c_string(file):
             break
         chars.append(byte)
     return b''.join(chars).decode('utf-8')
+
+
+def _truncate_incomplete_groups(samples_list, group_size, group_key="timestamp"):
+    """Drop a trailing timestamp group that was cut short by benchmon-stop.
+
+    rt-monitor writes one sample per CPU/device/interface for each timestamp.
+    When the monitor is stopped while a group is being written, the last group
+    is incomplete.  Readers that slice samples positionally must ignore it
+    instead of indexing past the end.
+    """
+    if group_size <= 0:
+        return []
+    complete_samples = 0
+    while complete_samples + group_size <= len(samples_list):
+        timestamp = samples_list[complete_samples][group_key]
+        group = samples_list[complete_samples:complete_samples + group_size]
+        if any(sample[group_key] != timestamp for sample in group):
+            break
+        complete_samples += group_size
+    return samples_list[:complete_samples]
 
 
 _NET_INTERFACE_BYTES = set(b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:-")
@@ -72,7 +93,9 @@ def read_variable_net_samples(file_path: str):
             offset += 1
 
         if offset + 16 > len(data):
-            raise ValueError("Network binary report ended mid-sample while reading the first timestamp block.")
+            logger.warning("Network binary report ends mid-record in the first timestamp block; "
+                           "ignoring the trailing record.")
+            return samples_list, interfaces
 
         interface = data[name_start:offset].decode("utf-8")
         rx_bytes = int.from_bytes(data[offset:offset + 8], byteorder="little", signed=False)
@@ -92,16 +115,21 @@ def read_variable_net_samples(file_path: str):
 
     while offset < len(data):
         if offset + 8 > len(data):
-            raise ValueError("Network binary report ended mid-sample while reading a timestamp.")
+            logger.warning("Network binary report ends with a truncated timestamp; "
+                           "ignoring the trailing record.")
+            break
 
         timestamp = int.from_bytes(data[offset:offset + 8], byteorder="little", signed=False)
         offset += 8
+        group = []
+        complete = True
 
         for interface in interfaces:
             name_bytes = interface.encode("utf-8")
             name_end = offset + len(name_bytes)
             if name_end > len(data):
-                raise ValueError("Network binary report ended mid-sample while reading an interface name.")
+                complete = False
+                break
 
             if data[offset:name_end] != name_bytes:
                 raise ValueError(
@@ -110,18 +138,25 @@ def read_variable_net_samples(file_path: str):
             offset = name_end
 
             if offset + 16 > len(data):
-                raise ValueError("Network binary report ended mid-sample while reading counters.")
+                complete = False
+                break
 
             rx_bytes = int.from_bytes(data[offset:offset + 8], byteorder="little", signed=False)
             tx_bytes = int.from_bytes(data[offset + 8:offset + 16], byteorder="little", signed=False)
             offset += 16
 
-            samples_list.append({
+            group.append({
                 "timestamp": timestamp,
                 "interface": interface,
                 "rx-bytes": rx_bytes,
                 "tx-bytes": tx_bytes,
             })
+
+        if not complete:
+            logger.warning("Network binary report ends with an incomplete timestamp group; ignoring it.")
+            break
+
+        samples_list.extend(group)
 
     return samples_list, interfaces
 
@@ -202,17 +237,17 @@ class SystemDataBinary:
         self.logger.debug(f"\t open+read = {round(time.time() - t0, 3)} s")
 
         samples_list = read_binary_samples(bin_cpu_report, system_binary_reader.hf_cpu_sample)
+        if not samples_list:
+            self.logger.warning("CPU binary report contains no samples.")
+            return {}, []
 
-        self.cpus = []
-        ts_0 = samples_list[0]["timestamp"]
-        ts = ts_0
-        idx = 0
-        while ts == ts_0:
-            self.cpus.append(samples_list[idx]["cpu"])
-            idx += 1
-            ts = samples_list[idx]["timestamp"]
-
+        self.cpus = list(dict.fromkeys(sample["cpu"] for sample in samples_list))
         ncpu_glob = len(self.cpus)
+        samples_list = _truncate_incomplete_groups(samples_list, ncpu_glob)
+        if not samples_list:
+            self.logger.warning("CPU binary report does not contain a complete timestamp group.")
+            return {}, []
+
         self.ncpu = ncpu_glob - 1
 
         cpu_metric_keys = {key for key, _, _ in system_binary_reader.hf_cpu_sample().field_definitions}
@@ -233,7 +268,7 @@ class SystemDataBinary:
         self.logger.debug(f"\t fill dict = {round(time.time() - t0, 3)} s")
 
         t0 = time.time()
-        timestamps_raw = [float(data["timestamp"] / 1e9) for data in samples_list[1::ncpu_glob]]
+        timestamps_raw = [float(data["timestamp"] / 1e9) for data in samples_list[::ncpu_glob]]
         self.logger.debug(f"\t ts_raw = {round(time.time() - t0, 3)} s")
 
         return cpu_ts_raw, timestamps_raw
@@ -412,8 +447,10 @@ class SystemDataBinary:
             while data := file.read(hf.get_pack_size()):
                 try:
                     samples_list.append(hf.binary_to_dict(data))
-                except ValueError as err:
-                    logger.error(err)
+                except ValueError:
+                    logger.warning(f"ignoring trailing partial binary sample: got {len(data)} of "
+                                   f"{hf.get_pack_size()} bytes.")
+                    break
 
         return samples_list
 
@@ -525,8 +562,10 @@ class SystemDataBinary:
             while data := file.read(hf.get_pack_size()):
                 try:
                     samples_list.append(hf.binary_to_dict(data))
-                except ValueError as err:
-                    logger.error(err)
+                except ValueError:
+                    logger.warning(f"ignoring trailing partial binary sample: got {len(data)} of "
+                                   f"{hf.get_pack_size()} bytes.")
+                    break
         except FileNotFoundError:
             self.logger.error("CPU frequency binary report not found.")
             return 0, 0, samples_list
@@ -697,6 +736,9 @@ class SystemDataBinary:
             self.logger.debug("Create Network profile..."); t0 = time.time()  # noqa: E702
 
             nstamps = len(timestamps_raw) - 1
+            if nstamps <= 0:
+                self.logger.error("Not enough network timestamp data to create profile.")
+                return False
             self.net_stamps = np.zeros(nstamps)
             for stamp in range(nstamps):
                 self.net_stamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
@@ -839,11 +881,17 @@ class SystemDataBinary:
                 blocksize = np.frombuffer(file.read(4), dtype=np.uint32)[0]
                 sector_sizes[name] = blocksize
 
-            while data := file.read(disk_sampler.get_pack_size()):
+            pack_size = disk_sampler.get_pack_size()
+            while data := file.read(pack_size):
+                if len(data) != pack_size:
+                    logger.warning(f"ignoring trailing partial binary sample: got {len(data)} of "
+                                   f"{pack_size} bytes.")
+                    break
                 try:
                     sample = disk_sampler.binary_to_dict(data)
                 except ValueError as err:
-                    logger.error(err)
+                    logger.error(f"ignoring invalid disk sample: {err}")
+                    break
                 sample["device_name"] = device_names[sample["device_id"]]
                 samples_list.append(sample)
 
@@ -854,15 +902,16 @@ class SystemDataBinary:
         self.maj_blks_sects = sector_sizes
 
         # all disk blocks
-        ts_0 = samples_list[0]["timestamp"]
-        ts = ts_0
-        line_idx = 0
-        ndisk_blk = 0
-        while ts == ts_0:
-            line_idx += 1
-            ndisk_blk += 1
-            ts = samples_list[line_idx]["timestamp"]
-        self.disk_blks = [samples_list[idx]["device_name"] for idx in range(ndisk_blk)]
+        if not samples_list:
+            self.logger.warning("Disk binary report contains no samples.")
+            return {}, []
+
+        self.disk_blks = list(dict.fromkeys(sample["device_name"] for sample in samples_list))
+        ndisk_blk = len(self.disk_blks)
+        samples_list = _truncate_incomplete_groups(samples_list, ndisk_blk)
+        if not samples_list:
+            self.logger.warning("Disk binary report does not contain a complete timestamp group.")
+            return {}, []
 
         # raw disk measure stamps
         disk_ts_raw = {}
@@ -894,6 +943,9 @@ class SystemDataBinary:
 
             self.logger.debug("Create Disk profile..."); t0 = time.time()  # noqa: E702
             nstamps = len(timestamps_raw) - 1
+            if nstamps <= 0:
+                self.logger.error("Not enough disk timestamp data to create profile.")
+                return False
             self.disk_stamps = np.zeros(nstamps)
             for stamp in range(nstamps):
                 self.disk_stamps[stamp] = (timestamps_raw[stamp + 1] + timestamps_raw[stamp]) / 2
