@@ -103,25 +103,37 @@ class BenchmonMNSyncVisualizer:
         if self.args.cpu:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
-            self.plot_sync_cpu(nodes_data=nodes_data)
+            if self.args.binary:
+                self.plot_sync_cpu_binary(nodes_data=nodes_data)
+            else:
+                self.plot_sync_cpu(nodes_data=nodes_data)
             ax_last = plt.gca()
 
         if self.args.cpu_freq:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
-            self.plot_sync_cpufreq(nodes_data=nodes_data)
+            if self.args.binary:
+                self.plot_sync_cpufreq_binary(nodes_data=nodes_data)
+            else:
+                self.plot_sync_cpufreq(nodes_data=nodes_data)
             ax_last = plt.gca()
 
         if self.args.mem:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
-            self.plot_sync_mem(nodes_data=nodes_data)
+            if self.args.binary:
+                self.plot_sync_mem_binary(nodes_data=nodes_data)
+            else:
+                self.plot_sync_mem(nodes_data=nodes_data)
             ax_last = plt.gca()
 
         if self.args.net:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
-            self.plot_sync_net(nodes_data=nodes_data)
+            if self.args.binary:
+                self.plot_sync_net_binary(nodes_data=nodes_data)
+            else:
+                self.plot_sync_net(nodes_data=nodes_data)
             ax_last = plt.gca()
 
         if self.args.ib:
@@ -133,7 +145,10 @@ class BenchmonMNSyncVisualizer:
         if self.args.disk:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
-            self.plot_sync_disk(nodes_data=nodes_data)
+            if self.args.binary:
+                self.plot_sync_disk_binary(nodes_data=nodes_data)
+            else:
+                self.plot_sync_disk(nodes_data=nodes_data)
             ax_last = plt.gca()
 
         # Single plot_stage_markers call after ALL subplots are created
