@@ -252,7 +252,7 @@ def main():
     """
     Main function to start InfluxDB and Grafana, configure them, and upload dashboards.
     """
-
+    # Parse command-line arguments
     args = parse_args()
 
     # Runtime directories
@@ -263,6 +263,13 @@ def main():
     log_dir = runtime_dir / "logs"  # @hardcoded
     log_dir.mkdir(exist_ok=True)    # @hardcoded
     logger = RunUtils.create_logger(save_dir=log_dir, verbose=args.verbose, logfilename="benchmon-start-grafana.log")
+
+    # Log the parsed command-line arguments
+    args_str = "Starting benchmon-start-grafana with arguments:\n"
+    args_str += f"{__file__} \\\n"
+    for key, value in vars(args).items():
+        args_str += f"\t--{key.replace('_', '-')} {value} \\\n"
+    logger.debug(args_str[:-2])
 
     # Validate the --influxdb-query-file-limit argument
     if not isinstance(args.influxdb_query_file_limit, int) or args.influxdb_query_file_limit < 1:
