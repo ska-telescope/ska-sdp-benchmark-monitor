@@ -392,7 +392,7 @@ def main():
 
     logger.info(f"InfluxDB is ready at http://{hostname}:{influxdb_port}")
     logger.info(f"Grafana is ready at http://{hostname}:{grafana_port}")
-    logger.debug(f"Local port forwarding:\n ssh -L {influxdb_port}:{hostname}:{influxdb_port} "
+    logger.debug(f"Local port forwarding:\n ssh -N -L {influxdb_port}:{hostname}:{influxdb_port} "
                  f"-L {grafana_port}:{hostname}:{grafana_port} <user>@<frontend>")
     logger.info("Monitoring stack started and configured successfully.")
 
