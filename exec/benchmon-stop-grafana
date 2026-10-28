@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# filepath: /home/wangfeng/work/ska-sdp-benchmark-monitor/exec/benchmon-stop-grafana
+
 import argparse
 import json
 import os
