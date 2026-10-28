@@ -181,7 +181,8 @@ class HighPerformanceCollector:
                                 lp = f"cpu_core,{tags},cpu={core_id} {fields} {timestamp}"
                             batch_list.append(lp)
 
-                if len(batch_list) >= self.batch_size:
+                # if len(batch_list) >= self.batch_size:
+                if batch_list:
                     q.put(batch_list)
                     batch_list = []
             except Exception as e:
@@ -206,7 +207,8 @@ class HighPerformanceCollector:
                         fields.append(f"{key}={value}i")
 
                 batch_list.append(f"memory,hostname={self.hostname} {','.join(fields)} {timestamp}")
-                if len(batch_list) >= self.batch_size_over_100:
+                # if len(batch_list) >= self.batch_size_over_100:
+                if batch_list:
                     q.put(batch_list)
                     batch_list = []
             except Exception as e:
@@ -229,7 +231,8 @@ class HighPerformanceCollector:
                     lp = f"cpu_freq,hostname={self.hostname},cpu={core_id} value={freq}i {timestamp}"
                     batch_list.append(lp)
 
-                if len(batch_list) >= self.batch_size_over_100:
+                # if len(batch_list) >= self.batch_size_over_100:
+                if batch_list:
                     q.put(batch_list)
                     batch_list = []
             except Exception as e:
@@ -255,7 +258,8 @@ class HighPerformanceCollector:
                     )
                     batch_list.append(lp)
 
-                if len(batch_list) >= self.batch_size_over_10:
+                # if len(batch_list) >= self.batch_size_over_10:
+                if batch_list:
                     q.put(batch_list)
                     batch_list = []
             except Exception as e:
@@ -322,7 +326,8 @@ class HighPerformanceCollector:
                     )
                     batch_list.append(lp)
 
-                if len(batch_list) >= self.batch_size_over_100:
+                # if len(batch_list) >= self.batch_size_over_100:
+                if batch_list:
                     q.put(batch_list)
                     batch_list = []
             except Exception as e:
@@ -354,7 +359,8 @@ class HighPerformanceCollector:
                     except FileNotFoundError:
                         continue
 
-                if len(batch_list) >= self.batch_size_over_100:
+                # if len(batch_list) >= self.batch_size_over_100:
+                if batch_list:
                     q.put(batch_list)
                     batch_list = []
             except Exception as e:
