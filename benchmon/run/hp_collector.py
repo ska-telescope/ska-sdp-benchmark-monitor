@@ -71,7 +71,7 @@ class HighPerformanceCollector:
             try:
                 client = InfluxDBClient3(
                     host=self.config.get("url"),
-                    token=self.config.get("token"),
+                    token=self.config.get("token") or "no-auth",
                     org=self.config.get("org"),
                     database=self.config.get("database"),
                     write_client_options=wco
