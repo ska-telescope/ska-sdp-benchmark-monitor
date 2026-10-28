@@ -50,10 +50,10 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--dashboard-dir",
+        "--dashboard-file",
         type=Path,
-        default=None,
-        help="Directory containing dashboard JSON files. Defaults to internal package dashboards."
+        default=Path(__file__).parent.parent / "benchmon" / "visualization" / "system-monitoring-dashboard.json",
+        help="File containing the Grafana dashboard JSON."
     )
 
     parser.add_argument(
@@ -203,7 +203,7 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
             return False
 
 
-def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, auth: tuple[str, str],
+def setup_grafana_dashboards(grafana_port: int, auth: tuple[str, str],
                              logger: logging.Logger, args: argparse.Namespace) -> bool:
     """
     Uploads dashboards from the specified directory to Grafana.
@@ -212,42 +212,40 @@ def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, auth: tuple
     session = requests.Session()
     session.auth = HTTPBasicAuth(*auth)
 
-    if not dashboard_dir.is_dir():
-        logger.error(f"Dashboard directory {dashboard_dir} does not exist or is not a directory.")
+    if not args.dashboard_file.is_file():
+        logger.error(f"Dashboard file {args.dashboard_file} does not exist or is not a file.")
         return False
 
-    for dashboard_file in dashboard_dir.glob("*.json"):
-        logger.info(f"Uploading dashboard: {dashboard_file.name}")
-        with open(dashboard_file, "r") as f:
-            dashboard_json = json.load(f)
+    dashboard_file = args.dashboard_file
+    logger.info(f"Uploading dashboard: {dashboard_file.name}")
+    with open(dashboard_file, "r") as f:
+        dashboard_json = json.load(f)
 
-        payload = {
-            "dashboard": dashboard_json,
-            "overwrite": True,
-            "message": f"Uploaded {dashboard_file} via benchmon-run-grafana"
-        }
+    payload = {
+        "dashboard": dashboard_json,
+        "overwrite": True,
+        "message": f"Uploaded {dashboard_file} via benchmon-run-grafana"
+    }
 
-        if "id" in payload["dashboard"]:
-            del payload["dashboard"]["id"]
+    if "id" in payload["dashboard"]:
+        del payload["dashboard"]["id"]
 
-        response = session.post(
-            f"{grafana_url}/api/dashboards/db",
-            json=payload,
-            headers={"Content-Type": "application/json"}
-        )
-        if args.debug_print_bash_equivalent:
-            logger.debug(f"Bash's equivalent:\n"
-                         f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/dashboards/db"
-                         f" -X POST -H 'Content-Type: application/json' -d '{json.dumps(payload)}'")
+    response = session.post(
+        f"{grafana_url}/api/dashboards/db",
+        json=payload,
+        headers={"Content-Type": "application/json"}
+    )
+    if args.debug_print_bash_equivalent:
+        logger.debug(f"Bash's equivalent:\n"
+                     f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/dashboards/db"
+                     f" -X POST -H 'Content-Type: application/json' -d '{json.dumps(payload)}'")
 
-
-        if response.status_code in (200, 201):
-            logger.info(f"Dashboard {dashboard_file.name} uploaded successfully.")
-        else:
-            logger.error(f"Error uploading dashboard {dashboard_file.name}: {response.status_code} {response.text}")
-            return False
-
-    return True
+    if response.status_code in (200, 201):
+        logger.info(f"Dashboard {dashboard_file.name} uploaded successfully.")
+        return True
+    else:
+        logger.error(f"Error uploading dashboard {dashboard_file.name}: {response.status_code} {response.text}")
+        return False
 
 
 def main():
@@ -270,15 +268,6 @@ def main():
     if not isinstance(args.influxdb_query_file_limit, int) or args.influxdb_query_file_limit < 1:
         logger.error("--influxdb-query-file-limit must be a positive integer")
         sys.exit(1)
-
-    # --- MODIFICATION: Programmatically find default dashboard directory ---
-    if args.dashboard_dir is None:
-        import benchmon.visualization
-        fallback_path = Path(benchmon.visualization.__file__).parent
-        if fallback_path.is_dir():
-            args.dashboard_dir = fallback_path
-            logger.info(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
-
 
     # [InfluxDB] Check for the binary
     influxdb3_binary = f"{(args.influxdb_path / 'influxdb3').resolve()}"  # Resolved absolute path
@@ -409,7 +398,7 @@ def main():
         sys.exit(1)
 
     # Upload dashboards
-    if not setup_grafana_dashboards(grafana_port=args.grafana_port, dashboard_dir=fallback_path,
+    if not setup_grafana_dashboards(grafana_port=args.grafana_port,
                                     auth=(GF_SECURITY_ADMIN_USER, GF_SECURITY_ADMIN_PASSWORD),
                                     logger=logger, args=args):
         logger.error("Failed to upload one or more dashboards to Grafana.")
