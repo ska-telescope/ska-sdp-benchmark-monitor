@@ -79,9 +79,11 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--debug-print-bash-equivalent",
-        action="store_true",
-        help="Enable printing of bash equivalent commands for debugging"
+        "--debug-print",
+        type=str,
+        default="",
+        help="Enabling debug print for the script. List of debug options separated by commas. "
+             "Currently supported options: bash-equivalent, payload"
     )
 
     return parser.parse_args()
@@ -126,8 +128,11 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
     session = requests.Session()
     session.auth = HTTPBasicAuth(*auth)
 
+    # Determine if bash equivalent commands should be printed based on debug options.
+    print_bash_equivalent = "bash-equivalent" in args.debug_print.split(",")
+
     # Bash equivalent for checking Grafana health:
-    if args.debug_print_bash_equivalent:
+    if print_bash_equivalent:
         logger.debug("Bash's equivalent:\n"
                      f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/health")
 
@@ -178,9 +183,10 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
 
     response = session.get(f"{grafana_url}/api/datasources/uid/{payload['uid']}")
 
-    if args.debug_print_bash_equivalent:
+    if print_bash_equivalent:
         logger.debug(f"Bash's equivalent:\n"
-                     f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/datasources/uid/{payload['uid']}")
+                     f"curl -s -u {auth[0]}:{auth[1]} "
+                     f"http://localhost:{grafana_port}/api/datasources/uid/{payload['uid']}")
 
     if response.status_code == 200:
         logger.info("Datasource already exists, skipping creation.")
@@ -191,7 +197,7 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
             json=payload,
             headers={"Content-Type": "application/json"}
         )
-        if args.debug_print_bash_equivalent:
+        if print_bash_equivalent:
             logger.debug(f"Bash's equivalent:\n"
                          f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/datasources"
                          f" -X POST -H 'Content-Type: application/json' -d '{json.dumps(payload)}'")
@@ -211,6 +217,10 @@ def setup_grafana_dashboards(grafana_port: int, auth: tuple[str, str],
     grafana_url = f"http://localhost:{grafana_port}"
     session = requests.Session()
     session.auth = HTTPBasicAuth(*auth)
+
+    # Determine which debug options are enabled based on the debug_print argument
+    print_bash_equivalent = "bash-equivalent" in args.debug_print.split(",")
+    print_payload = "payload" in args.debug_print.split(",")
 
     if not args.dashboard_file.is_file():
         logger.error(f"Dashboard file {args.dashboard_file} does not exist or is not a file.")
@@ -235,10 +245,11 @@ def setup_grafana_dashboards(grafana_port: int, auth: tuple[str, str],
         json=payload,
         headers={"Content-Type": "application/json"}
     )
-    if args.debug_print_bash_equivalent:
+    if print_bash_equivalent:
         logger.debug(f"Bash's equivalent:\n"
                      f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/dashboards/db"
-                     f" -X POST -H 'Content-Type: application/json' -d '{json.dumps(payload)}'")
+                     " -X POST -H 'Content-Type: application/json'"
+                     f" -d '{json.dumps(payload) if print_payload else '<<payload>>'}'")
 
     if response.status_code in (200, 201):
         logger.info(f"Dashboard {dashboard_file.name} uploaded successfully.")
