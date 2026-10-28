@@ -37,8 +37,11 @@ exclude =
     .mypy_cache,
     .pytest_cache,
     mytest,
-    .make
-    libs
+    .make,
+    libs,
+    .pyenv,
+    benchmon-server,
+    benchmon-stack
 
 per-file-ignores =
     __init__.py: F401, D104

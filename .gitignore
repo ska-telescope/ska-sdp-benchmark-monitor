@@ -222,4 +222,7 @@ exec/share
 exec/rt-monitor
 
 # End of https://www.toptal.com/developers/gitignore/api/pycharm+all,python
-
+.pyenv
+benchmon-stack
+benchmon-server
+compile_commands.json
