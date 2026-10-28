@@ -196,7 +196,6 @@ def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, auth: tuple
         logger.error(f"Dashboard directory {dashboard_dir} does not exist or is not a directory.")
         return False
 
-    success = True
     for dashboard_file in dashboard_dir.glob("*.json"):
         logger.info(f"Uploading dashboard: {dashboard_file.name}")
         with open(dashboard_file, "r") as f:
