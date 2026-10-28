@@ -120,6 +120,10 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
     session = requests.Session()
     session.auth = HTTPBasicAuth(*auth)
 
+    # Bash equivalent for checking Grafana health:
+    logger.debug("Bash's equivalent:\n"
+                 f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/health")
+
     # Wait for Grafana to be ready
     start_time = time.time()
     grafana_ready = False
@@ -166,6 +170,10 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
     }
 
     response = session.get(f"{grafana_url}/api/datasources/uid/{payload['uid']}")
+
+    logger.debug(f"Bash's equivalent:\n"
+                 f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/datasources/uid/{payload['uid']}")
+
     if response.status_code == 200:
         logger.info("Datasource already exists, skipping creation.")
         return True
@@ -175,6 +183,9 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
             json=payload,
             headers={"Content-Type": "application/json"}
         )
+        logger.debug(f"Bash's equivalent:\n"
+                     f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/datasources"
+                     f" -X POST -H 'Content-Type: application/json' -d '{json.dumps(payload)}'")
         if response.status_code in (200, 201):
             logger.info("Datasource created successfully.")
             return True
@@ -215,6 +226,10 @@ def setup_grafana_dashboards(grafana_port: int, dashboard_dir: Path, auth: tuple
             json=payload,
             headers={"Content-Type": "application/json"}
         )
+        logger.debug(f"Bash's equivalent:\n"
+                     f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/dashboards/db"
+                     f" -X POST -H 'Content-Type: application/json' -d '{json.dumps(payload)}'")
+
 
         if response.status_code in (200, 201):
             logger.info(f"Dashboard {dashboard_file.name} uploaded successfully.")
