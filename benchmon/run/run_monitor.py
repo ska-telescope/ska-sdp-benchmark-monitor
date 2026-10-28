@@ -120,7 +120,6 @@ class RunMonitor:
         self._check_control_node()
 
         if self.is_grafana:
-            # --- REFACTOR: Load connection info from the correct shared path ---
             connection_file = Path(self.save_dir_base) / "grafana-data" / "connection.json"
             if not connection_file.is_file():
                 self.logger.error(f"Grafana connection file not found at {connection_file}")
@@ -129,15 +128,15 @@ class RunMonitor:
             else:
                 with open(connection_file, "r") as f:
                     conn_info = json.load(f)
-                if self.args.grafana_influxdb_url != "http://localhost:8181":
                     conn_info["influxdb_url"] = self.args.grafana_influxdb_url
+
                 self.influxdb_config = {
-                    'url': conn_info.get("influxdb_url"),
-                    'token': conn_info.get("influxdb_token"),
-                    'database': 'metrics',
+                    "url": conn_info.get("influxdb_url"),
+                    "token": conn_info.get("influxdb_token") or "no-auth",
+                    "database": "metrics",
                 }
 
-        # --- REFACTOR: Initialize and start the new HP Collector ---
+        # Start the HP Collector if Grafana integration is enabled
         if self.is_grafana:
             self.hp_collector = HighPerformanceCollector(
                 self.logger,
