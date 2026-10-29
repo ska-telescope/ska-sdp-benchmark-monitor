@@ -58,12 +58,12 @@ lint:
   script:
     - source $VENV_DIR/bin/activate
     - pip install flake8
-    - mkdir -p artifacts/build/reports
-    - flake8 . --format=xml --output-file=artifacts/build/reports/linting.xml
+    - mkdir -p ./build/reports
+    - flake8 . --format=xml --output-file=./build/reports/linting.xml
   artifacts:
     when: always
     paths:
-      - artifacts/build/reports/linting.xml
+      - ./build/reports/linting.xml
 
 test_flake8:
   stage: test
