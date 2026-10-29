@@ -70,6 +70,7 @@ def run(args: argparse.ArgumentParser):
 
     ref_repo = f"{cwd}/data_for_visu/benchmon_traces_neowise-8-ref.lyon.grid5000.fr"
     shutil.copytree(ref_repo, test_repo, dirs_exist_ok=True)
+    os.makedirs(f"{test_repo}/pkl_dir", exist_ok=True)
 
     BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo).run_plots()
 
