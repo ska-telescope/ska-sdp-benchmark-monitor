@@ -116,6 +116,39 @@ def pick_available_port(requested: int, service: str, logger: logging.Logger) ->
     return candidate
 
 
+def check_health(url: str, auth: tuple[str, str], logger: logging.Logger, args: argparse.Namespace) -> bool:
+    """
+    Checks the health of a service at the given URL.
+    """
+    is_healthy = False
+    timeout = 60
+    start_time = time.time()
+    max_attempts = 100
+    attempt = 1
+
+    # Determine if bash equivalent commands should be printed based on debug options.
+    print_bash_equivalent = "bash-equivalent" in args.debug_print.split(",")
+
+    # Bash equivalent for checking Grafana health:
+    if print_bash_equivalent:
+        auth_str = f"-u {auth[0]}:{auth[1]}" if auth[0] and auth[1] else ""
+        logger.debug(f"Bash's equivalent:\ncurl -s {auth_str} {url}")
+
+    while not is_healthy and (time.time() - start_time) < timeout and attempt <= max_attempts:
+        logger.debug(f"Attempt {attempt} for health check at {url}")
+        try:
+            req = requests.get(url, auth=HTTPBasicAuth(*auth), timeout=timeout)
+            if req.status_code == 200:
+                return True
+        except requests.RequestException as e:
+            logger.debug(f"Health check failed: {e}")
+        time.sleep(1)
+        attempt += 1
+
+    logger.error(f"Health check for {url} failed after {attempt - 1} attempts.")
+    sys.exit(1)
+
+
 def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple[str, str],
                               logger: logging.Logger, args: argparse.Namespace) -> bool:
     """
@@ -124,41 +157,12 @@ def setup_influxdb_datasource(grafana_port: int, influxdb_port: int, auth: tuple
 
     # Initialize Grafana session
     grafana_url = f"http://localhost:{grafana_port}"
-    logger.info("Waiting for Grafana to be ready...")
     session = requests.Session()
     session.auth = HTTPBasicAuth(*auth)
 
     # Determine if bash equivalent commands should be printed based on debug options.
     print_bash_equivalent = "bash-equivalent" in args.debug_print.split(",")
-
-    # Bash equivalent for checking Grafana health:
-    if print_bash_equivalent:
-        logger.debug("Bash's equivalent:\n"
-                     f"curl -s -u {auth[0]}:{auth[1]} http://localhost:{grafana_port}/api/health")
-
-    # Wait for Grafana to be ready
-    start_time = time.time()
-    grafana_ready = False
-    timeout = 60
-    while time.time() - start_time < timeout:
-        try:
-            response = session.get(f"{grafana_url}/api/health", timeout=timeout)  # Check Grafana health endpoint
-            logger.debug(f"Grafana health check response: {response.status_code}")
-            if response.status_code == 200:
-                grafana_ready = True
-                break
-        except requests.RequestException as e:
-            logger.debug(f"Grafana health check failed: {e}")
-            pass
-        logger.info("Grafana not ready yet, retrying in 2 seconds...")
-        time.sleep(2)
-
-    if not grafana_ready:
-        logger.error("Grafana did not become available in time. Please check logs.")
-        logger.error("Consider stopping the services here if Grafana fails to start.")
-        sys.exit(1)
-
-    logger.info("Grafana is up. Configuring datasource and dashboards...")
+    logger.info("Configuring datasource and dashboards...")
 
     # Configure the payload for the InfluxDB datasource
     payload = {
@@ -312,6 +316,7 @@ def main():
 
     # [InfluxDB] Set port
     influxdb_port = pick_available_port(args.influxdb_port, "InfluxDB", logger)
+    influxdb_url = f"0.0.0.0:{influxdb_port}"
     logger.info(f"Starting InfluxDB on port {influxdb_port}...")
 
     # [InfluxDB] Create the execution command with the specified parameters
@@ -321,7 +326,7 @@ def main():
         influxdb3_binary, "serve",
         "--object-store", "file",
         "--node-id", node_id,
-        "--http-bind", f"0.0.0.0:{influxdb_port}",
+        "--http-bind", influxdb_url,
         "--data-dir", str(influxdb_data_dir),
         "--without-auth"
     ]
@@ -347,6 +352,10 @@ def main():
     with open(influx_log_file, "w") as log:  # @hardcoded log should be directed to verbose global logger
         influx_process = subprocess.Popen(influxdb_command, stdout=log, stderr=subprocess.STDOUT)
     pids["influxdb"] = influx_process.pid
+
+    # [InfluxDB] Check if influxdb is up
+    check_health(url=f"http://{influxdb_url}/health", auth=("", ""),
+                 logger=logger, args=args)
     logger.info(f"InfluxDB started with PID: {influx_process.pid}. Log: {influx_log_file}")
     logger.info(f"InfluxDB data directory: {influxdb_data_dir} Database: metrics")
 
@@ -388,6 +397,11 @@ def main():
     with open(grafana_log_file, "w") as log:
         grafana_process = subprocess.Popen(grafana_command, stdout=log, stderr=subprocess.STDOUT, env=grafana_env)
     pids["grafana"] = grafana_process.pid
+
+    # [Grafana] Check if Grafana is up
+    check_health(url=f"http://localhost:{grafana_port}/api/health",
+                 auth=(GF_SECURITY_ADMIN_USER, GF_SECURITY_ADMIN_PASSWORD),
+                 logger=logger, args=args)
     logger.info(f"Grafana started with PID: {grafana_process.pid}. Log: {grafana_log_file}")
 
     # Write PID file
