@@ -72,7 +72,6 @@ def run(args: argparse.ArgumentParser):
     shutil.copytree(ref_repo, test_repo, dirs_exist_ok=True)
 
     BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo).run_plots()
-    BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo).run_plots()
 
 
 def test_visu_cpu():
