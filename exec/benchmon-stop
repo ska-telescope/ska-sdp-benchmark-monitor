@@ -22,9 +22,11 @@ done
 benchmon_pid_file=./.benchmon-run_pid_${OAR_JOB_ID}${SLURM_JOB_ID}_$(hostname)
 if [[ -f ${benchmon_pid_file} ]]
 then
-    pids=$(tr ',' ' ' < ${benchmon_pid_file})
-    xargs -d',' -a ${benchmon_pid_file} kill -2
-    while kill -0 "${pids[@]}" 2>/dev/null; do sleep 1; done
+    # pids=$(tr ',' ' ' < ${benchmon_pid_file}) @newold
+    pids=$(cat $benchmon_pid_file)
+    kill -2 ${pids[@]}  # @hardcoded (catched by the c++ backend)
+    kill -15 ${pids[@]} # @hardcoded (catched by the bash backend)
+    while kill -0 "${pids[@]}" 2>/dev/null; do sleep 0.1; done
     rm -v ${benchmon_pid_file}
 fi
 
