@@ -294,6 +294,8 @@ class PerfCallData:
                 self._construct_from_samples(samples, cmd_samples, cmd_tids)
 
         else:
+            self.logger.debug(f"PerfCall samples for command {self.cmd} not found, constructing from raw samples...")
+            t0 = time.time()
             self._construct_from_samples(samples, cmd_samples, cmd_tids)
 
         self.nt = len(self.tids) if self.tids else 0
