@@ -38,7 +38,6 @@ fi
 if [[ -n $level ]] || [[ $__with_report == true ]]; then
     traces_repo=$save_dir/benchmon_traces_$(hostname)
     benchmon_visu=$(dirname $0)/benchmon-visu
-    benchmon_report=$(dirname $0)/benchmon-report
 fi
 
 if [[ $level == 0 ]]; then
@@ -58,10 +57,11 @@ fi
 # @hard-coded should be documented
 if [[ $__with_report == true ]]; then
     benchmon_template=$(python -c 'import benchmon; print(benchmon.__path__.pop())')/report/template.md
+    benchmon_report=$(dirname $0)/benchmon-report
     $benchmon_report --software-report "$save_dir/swmon_merged.json" --hardware-report "$save_dir/hwmon_merged.json" \
-                    --figure-path "$traces_repo/benchmon_figure_detailed.png"                                       \
-                    --ps-report "$traces_repo/timing_mapping_report.csv"                                            \
-                    --template "$benchmon_template"                                                                 \
-                    --output "$traces_repo/benchmon_report.md"
+                     --figure-path "$traces_repo/benchmon_figure_detailed.png"                                       \
+                     --ps-report "$traces_repo/timing_mapping_report.csv"                                            \
+                     --template "$benchmon_template"                                                                 \
+                     --output "$traces_repo/benchmon_report.md"
     python3 -m pandoc read $traces_repo/benchmon_report.md | python -m pandoc write -f html -o $traces_repo/benchmon_report.html
 fi
