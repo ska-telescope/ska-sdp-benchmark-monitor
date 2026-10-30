@@ -19,9 +19,9 @@ def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     # Handle empty data
     if len(time_stamps) < 2 or len(power_stamps) < 2:
         return 0.0
-
     # Ensure both lists have the same length
     min_length = min(len(time_stamps), len(power_stamps))
+
     if min_length < 2:
         return 0.0
 
