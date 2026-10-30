@@ -664,49 +664,29 @@ class BenchmonVisualizer:
             self.logger.warning("Invalid xlim for annotation")
             return
 
-        try:
-            cm = plt.cm.gist_earth(np.linspace(0, 1, len(self.inline_calls_prof) + 1))
+        cm = plt.cm.gist_earth(np.linspace(0, 1, len(self.inline_calls_prof) + 1))
 
-            ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
-            ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
+        ypos = lambda idx: - 0.03 * ymax - 0.03 * idx * ymax
+        ylim = lambda idx: (- 0.15 * ymax - 0.03 * idx * ymax, 1.1 * ymax)
+        for idx, call in enumerate(self.inline_calls_prof):
+            call_ts_limited = self.inline_calls_prof[call][
+                np.logical_and(self.inline_calls_prof[call] > self.xlim[0],
+                               self.inline_calls_prof[call] < self.xlim[1])
+            ]
 
-            plot_count = 0
-            for idx, call in enumerate(self.inline_calls_prof):
-                if not self.inline_calls_prof[call] or len(self.inline_calls_prof[call]) == 0:
-                    continue
+            if len(call_ts_limited) == 0:
+                continue
 
-                try:
-                    call_ts_limited = self.inline_calls_prof[call][
-                        np.logical_and(self.inline_calls_prof[call] > self.xlim[0],
-                                       self.inline_calls_prof[call] < self.xlim[1])
-                    ]
+            plt.plot(call_ts_limited,
+                     ypos(idx) * np.ones(len(call_ts_limited)),
+                     ".", ms=4, c=cm[idx % len(cm)])
 
-                    if len(call_ts_limited) == 0:
-                        continue
+            plt.text(np.mean(call_ts_limited),
+                     ypos(idx) * 1.5,
+                     call,
+                     va="top",
+                     ha="center",
+                     c=cm[idx % len(cm)],
+                     weight="bold")
 
-                    plt.plot(call_ts_limited,
-                             ypos(idx) * np.ones(len(call_ts_limited)),
-                             ".", ms=4, c=cm[idx % len(cm)])
-
-                    plt.text(np.mean(call_ts_limited),
-                             ypos(idx) * 1.5,
-                             call,
-                             va="top",
-                             ha="center",
-                             c=cm[idx % len(cm)],
-                             weight="bold")
-
-                    plot_count += 1
-
-                except Exception as e:
-                    self.logger.warning(f"Error annotating command {call}: {e}")
-                    continue
-
-            if plot_count > 0:
-                # Use the last valid idx for ylim
-                plt.ylim(ylim(idx))
-            else:
-                self.logger.warning("No valid commands were annotated")
-
-        except Exception as e:
-            self.logger.error(f"Error in annotate_with_cmds: {e}")
+            plt.ylim(ylim(idx))
