@@ -1,4 +1,5 @@
-​​​​​# Installation
+​​​​​
+# Installation
 benchmon is mainly written in Python and BASH, and can be installed on Linux systems equipped with Python 3.6 or higher. To install benchmon, clone the repository and install it using `pip`. Using a Python virtual environment is recommended.
 
 ```bash
@@ -27,7 +28,7 @@ to generate software performance metrics or collect execution traces, HPCToolkit
 ---
 
 # Check System availability
-`benchmon-check` can be used to check the system availability and check if the environment is compatible for `benchmon`. We recommended that the users should run this command before running `benchmon` for the first time. 
+`benchmon-check` can be used to check the system availability and check if the environment is compatible for `benchmon`. We recommended that the users should run this command before running `benchmon` for the first time.
 
 ```bash
 benchmon-check
