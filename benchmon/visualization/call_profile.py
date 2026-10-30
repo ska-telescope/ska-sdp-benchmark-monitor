@@ -276,7 +276,8 @@ class PerfCallData:
         cmd_tids = f"{self.traces_repo}/pkl_dir/call_{self.cmd}_tids.pkl"
 
         if os.access(cmd_samples, os.R_OK) and os.access(cmd_tids, os.R_OK):
-            self.logger.debug(f"Load PerfCall samples for command = {self.cmd} ..."); t0 = time.time()  # noqa: E702
+            self.logger.debug(f"Load PerfCall samples for command = {self.cmd} ...")
+            t0 = time.time()
 
             try:
                 with open(cmd_samples, "rb") as _pf:
@@ -491,48 +492,43 @@ class PerfCallData:
 
         # Only proceed with axis setup if we have valid depths
         if depths:
-            try:
-                # Y axis options
-                plt.ylim([min(depths) - 1 / 4 - 1 / 8 * len(depths), max(depths) + 1 + 1 / 4 * len(depths)])
-                yvals = []
-                ylabels = []
+            # Y axis options
+            plt.ylim([min(depths) - 1 / 4 - 1 / 8 * len(depths), max(depths) + 1 + 1 / 4 * len(depths)])
+            yvals = []
+            ylabels = []
 
-                # Threads ticks
-                for depth in depths:
-                    for tid in range(self.nt):
-                        ylabels += [""]  # [f"{tid}"]
-                        if tid == 0:
-                            ylabels[-1] = f"CallStack {depth}"  # + ylabels[-1]
-                        if self.nt > 0:  # Avoid division by zero
-                            yvals += [depth + self._plt_depth_size / self.nt * tid]
+            # Threads ticks
+            for depth in depths:
+                for tid in range(self.nt):
+                    ylabels += [""]  # [f"{tid}"]
+                    if tid == 0:
+                        ylabels[-1] = f"CallStack {depth}"  # + ylabels[-1]
+                    if self.nt > 0:  # Avoid division by zero
+                        yvals += [depth + self._plt_depth_size / self.nt * tid]
 
-                # Without threads ticks
-                if False:
-                    ylabels = [f"CallStack {depth}" for depth in depths]
-                    yvals = [depth for depth in depths]
+            # Without threads ticks
+            if False:
+                ylabels = [f"CallStack {depth}" for depth in depths]
+                yvals = [depth for depth in depths]
 
-                if yvals and ylabels:
-                    plt.yticks(yvals, ylabels)
+            if yvals and ylabels:
+                plt.yticks(yvals, ylabels)
 
-                # X axis options
-                if xticks and len(xticks) >= 2:
-                    plt.xticks(xticks[0], xticks[1])
+            # X axis options
+            if xticks and len(xticks) >= 2:
+                plt.xticks(xticks[0], xticks[1])
 
-                if xlim and len(xlim) >= 2:
-                    plt.xlim(xlim)
+            if xlim and len(xlim) >= 2:
+                plt.xlim(xlim)
 
-                # Legend
-                handles, labels = plt.gca().get_legend_handles_labels()
-                if handles and labels:
-                    by_label = dict(zip(labels, handles))
-                    plt.legend(by_label.values(), by_label.keys(), loc="upper center", ncol=legend_ncol, fontsize="6")
+            # Legend
+            handles, labels = plt.gca().get_legend_handles_labels()
+            if handles and labels:
+                by_label = dict(zip(labels, handles))
+                plt.legend(by_label.values(), by_label.keys(), loc="upper center", ncol=legend_ncol, fontsize="6")
 
-                # Global plot
-                plt.grid()
-                plt.title(self.cmd)
-
-            except Exception as e:
-                self.logger.error(f"Error setting up plot axes: {e}")
-                return -1
+            # Global plot
+            plt.grid()
+            plt.title(self.cmd)
 
         return 0
