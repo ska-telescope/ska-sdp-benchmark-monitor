@@ -13,7 +13,7 @@ import psutil
 import requests
 
 from .hp_collector import HighPerformanceCollector
-
+from .run_utils import RunUtils
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
@@ -179,6 +179,7 @@ class RunMonitor:
         """
         Run system monitoring
         """
+        RunUtils.get_benchmon_pid(self.logger)
         freq = self.sys_freq
 
         self.logger.debug("Starting system monitoring")
