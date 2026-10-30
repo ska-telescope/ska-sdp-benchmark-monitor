@@ -87,8 +87,9 @@ class BenchmonVisualizer:
         self.load_power_metrics()
         self.load_call_metrics()
 
-        self.get_xaxis_params(xmargin=0)
-        self.apply_xaxis_params()
+        if self.system_metrics:
+            self.get_xaxis_params(xmargin=0)
+            self.apply_xaxis_params()
 
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
@@ -450,6 +451,7 @@ class BenchmonVisualizer:
         fig, _ = plt.subplots(self.n_subplots, sharex=True)
         fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
         fig.add_gridspec(self.n_subplots, hspace=0)
+        ax = None
 
         sbp = 1
         annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
