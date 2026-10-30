@@ -407,6 +407,16 @@ class RunMonitor:
             process_stdout = self.perfcall_process.stdout.read()
             # @hc must be kept, otherwise, it doesnt terminate properly
 
+            if self.sudo_g5k:
+                self.logger.debug(f"Changing ownership of {self.save_dir}/{self.temp_perf_file}")
+                chown_cmd = [self.sudo_g5k, "chown", f"{os.getuid()}:{os.getgid()}",
+                             f"{self.save_dir}/{self.temp_perf_file}"]
+                subprocess.run(args=chown_cmd,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT,
+                               text=True,
+                               check=False)
+
             self.logger.debug(f"Terminated perf (call graph) with stdout: {process_stdout}")
 
         # kill perf (power)
