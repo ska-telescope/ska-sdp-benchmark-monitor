@@ -36,7 +36,7 @@ def is_port_in_use(port: int) -> bool:
     """Checks if a TCP port is in use on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(('localhost', port)) == 0
-
+    
 def pick_available_port(requested: int, service: str) -> int:
     """Return the first free port at or above the requested value."""
     candidate = requested
@@ -208,7 +208,7 @@ def main():
         if fallback_path.is_dir():
             args.dashboard_dir = fallback_path
             logger.info(f"--dashboard-dir not provided, using fallback development path: {args.dashboard_dir}")
-
+  
 
 
     # --- MODIFICATION: Align directory logic with benchmon-run ---
@@ -261,12 +261,12 @@ def main():
         sys.exit(1)
 
     pids = {}
-
+    
     # 4. Start InfluxDB
     influxdb_port = pick_available_port(args.influxdb_port, "InfluxDB")
     logger.info(f"Starting InfluxDB on port {influxdb_port}...")
     influx_log_file = log_dir / "influxdb.log"
-
+    
     # --- MODIFICATION: Use short hostname for node-id, like in the shell script ---
     node_id = "benchmon-node-id"
     logger.info(f"Using node-id: {node_id}")
