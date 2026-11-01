@@ -4,6 +4,8 @@
 import argparse
 import logging
 import os
+import sys
+
 from datetime import datetime
 
 from benchmon.visualization import BenchmonMNSyncVisualizer
@@ -138,7 +140,9 @@ def main():
     logger = create_logger(traces_repo=traces_repo, verbose=args.verbose)
     logger.info(f"benchmon-visu processes traces on {traces_repo}")
 
-    args_str = "benchmon-visu arguments:\n"
+    logger.debug(f"benchmon-visu commands: {' '.join(sys.argv)}")
+
+    args_str = "benchmon-visu commands:\n"
     for key, value in vars(args).items():
         args_str += f"\t--{key.replace('_', '-')} {value}\n"
     logger.debug(args_str)

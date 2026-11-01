@@ -2,6 +2,7 @@
 """Main script to monitor system resources"""
 
 import os
+import sys
 
 from benchmon.run import RunMonitor
 from benchmon.run import RunUtils
@@ -19,11 +20,7 @@ def main() -> None:
     logger = RunUtils.create_logger(save_dir=args.save_dir, verbose=args.verbose)
 
     logger.info("benchmon-run starts")
-
-    args_str = ""
-    for key, value in vars(args).items():
-        args_str += f"\t--{key.replace('_', '-')} {value}\n"
-    logger.debug(f"benchmon-run arguments: \n{args_str}")
+    logger.debug(f"benchmon-run command: {' '.join(sys.argv)}")
 
     runmonitor = RunMonitor(args, logger)
     runmonitor.run(timeout=args.test_timeout)
