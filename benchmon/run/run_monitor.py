@@ -94,15 +94,6 @@ class RunMonitor:
         self.perfpow_process = None
         self.perfcall_process = None
 
-    def _check_control_node(self):
-        """Checks if the current node is the control node for post-processing."""
-        oar_check = subprocess.run(args=["oarprint", "host"],
-                                   capture_output=True,
-                                   shell=True,
-                                   text=True,
-                                   check=False).stdout.split("\n")[0] == HOSTNAME
-        slurm_check = os.environ.get("SLURM_NODEID") == "0"
-        self.is_benchmon_control_node = oar_check or slurm_check
 
     def run(self, timeout: int = None):
         """
@@ -115,9 +106,6 @@ class RunMonitor:
         self.t0 = time.time()
 
         os.makedirs(self.save_dir, exist_ok=True)
-
-        # Check if this is the control node
-        self._check_control_node()
 
         if self.is_grafana:
             # --- REFACTOR: Load connection info from the correct shared path ---
