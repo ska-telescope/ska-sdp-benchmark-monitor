@@ -417,6 +417,8 @@ class PerfCallData:
             self.logger.warning("No thread IDs available for plotting")
             return -1
 
+        stamps_for_xticks = []
+
         for depth in depths:
             calls = self._depth_data(depth)
 
@@ -482,6 +484,9 @@ class PerfCallData:
                             color=call_line[call]["color"],
                         )
 
+                        if xticks == []:
+                            stamps_for_xticks += call_line[call]["stamps"]
+
                         # Avoid division by zero
                         if call in calls and self.nsamples > 0:
                             if calls[call] / self.nsamples > self._plt_legend_threshold:
@@ -531,4 +536,10 @@ class PerfCallData:
             plt.grid()
             plt.title(self.cmd)
 
-        return 0
+
+        if xticks == []:
+            import numpy as np
+            stamps_for_xticks = np.unique(stamps_for_xticks)
+            return stamps_for_xticks[0], stamps_for_xticks[-1]
+        else:
+            return 0
