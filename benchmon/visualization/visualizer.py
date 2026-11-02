@@ -600,10 +600,16 @@ class BenchmonVisualizer:
                 plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=plt.gca())
                 ax = axes[-1] if self.n_subplots > 1 else axes
                 ax.set_yticks([], [])
-                self.call_traces.plot(self.call_depths,
-                                      xticks=self.xticks,
-                                      xlim=self.xlim,
-                                      legend_ncol=self.args.fig_call_legend_ncol)
+                ret = self.call_traces.plot(self.call_depths,
+                                            xticks=self.xticks,
+                                            xlim=self.xlim,
+                                            legend_ncol=self.args.fig_call_legend_ncol)
+
+                # Enabled when call-graph is called alone
+                if self.xticks == []:
+                    self.get_xaxis_params(t0=ret[0], tf=ret[1])
+                    plt.xticks(self.xticks[0], self.xticks[1])
+                    plt.xlim(self.xlim)
             else:
                 self.logger.warning("No call traces available for call graph plot")
 
