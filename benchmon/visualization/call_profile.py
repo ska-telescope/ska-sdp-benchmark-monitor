@@ -517,7 +517,7 @@ class PerfCallData:
                 yvals = [depth for depth in depths]
 
             if yvals and ylabels:
-                plt.yticks(yvals, ylabels)
+                plt.yticks(yvals, ylabels, rotation="vertical", va="bottom")
 
             # X axis options
             if xticks and len(xticks) >= 2:
