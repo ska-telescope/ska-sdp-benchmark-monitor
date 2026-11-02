@@ -347,15 +347,13 @@ class BenchmonVisualizer:
 
         return inline_calls_prof
 
-    def get_xaxis_params(self, xmargin=0.02) -> None:
+    def get_xaxis_params(self, t0=None, tf=None, xmargin=0.02,) -> None:
         """
         Get x-axis params: limits and ticks
 
         Args:
             xmargin (float): xmaring percent
         """
-        t0, tf = None, None
-
         # Try to get timestamps from different metrics with proper error handling
         def safe_get_timestamps(stamps, metric_name):
             """Safely get first and last timestamps from a stamps array"""
