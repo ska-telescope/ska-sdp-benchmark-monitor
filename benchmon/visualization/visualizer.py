@@ -446,7 +446,7 @@ class BenchmonVisualizer:
             self.logger.warning("No subplots to create, skipping plotting")
             return
 
-        fig, _ = plt.subplots(self.n_subplots, sharex=True)
+        fig, axes = plt.subplots(self.n_subplots, sharex=True)
         fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
         fig.add_gridspec(self.n_subplots, hspace=0)
 
@@ -598,6 +598,8 @@ class BenchmonVisualizer:
             if self.call_traces:
                 self.logger.debug("Plotting perf call graph")
                 plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=plt.gca())
+                ax = axes[-1] if self.n_subplots > 1 else axes
+                ax.set_yticks([], [])
                 self.call_traces.plot(self.call_depths,
                                       xticks=self.xticks,
                                       xlim=self.xlim,
