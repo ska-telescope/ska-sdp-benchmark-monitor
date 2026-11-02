@@ -451,7 +451,6 @@ class BenchmonVisualizer:
         fig, _ = plt.subplots(self.n_subplots, sharex=True)
         fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
         fig.add_gridspec(self.n_subplots, hspace=0)
-        ax = None
 
         sbp = 1
         annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
@@ -460,7 +459,7 @@ class BenchmonVisualizer:
         if self.args.cpu:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -473,7 +472,7 @@ class BenchmonVisualizer:
             if self.system_metrics:
                 for core_number in self.args.cpu_cores_full.split(","):
                     self.logger.debug(f"Plotting  full cpu core {core_number}")
-                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     self.system_metrics.plot_cpu(number=core_number,
                                                  annotate_with_cmds=annotate_with_cmds)
@@ -486,7 +485,7 @@ class BenchmonVisualizer:
         if self.args.cpu_all:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu per core")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
                                                       cores_out=self.args.cpu_cores_out,
@@ -500,7 +499,7 @@ class BenchmonVisualizer:
         if self.args.cpu_freq:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu cores frequency")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
                                                            cores_out=self.args.cpu_cores_out,
@@ -514,7 +513,7 @@ class BenchmonVisualizer:
         if self.args.mem:
             if self.system_metrics:
                 self.logger.debug("Plotting  memory/swap")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 memmax = self.system_metrics.plot_memory_usage(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -526,7 +525,7 @@ class BenchmonVisualizer:
         if self.args.net or self.args.net_all or self.args.net_data:
             if self.system_metrics:
                 self.logger.debug("Plotting  network")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
                                                           is_rx_only=self.args.net_rx_only,
@@ -542,7 +541,7 @@ class BenchmonVisualizer:
         if self.args.ib:
             if self.system_metrics:
                 self.logger.debug("Plotting  infiniband")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -554,7 +553,7 @@ class BenchmonVisualizer:
         if self.args.disk:
             if self.system_metrics:
                 self.logger.debug("Plotting  disk")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
                                                         is_rd_only=self.args.disk_rd_only,
@@ -569,7 +568,7 @@ class BenchmonVisualizer:
         # (perf+g5k) Power plot
         if self.args.pow or self.args.pow_g5k:
             self.logger.debug("Plotting perf power")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
+            plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
             powmax = [0]
 
@@ -600,7 +599,7 @@ class BenchmonVisualizer:
         if self.args.call:
             if self.call_traces:
                 self.logger.debug("Plotting perf call graph")
-                plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=ax)
+                plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=plt.gca())
                 self.call_traces.plot(self.call_depths,
                                       xticks=self.xticks,
                                       xlim=self.xlim,
