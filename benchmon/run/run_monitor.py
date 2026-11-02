@@ -13,7 +13,7 @@ import psutil
 import requests
 
 from .hp_collector import HighPerformanceCollector
-
+from .run_utils import RunUtils
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
@@ -179,6 +179,7 @@ class RunMonitor:
         """
         Run system monitoring
         """
+        RunUtils.get_benchmon_pid(self.logger)
         freq = self.sys_freq
 
         self.logger.debug("Starting system monitoring")
@@ -405,6 +406,16 @@ class RunMonitor:
 
             process_stdout = self.perfcall_process.stdout.read()
             # @hc must be kept, otherwise, it doesnt terminate properly
+
+            if self.sudo_g5k:
+                self.logger.debug(f"Changing ownership of {self.save_dir}/{self.temp_perf_file}")
+                chown_cmd = [self.sudo_g5k, "chown", f"{os.getuid()}:{os.getgid()}",
+                             f"{self.save_dir}/{self.temp_perf_file}"]
+                subprocess.run(args=chown_cmd,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT,
+                               text=True,
+                               check=False)
 
             self.logger.debug(f"Terminated perf (call graph) with stdout: {process_stdout}")
 
