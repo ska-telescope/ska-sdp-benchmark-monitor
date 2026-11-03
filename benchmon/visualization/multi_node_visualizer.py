@@ -693,7 +693,7 @@ class BenchmonMNSyncVisualizer:
 
             plt.plot(ts, ib_rx, marker="v",
                      label=f"rx:{data.hostname.replace(self.commonprefix_hostname, '')}"
-                           + (f" ({int(data.system_metrics.ib_rx_data)} MB)" if self.args.ib_data else ""))
+                           + f" ({int(data.system_metrics.ib_rx_data)} MB)")  # @todo if self.args.ib_rx_data else ""
 
             ts_sync += [ts]
             ib_rx_sync += [ib_rx]
@@ -702,7 +702,7 @@ class BenchmonMNSyncVisualizer:
         if ts_sync and ib_rx_sync:
             self.sync_metrics(ts_list=ts_sync,
                               dev_list=ib_rx_sync,
-                              label="rx:sum" + (f" ({int(rx_data)} MB)" if self.args.ib_data else ""),
+                              label=f"rx:sum ({int(rx_data)} MB)",  # @todo if self.args.ib_rx_data else ""
                               marker="v",
                               ls="--",
                               with_yrange=True)
@@ -731,7 +731,7 @@ class BenchmonMNSyncVisualizer:
 
             plt.plot(ts, ib_tx, marker="^",
                      label=f"tx:{data.hostname.replace(self.commonprefix_hostname, '')}"
-                           + (f" ({int(data.system_metrics.ib_tx_data)} MB)" if self.args.ib_data else ""))
+                           + f" ({int(data.system_metrics.ib_tx_data)} MB)")  # @todo if self.args.ib_tx_data else ""
 
             ts_sync += [ts]
             ib_tx_sync += [ib_tx]
@@ -740,7 +740,7 @@ class BenchmonMNSyncVisualizer:
         if ts_sync and ib_tx_sync:
             self.sync_metrics(ts_list=ts_sync,
                               dev_list=ib_tx_sync,
-                              label="tx:sum" + (f" ({int(tx_data)} MB)" if self.args.ib_data else ""),
+                              label=f"tx:sum ({int(tx_data)} MB)",  # @todo if self.args.ib_tx_data else ""
                               marker="^",
                               ls="--",
                               with_yrange=(tx_data > rx_data))
