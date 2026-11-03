@@ -449,9 +449,11 @@ class SystemDataBinary:
         total = self.mem_prof["MemTotal"] / memunit
         cached = (self.mem_prof["Buffers"] + self.mem_prof["Cached"] + self.mem_prof["Slab"]) / memunit
         used = - cached + (self.mem_prof["MemTotal"] - self.mem_prof["MemFree"]) / memunit
+        shmem = self.mem_prof["Shmem"] / memunit
         plt.fill_between(self.mem_stamps, total, alpha=alpha, label="MemTotal", color="b")
         plt.fill_between(self.mem_stamps, used, alpha=alpha * 3, label="MemUsed", color="b")
         plt.fill_between(self.mem_stamps, used, used + cached, alpha=alpha * 2, label="Cach/Buff", color="g")
+        plt.plot(self.mem_stamps, used + shmem, "--", label="Shmem", color="g")
 
         # Swap
         swap_total = self.mem_prof["SwapTotal"] / memunit
