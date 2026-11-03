@@ -22,7 +22,6 @@ filename=
     ./exec/benchmon-hardware,
     ./exec/benchmon-report,
     ./exec/benchmon-run,
-    ./exec/benchmon-run-grafana,
     ./exec/benchmon-software,
     ./exec/benchmon-start-grafana,
     ./exec/benchmon-stop-grafana,
@@ -39,8 +38,7 @@ exclude =
     .pytest_cache,
     mytest,
     .make,
-    libs,
-    .pyenv,
+    libs
 
 per-file-ignores =
     __init__.py: F401, D104

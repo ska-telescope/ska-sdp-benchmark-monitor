@@ -430,7 +430,7 @@ class SystemData:
         plt.xlim(self.xlim)
 
         for powtwo in range(25):
-            yticks = np.arange(0, total_max + 2**powtwo, 2**powtwo, dtype="i")
+            yticks = np.arange(0, total_max + 2**powtwo, 2**powtwo, dtype="int")
             if len(yticks) < self.yrange:
                 break
         plt.yticks(yticks)
