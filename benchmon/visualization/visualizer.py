@@ -57,7 +57,9 @@ class BenchmonVisualizer:
         self.logger = logger
 
         self.traces_repo = traces_repo
-        os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
+
+        if self.args.enable_pkl_cache:
+            os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
 
         self.hostname = os.path.basename(os.path.realpath(traces_repo))[16:]
         self.system_metrics = None
@@ -121,6 +123,7 @@ class BenchmonVisualizer:
         if self.is_any_sys:
             self.system_metrics = SystemData(logger=self.logger,
                                              traces_repo=self.traces_repo,
+                                             enable_pkl_cache=self.args.enable_pkl_cache,
                                              **csv_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
@@ -168,19 +171,19 @@ class BenchmonVisualizer:
         return True
 
 
-
     def load_power_metrics(self) -> None:
         """
         Load power metrics recorded with perf (rapl) and grid5000 tools
         """
         if self.args.pow:
             self.power_perf_metrics = PerfPowerData(logger=self.logger,
-                                                    csv_filename=f"{self.traces_repo}/pow_report.csv")
-
+                                                    csv_filename=f"{self.traces_repo}/pow_report.csv",
+                                                    enable_pkl_cache=self.args.enable_pkl_cache)
         if self.args.pow_g5k:
             self.power_g5k_metrics = G5KPowerData(traces_dir=self.traces_repo)
 
         self.n_subplots += (self.args.pow or self.args.pow_g5k)
+
 
     def load_call_metrics(self) -> None:
         """
@@ -231,7 +234,8 @@ class BenchmonVisualizer:
                                             cmd=self.call_chosen_cmd,
                                             samples=samples,
                                             m2r=self.call_monotonic_to_real,
-                                            traces_repo=self.traces_repo)
+                                            traces_repo=self.traces_repo,
+                                            enable_pkl_cache=self.args.enable_pkl_cache)
 
             if self.args.call_depth:
                 self.call_depths = [depth for depth in range(self.args.call_depth)]
