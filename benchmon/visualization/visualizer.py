@@ -586,11 +586,11 @@ class BenchmonVisualizer:
             if self.ical_stages:
                 plot_ical_stages(self.ical_stages, ymax=max(powmax))
 
-                plt.xticks(*self.xticks)
-                plt.xlim(self.xlim)
-                plt.ylabel("Power (W)")
-                plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
-                plt.grid()
+            plt.xticks(*self.xticks)
+            plt.xlim(self.xlim)
+            plt.ylabel("Power (W)")
+            plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
+            plt.grid()
 
         # (perf) Calltrace plot
         if self.args.call:

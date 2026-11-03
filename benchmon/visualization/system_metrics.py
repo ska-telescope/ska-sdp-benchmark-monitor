@@ -366,10 +366,7 @@ class SystemData:
         plt.legend(
             [_handles[idx] for idx in _order],
             [_labels[idx] for idx in _order],
-            loc="upper left",
-            bbox_to_anchor=(1, 1),
-            borderaxespad=0
-        )
+            loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
