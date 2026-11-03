@@ -347,7 +347,7 @@ class BenchmonVisualizer:
 
         return inline_calls_prof
 
-    def get_xaxis_params(self, t0=None, tf=None, xmargin=0.02,) -> None:
+    def get_xaxis_params(self, t0=None, tf=None, xmargin=0.02) -> None:
         """
         Get x-axis params: limits and ticks
 
