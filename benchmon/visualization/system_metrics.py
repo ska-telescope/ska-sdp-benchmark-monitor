@@ -3,16 +3,16 @@ Python module to read and plot system resources measurements
 """
 
 import csv
-import logging
 import itertools
+import logging
 import os
 import pickle
 import sys
 import time
 from math import ceil
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 class SystemData:
@@ -422,7 +422,7 @@ class SystemData:
         plt.fill_between(self.mem_stamps, swap_total, alpha=alpha, label="SwapTotal", color="r")
         plt.fill_between(self.mem_stamps, swap_used, alpha=alpha * 3, label="SwapUsed", color="r")
 
-        if (len(self.mem_prof["timestamp"]) < 1):
+        if len(self.mem_prof["timestamp"]) < 1:
             total_max = 0
             self.logger.warning("Empty memory journal, generating empty plot")
         else:
@@ -520,7 +520,7 @@ class SystemData:
                 self.ncpu_freq += 1
 
                 line_idx += 1
-                if (line_idx < len(cpufreq_report_lines)):
+                if line_idx < len(cpufreq_report_lines):
                     ts = cpufreq_report_lines[line_idx][0]
                 else:
                     break
@@ -565,7 +565,7 @@ class SystemData:
         HZ_UNIT = 1e6  # noqa: N806
 
         cores = [core for core in range(self.ncpu_freq)]
-        if (len(cores) == 0):
+        if len(cores) == 0:
             # There is no data
             self.logger.warning("Empty cpufreq journal, generating empty plot")
             return 0
@@ -787,7 +787,7 @@ class SystemData:
                         plt.plot(self.net_stamps, tx_arr, label=label, ls="-",
                                  alpha=_alpha, marker="^", markersize=_mrksz)
 
-        if (len(self.net_stamps) < 1):
+        if len(self.net_stamps) < 1:
             self.logger.warning("Empty network journal, generating empty plot")
             netmax = 0
         else:
