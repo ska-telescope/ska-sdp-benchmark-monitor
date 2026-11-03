@@ -5,6 +5,7 @@ Python module to read and plot system resources measurements
 import csv
 import itertools
 import logging
+import math
 import os
 import pickle
 import sys
@@ -426,7 +427,7 @@ class SystemData:
         plt.yticks(100 / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU Cores (%)")
         plt.grid()
-        plt.legend(ncol=_ncpu // 16, fontsize="6",
+        plt.legend(ncol=math.ceil(_ncpu / 16), fontsize="6",
                    loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0,)
 
         if annotate_with_cmds:
