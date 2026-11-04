@@ -48,6 +48,26 @@ class BenchmonMNSyncVisualizer:
         plt.grid(True)
 
 
+    @staticmethod
+    def build_color_map(nodes_annotations: list) -> dict:
+        """
+        Build the color index of each (hostname, stage)
+
+        Args:
+            list of (hostname, stages)
+
+        Returns:
+            color index
+        """
+        hostnames = [hostname for hostname, _ in nodes_annotations]
+        labels = list(dict.fromkeys(s["label"] for _, stages in nodes_annotations for s in stages))
+
+        return {
+            (hostname, label): stage_idx * len(hostnames) + node_idx
+            for stage_idx, label in enumerate(labels)
+            for node_idx, hostname in enumerate(hostnames)
+        }
+
     def run_sync_plots(self, nodes_data: list) -> None:
         """
         Run multi-node sync plots
@@ -63,21 +83,7 @@ class BenchmonMNSyncVisualizer:
         ]
         has_annotations = len(nodes_annotations) > 0
 
-        # color index per (hostname, label)
-        color_map = {}
-        if has_annotations:
-            node_hostnames = [h for h, _ in nodes_annotations]
-            n_nodes = len(node_hostnames)
-            stage_labels_ordered = []
-            seen_labels = set()
-            for _, stages in nodes_annotations:
-                for s in stages:
-                    if s["label"] not in seen_labels:
-                        stage_labels_ordered.append(s["label"])
-                        seen_labels.add(s["label"])
-            for stage_idx, label in enumerate(stage_labels_ordered):
-                for node_idx, hostname in enumerate(node_hostnames):
-                    color_map[(hostname, label)] = stage_idx * n_nodes + node_idx
+        color_map = self.build_color_map(nodes_annotations)
 
         n_annotation_subplots = len(nodes_annotations) if has_annotations else 0
         nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net \

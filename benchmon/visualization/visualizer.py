@@ -77,29 +77,7 @@ class BenchmonVisualizer:
         self.call_monotonic_to_real = 0
         self.inline_calls_prof = None
 
-        self.annotation_stages = None
-        if self.args.annotate_with_log:
-            # Expecting a CSV file passed with --annotate-with-log=name.csv
-            # or defaulting to annotations.csv
-            filename = self.args.annotate_with_log
-            try:
-                node_name = os.path.basename(os.path.realpath(self.traces_repo)).replace("benchmon_traces_", "")
-                events_dir = os.path.dirname(os.path.dirname(self.traces_repo))
-                self.logger.debug(f"Using events file from: {events_dir}")
-                self.logger.debug(f"Filtering annotations for node: {node_name}")
-                self.annotation_stages = read_annotation_csv(
-                    events_dir,
-                    filename,
-                    node_name=node_name,
-                )
-
-                if not self.annotation_stages:
-                    self.logger.warning(f"No annotations found for node {node_name}")
-                    self.annotation_stages = None
-
-            except FileNotFoundError:
-                self.logger.warning(f"Annotation file not found: {filename}")
-                self.annotation_stages = None
+        self.annotation_stages = self.load_annotation_stages() if self.args.annotate_with_log else None
         # One subplot for the annotation timeline
         if self.annotation_stages:
             self.n_subplots += 1
@@ -120,6 +98,33 @@ class BenchmonVisualizer:
 
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
+
+    def load_annotation_stages(self) -> list | None:
+        """
+        Load the annotation stages of this node from the --annotate-with-log file
+
+        Returns:
+            (list | None)   Stage intervals of this node, None if unavailable
+        """
+        # Expecting a CSV file passed with --annotate-with-log=name.csv
+        # or defaulting to annotations.csv
+        filename = self.args.annotate_with_log
+        node_name = os.path.basename(os.path.realpath(self.traces_repo)).replace("benchmon_traces_", "")
+        events_dir = os.path.dirname(os.path.dirname(self.traces_repo))
+        self.logger.debug(f"Using events file from: {events_dir}")
+        self.logger.debug(f"Filtering annotations for node: {node_name}")
+
+        try:
+            stages = read_annotation_csv(events_dir, filename, node_name=node_name)
+        except FileNotFoundError:
+            self.logger.warning(f"Annotation file not found: {filename}")
+            return None
+
+        if not stages:
+            self.logger.warning(f"No annotations found for node {node_name}")
+            return None
+
+        return stages
 
     def load_system_metrics(self) -> None:
         """
