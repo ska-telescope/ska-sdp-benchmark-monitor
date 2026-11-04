@@ -52,6 +52,8 @@ def create_args(traces_repo: str = "",
                 fig_height_unit: float = 3,
                 fig_xrange: int = 25,
                 fig_yrange: int = 11,
+                fig_legend_ncpu_per_col: int = 16,
+                fig_legend_nnodes_per_col: int = 10,
                 verbose: bool = False,
                 test: bool = False):
     """Create argument namespace for visualization"""
