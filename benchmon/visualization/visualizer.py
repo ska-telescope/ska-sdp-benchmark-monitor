@@ -529,7 +529,8 @@ class BenchmonVisualizer:
                 sbp += 1
                 self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
                                                       cores_out=self.args.cpu_cores_out,
-                                                      annotate_with_cmds=annotate_with_cmds)
+                                                      annotate_with_cmds=annotate_with_cmds,
+                                                      ncpu_per_col=self.args.fig_legend_ncpu_per_col)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages)
             else:
@@ -543,7 +544,8 @@ class BenchmonVisualizer:
                 sbp += 1
                 freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
                                                            cores_out=self.args.cpu_cores_out,
-                                                           annotate_with_cmds=annotate_with_cmds)
+                                                           annotate_with_cmds=annotate_with_cmds,
+                                                           ncpu_per_col=self.args.fig_legend_ncpu_per_col)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=freqmax)
             else:

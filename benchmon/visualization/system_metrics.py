@@ -282,7 +282,8 @@ class SystemData:
 
         return 0
 
-    def plot_cpu_per_core(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> int:
+    def plot_cpu_per_core(self, cores_in: str = ",", cores_out: str = "", annotate_with_cmds=None,
+                          ncpu_per_col: int = 16) -> int:
         """
         Plot cpu per core
         """
@@ -320,7 +321,7 @@ class SystemData:
         plt.yticks(100 / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU Cores (%)")
         plt.grid()
-        plt.legend(ncol=math.ceil(_ncpu / 16), fontsize="6",
+        plt.legend(ncols=math.ceil(_ncpu / ncpu_per_col), fontsize="6",  # alignment="left",
                    loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0,)
 
         if annotate_with_cmds:
@@ -560,7 +561,8 @@ class SystemData:
 
         return 0
 
-    def plot_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> float:
+    def plot_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None,
+                     ncpu_per_col: int = 16) -> float:
         """
         Plot cpu frequency per core
         """
@@ -599,7 +601,7 @@ class SystemData:
         plt.yticks(cpu_freq_max / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU frequencies (GHz)")
         plt.grid()
-        plt.legend(ncol=self.ncpu_freq // 16, fontsize="6",
+        plt.legend(ncols=math.ceil(_ncpu / ncpu_per_col), fontsize="6",  # alignment="left",
                    loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
