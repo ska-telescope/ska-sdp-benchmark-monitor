@@ -8,6 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
+
 from .utils import plot_stage_markers, get_stage_color, add_stage_legend
 
 
@@ -67,14 +68,13 @@ class BenchmonMNSyncVisualizer:
 
         n_annotation_subplots = len(nodes_annotations) if has_annotations else 0
         nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net \
-            + self.args.ib + self.args.disk + n_annotation_subplots
+            + self.args.ib + self.args.disk + n_annotation_subplots  # + (self.args.pow or self.args.pow_g5k)
 
         fig, _ = plt.subplots(nsbp, sharex=True)
         fig.set_size_inches(self.args.fig_width, nsbp * self.args.fig_height_unit)
 
         sbp = 1
         ax_pipeline = None
-        ax_last = None
 
         # One annotation subplot per node
         if has_annotations:
@@ -90,49 +90,45 @@ class BenchmonMNSyncVisualizer:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_cpu(nodes_data=nodes_data)
-            ax_last = plt.gca()
 
         if self.args.cpu_freq:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_cpufreq(nodes_data=nodes_data)
-            ax_last = plt.gca()
 
         if self.args.mem:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_mem(nodes_data=nodes_data)
-            ax_last = plt.gca()
 
         if self.args.net:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_net(nodes_data=nodes_data)
-            ax_last = plt.gca()
 
         if self.args.ib:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_ib(nodes_data=nodes_data)
-            ax_last = plt.gca()
 
         if self.args.disk:
             plt.subplot(nsbp, 1, sbp)
             sbp += 1
             self.plot_sync_disk(nodes_data=nodes_data)
-            ax_last = plt.gca()
+
+        # if self.args.pow or self.args.pow_g5k:
+        #     plt.subplot(nsbp, 1, sbp)
+        #     sbp += 1
+        #     self.plot_sync_pow(nodes_data=nodes_data)
 
         # Draw stage boundaries on all subplots
-        if has_annotations and ax_pipeline is not None and ax_last is not None:
-            all_stages = [
-                {**s, "_hostname": hostname}
-                for hostname, stages in nodes_annotations
-                for s in stages
-            ]
-            plot_stage_markers(all_stages, ax_top=ax_pipeline, ax_bottom=ax_last, xlim=self.xlim,
+        if has_annotations and ax_pipeline is not None:
+            all_stages = [{**s, "_hostname": hostname} for hostname, stages in nodes_annotations for s in stages]
+            plot_stage_markers(all_stages, ax_top=ax_pipeline, ax_bottom=plt.gca(), xlim=self.xlim,
                                color_map=color_map, stop_as_markers=True, show_legend=True, legend_loc="upper center")
 
-        plt.tight_layout(h_pad=1.5)
+        plt.subplots_adjust(hspace=0.5)
+        plt.tight_layout()
 
         if self.args.interactive:
             self.logger.debug("Start interactive session with matplotlib")
@@ -803,27 +799,17 @@ class BenchmonMNSyncVisualizer:
                 stop = stage["stop"]
 
                 # Horizontal segment
-                ax.hlines(y=y_center, xmin=start, xmax=stop,
-                          linewidth=2.0, color=color)
+                ax.hlines(y=y_center, xmin=start, xmax=stop, linewidth=2.0, color=color)
+
                 # Start cap
-                ax.vlines(x=start,
-                          ymin=y_center - cap_height,
-                          ymax=y_center + cap_height,
-                          linewidth=2.0, color=color)
+                ax.vlines(x=start, ymin=y_center - cap_height, ymax=y_center + cap_height, linewidth=2.0, color=color)
+
                 # Stop cap
-                ax.vlines(x=stop,
-                          ymin=y_center - cap_height,
-                          ymax=y_center + cap_height,
-                          linewidth=2.0, color=color)
+                ax.vlines(x=stop, ymin=y_center - cap_height, ymax=y_center + cap_height, linewidth=2.0, color=color)
+
                 # Label above segment
-                ax.text(
-                    (start + stop) / 2,
-                    y_center + cap_height * 1.5,
-                    stage["label"],
-                    ha="center", va="bottom",
-                    fontsize=7, fontweight="bold",
-                    color=color,
-                )
+                ax.text((start + stop) / 2, y_center + cap_height * 1.5, stage["label"], ha="center", va="bottom",
+                        fontsize=7, fontweight="bold", color=color)
 
         ax.grid(True, axis="x")
         add_stage_legend(ax)
@@ -922,17 +908,11 @@ class BenchmonMNSyncVisualizer:
             start = stage["start"]
             stop = stage["stop"]
 
-            ax.hlines(y=y, xmin=start, xmax=stop, linewidth=1.6, color=color,
-                      transform=ax.get_xaxis_transform())
-            ax.axvline(x=start, ymin=y - cap_height, ymax=y + cap_height,
-                       linewidth=1.6, color=color)
-            ax.axvline(x=stop, ymin=y - cap_height, ymax=y + cap_height,
-                       linewidth=1.6, color=color)
-            ax.text(
-                (start + stop) / 2, y + cap_height * 1.5, stage["label"],
-                ha="center", va="bottom", fontsize=7, fontweight="bold",
-                color=color, transform=ax.get_xaxis_transform(),
-            )
+            ax.hlines(y=y, xmin=start, xmax=stop, linewidth=1.6, color=color, transform=ax.get_xaxis_transform())
+            ax.axvline(x=start, ymin=y - cap_height, ymax=y + cap_height, linewidth=1.6, color=color)
+            ax.axvline(x=stop, ymin=y - cap_height, ymax=y + cap_height, linewidth=1.6, color=color)
+            ax.text((start + stop) / 2, y + cap_height * 1.5, stage["label"], ha="center", va="bottom",
+                    fontsize=7, fontweight="bold", color=color, transform=ax.get_xaxis_transform())
 
 
     @staticmethod
@@ -949,8 +929,5 @@ class BenchmonMNSyncVisualizer:
         hostnames = [hostname for hostname, _ in nodes_annotations]
         labels = list(dict.fromkeys(s["label"] for _, stages in nodes_annotations for s in stages))
 
-        return {
-            (hostname, label): stage_idx * len(hostnames) + node_idx
-            for stage_idx, label in enumerate(labels)
-            for node_idx, hostname in enumerate(hostnames)
-        }
+        return {(hostname, label): stage_idx * len(hostnames) + node_idx for stage_idx, label in enumerate(labels)
+                for node_idx, hostname in enumerate(hostnames)}
