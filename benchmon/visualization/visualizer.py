@@ -242,30 +242,11 @@ class BenchmonVisualizer:
             if not samples:
                 self.logger.warning("No call samples available")
                 return
-            # Check if we got valid data
-            if not samples:
-                self.logger.warning("No call samples available")
-                return
 
             if not self.call_recorded_cmds:
                 self.logger.warning("No recorded commands available")
                 return
-            if not self.call_recorded_cmds:
-                self.logger.warning("No recorded commands available")
-                return
 
-            if self.args.call_cmd:
-                if self.args.call_cmd in self.call_recorded_cmds:
-                    self.call_chosen_cmd = self.args.call_cmd
-                else:
-                    self.logger.warning(f"Specified command '{self.args.call_cmd}' not found in recorded commands")
-                    if self.call_recorded_cmds:
-                        self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
-                        self.logger.info(f"Using first available command: {self.call_chosen_cmd}")
-                    else:
-                        return
-            else:
-                self.call_chosen_cmd = list(self.call_recorded_cmds.keys())[0]
             if self.args.call_cmd:
                 if self.args.call_cmd in self.call_recorded_cmds:
                     self.call_chosen_cmd = self.args.call_cmd
@@ -455,11 +436,6 @@ class BenchmonVisualizer:
                 tf = datetime.strptime(self.args.end_time, fmt).timestamp()
         except ValueError as e:
             self.logger.warning(f"Error parsing time format: {e}")
-
-        # Ensure tf > t0
-        if tf <= t0:
-            self.logger.warning("End time is not greater than start time, adjusting")
-            tf = t0 + 60  # Add 1 minute
 
         # If we still don't have valid timestamps raise an exception
         if t0 is None or tf is None or tf <= t0:
