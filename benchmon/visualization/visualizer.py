@@ -652,8 +652,9 @@ class BenchmonVisualizer:
             plot_stage_markers(self.annotation_stages, ax_top=ax_pipeline, ax_bottom=plt.gca(), xlim=self.xlim,)
 
         fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
-        plt.subplots_adjust(hspace=.5)
+        plt.subplots_adjust(hspace=0.015)
         plt.tight_layout()
+        # plt.rcParams['savefig.facecolor'] = "0.5"
 
         # Enable interactive plot
         if self.args.interactive:
