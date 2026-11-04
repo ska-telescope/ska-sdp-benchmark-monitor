@@ -213,6 +213,9 @@ benchmon_traces_/
 # LSP config files
 pyrightconfig.json
 
+# VSCode workspace settings
+.vscode/
+
 # exec files
 
 exec/bin
