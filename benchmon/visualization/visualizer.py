@@ -17,6 +17,8 @@ from .power_metrics import G5KPowerData
 from .power_metrics import PerfPowerData
 from .system_metrics import SystemData
 from .system_metrics_binary import SystemDataBinary
+from .utils import read_annotation_csv, plot_stage_timeline
+from .utils import plot_stage_markers
 from .utils import read_ical_log_file, plot_ical_stages
 
 
@@ -76,6 +78,11 @@ class BenchmonVisualizer:
         self.call_monotonic_to_real = 0
         self.inline_calls_prof = None
 
+        self.annotation_stages = self.load_annotation_stages() if self.args.annotate_with_log else None
+        # One subplot for the annotation timeline
+        if self.annotation_stages:
+            self.n_subplots += 1
+
         self.ical_stages = {}
         if self.args.annotate_with_log == "ical":
             self.ical_stages = read_ical_log_file(self.traces_repo)
@@ -92,6 +99,33 @@ class BenchmonVisualizer:
 
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
+
+    def load_annotation_stages(self) -> list | None:
+        """
+        Load the annotation stages of this node from the --annotate-with-log file
+
+        Returns:
+            (list | None)   Stage intervals of this node, None if unavailable
+        """
+        # Expecting a CSV file passed with --annotate-with-log=name.csv
+        # or defaulting to annotations.csv
+        filename = self.args.annotate_with_log
+        node_name = os.path.basename(os.path.realpath(self.traces_repo)).replace("benchmon_traces_", "")
+        events_dir = os.path.dirname(os.path.dirname(self.traces_repo))
+        self.logger.debug(f"Using events file from: {events_dir}")
+        self.logger.debug(f"Filtering annotations for node: {node_name}")
+
+        try:
+            stages = read_annotation_csv(events_dir, filename, node_name=node_name)
+        except FileNotFoundError:
+            self.logger.warning(f"Annotation file not found: {filename}")
+            return None
+
+        if not stages:
+            self.logger.warning(f"No annotations found for node {node_name}")
+            return None
+
+        return stages
 
     def load_system_metrics(self) -> None:
         """
@@ -440,6 +474,7 @@ class BenchmonVisualizer:
         """
         Run plotting
         """
+        ax_pipeline = None
         # Check if we have any subplots to create
         if self.n_subplots <= 0:
             self.logger.warning("No subplots to create, skipping plotting")
@@ -451,6 +486,14 @@ class BenchmonVisualizer:
 
         sbp = 1
         annotate_with_cmds = self.annotate_with_cmds if self.inline_calls_prof else None
+        # --- Pipeline events plot ---
+        if self.annotation_stages:
+            self.logger.debug("Plotting annotation timeline")
+            ax_pipeline = plt.subplot(self.n_subplots, 1, sbp)
+            sbp += 1
+            plot_stage_timeline(self.annotation_stages, xlim=self.xlim, ax=ax_pipeline)
+            ax_pipeline.set_ylabel("Pipeline Events")
+            ax_pipeline.grid(True)
 
         # CPU plot
         if self.args.cpu:
@@ -603,6 +646,8 @@ class BenchmonVisualizer:
                                       legend_ncol=self.args.fig_call_legend_ncol)
             else:
                 self.logger.warning("No call traces available for call graph plot")
+        if self.annotation_stages and ax_pipeline is not None:
+            plot_stage_markers(self.annotation_stages, ax_top=ax_pipeline, ax_bottom=plt.gca(), xlim=self.xlim,)
 
         fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
         plt.subplots_adjust(hspace=.5)
