@@ -5,11 +5,11 @@ Python module to read and plot system resources measurements
 import csv
 import itertools
 import logging
+import math
 import os
 import pickle
 import sys
 import time
-from math import ceil
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -274,7 +274,8 @@ class SystemData:
         # Order legend
         _order = [0, 4, 3, 2, 1]
         _handles, _labels = plt.gca().get_legend_handles_labels()
-        plt.legend([_handles[idx] for idx in _order], [_labels[idx] for idx in _order], loc=1)
+        plt.legend([_handles[idx] for idx in _order], [_labels[idx] for idx in _order],
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
@@ -312,14 +313,15 @@ class SystemData:
 
             cpu_wai = self.cpu_prof[core_name]["iowait"]
 
-            plt.plot(self.cpu_stamps, cpu_usr + cpu_sys + cpu_wai, color=cm[idx], label=f"core-{core}")
+            plt.plot(self.cpu_stamps, cpu_usr + cpu_sys + cpu_wai, color=cm[idx], label=f"{core}")
 
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         plt.yticks(100 / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU Cores (%)")
         plt.grid()
-        plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu / 16), fontsize="6")
+        plt.legend(ncol=math.ceil(_ncpu / 16), fontsize="6",
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0,)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
@@ -438,7 +440,7 @@ class SystemData:
         plt.yticks(yticks)
 
         plt.ylabel("Memory (GiB)")
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid()
 
         if annotate_with_cmds:
@@ -597,7 +599,8 @@ class SystemData:
         plt.yticks(cpu_freq_max / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU frequencies (GHz)")
         plt.grid()
-        plt.legend(loc=0, ncol=self.ncpu_freq // ceil(self.ncpu_freq / 16), fontsize="6")
+        plt.legend(ncol=self.ncpu_freq // 16, fontsize="6",
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=cpu_freq_max)
@@ -801,7 +804,7 @@ class SystemData:
                 break
         plt.yticks(yticks)
         plt.ylabel("Network (MB/s)")
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid()
 
         if annotate_with_cmds:
@@ -1056,9 +1059,9 @@ class SystemData:
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         if is_with_iops:
-            plt.legend(hand + hand_twin, lab + lab_twin, loc=1)
+            plt.legend(hand + hand_twin, lab + lab_twin, loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         else:
-            plt.legend(loc=1)
+            plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds and not is_with_iops:
             annotate_with_cmds(ymax=diskmax)  # @todo
@@ -1227,7 +1230,7 @@ class SystemData:
         plt.yticks(yticks)
         plt.ylabel("Infiniband bandwidth (MB/s)")
         plt.grid()
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         ibmax = max(max(self.ib_rx_total), max(self.ib_tx_total))
 

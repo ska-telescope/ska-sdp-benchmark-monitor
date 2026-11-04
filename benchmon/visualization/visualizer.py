@@ -233,7 +233,6 @@ class BenchmonVisualizer:
                     return
                 self.call_monotonic_to_real = float(line)
 
-
             call_raw = PerfCallRawData(logger=self.logger,
                                        filename=f"{self.traces_repo}/call_report.txt")
             samples, self.call_recorded_cmds = call_raw.cmds_list()
@@ -633,7 +632,7 @@ class BenchmonVisualizer:
             plt.xticks(*self.xticks)
             plt.xlim(self.xlim)
             plt.ylabel("Power (W)")
-            plt.legend(loc=1)
+            plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
             plt.grid()
 
         # (perf) Calltrace plot

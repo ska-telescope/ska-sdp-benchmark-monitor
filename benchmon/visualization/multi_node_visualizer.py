@@ -7,6 +7,7 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+from math import ceil
 from scipy.interpolate import interp1d
 
 from .utils import plot_stage_markers, get_stage_color, add_stage_legend
@@ -32,10 +33,15 @@ class BenchmonMNSyncVisualizer:
         self.args = args
         self.logger = logger
 
+        hostnames = [data.hostname for data in nodes_data]
+        self.commonprefix_hostname = os.path.commonprefix(hostnames)
+
+        self.nelm_per_col = 10
+
         self.run_sync_plots(nodes_data=nodes_data)
 
 
-    def set_frame(self, label: str = "") -> None:
+    def set_frame(self, label: str = "", ncol=1) -> None:
         """
         Set frame for a plot
 
@@ -45,7 +51,7 @@ class BenchmonMNSyncVisualizer:
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         plt.ylabel(label)
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", ncol=ceil(ncol), bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid(True)
 
 
@@ -128,6 +134,7 @@ class BenchmonMNSyncVisualizer:
             plot_stage_markers(all_stages, ax_top=ax_pipeline, ax_bottom=plt.gca(), xlim=self.xlim,
                                color_map=color_map, stop_as_markers=True, show_legend=True, legend_loc="upper center")
 
+        plt.suptitle(f"Multi-node Sync for nodes: {self.commonprefix_hostname}*")
         plt.subplots_adjust(hspace=0.5)
         plt.tight_layout()
 
@@ -151,6 +158,7 @@ class BenchmonMNSyncVisualizer:
         """
         ts_sync = []
         cpu_sync = []
+
         for data in nodes_data:
             # Check if CPU data is available
             if not hasattr(data.system_metrics, 'cpu_stamps') or len(data.system_metrics.cpu_stamps) == 0:
@@ -177,7 +185,7 @@ class BenchmonMNSyncVisualizer:
                 continue
 
             cpu = sum(cpu_data)
-            plt.plot(ts, cpu, label=data.hostname)
+            plt.plot(ts, cpu, label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             ts_sync += [ts]
             cpu_sync += [cpu]
@@ -188,7 +196,7 @@ class BenchmonMNSyncVisualizer:
 
         yrng = 10
         plt.yticks(100 / yrng * np.arange(yrng + 1))
-        self.set_frame(label="Total CPU usage (%)")
+        self.set_frame(label="Total CPU usage (%)", ncol=len(cpu_sync) / self.nelm_per_col)
 
 
     def plot_sync_cpu_binary(self, nodes_data: list) -> None:
@@ -207,7 +215,7 @@ class BenchmonMNSyncVisualizer:
             ts = data.system_metrics.cpu_stamps
             spaces = ["user", "nice", "system", "iowait", "irq", "softirq", "steal", "guest", "guestnice"]
             cpu = sum([data.system_metrics.cpu_prof[np.iinfo(np.uint32).max][space] for space in spaces])
-            plt.plot(ts, cpu, label=data.hostname)
+            plt.plot(ts, cpu, label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             ts_sync += [ts]
             cpu_sync += [cpu]
@@ -220,7 +228,7 @@ class BenchmonMNSyncVisualizer:
 
         yrng = 10
         plt.yticks(100 / yrng * np.arange(yrng + 1))
-        self.set_frame(label="Total CPU usage (%)")
+        self.set_frame(label="Total CPU usage (%)", ncol=len(cpu_sync) / self.nelm_per_col)
 
 
     def plot_sync_cpufreq(self, nodes_data: list) -> None:
@@ -250,7 +258,7 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and frequency data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, cpufreq, label=data.hostname)
+            plt.plot(ts, cpufreq, label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             ts_sync += [ts]
             cpufreq_sync += [cpufreq]
@@ -258,7 +266,7 @@ class BenchmonMNSyncVisualizer:
         # Only sync if we have data
         if ts_sync and cpufreq_sync:
             self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
-        self.set_frame(label="Mean CPU frequency (GHz)")
+        self.set_frame(label="Mean CPU frequency (GHz)", ncol=len(cpufreq_sync) / self.nelm_per_col)
 
 
     def plot_sync_cpufreq_binary(self, nodes_data: list) -> None:
@@ -277,7 +285,7 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.cpufreq_stamps
             cpufreq = data.system_metrics.cpufreq_vals["mean"]
-            plt.plot(ts, cpufreq, label=data.hostname)
+            plt.plot(ts, cpufreq, label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             ts_sync += [ts]
             cpufreq_sync += [cpufreq]
@@ -287,7 +295,7 @@ class BenchmonMNSyncVisualizer:
             return
 
         self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
-        self.set_frame(label="Mean CPU frequency (GHz)")
+        self.set_frame(label="Mean CPU frequency (GHz)", ncol=len(cpufreq_sync) / self.nelm_per_col)
 
 
     def plot_sync_mem(self, nodes_data: list) -> None:
@@ -329,7 +337,8 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and memory data length mismatch for node {data.hostname}")
                 continue
 
-            plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem, label=data.hostname)
+            plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem,
+                             label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
             memtotal += [data.system_metrics.mem_prof["MemTotal"][0] / memunit]
@@ -347,7 +356,8 @@ class BenchmonMNSyncVisualizer:
                 if len(yticks) < self.args.fig_yrange:
                     break
             plt.yticks(yticks)
-        self.set_frame(label="Memory (GiB)")
+
+        self.set_frame(label="Memory (GiB)", ncol=len(mem_sync) / self.nelm_per_col)
 
 
     def plot_sync_mem_binary(self, nodes_data: list) -> None:
@@ -367,7 +377,8 @@ class BenchmonMNSyncVisualizer:
             memunit = 1024**2
             ts = data.system_metrics.mem_stamps
             mem = (data.system_metrics.mem_prof["MemTotal"] - data.system_metrics.mem_prof["MemFree"]) / memunit
-            plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem, label=data.hostname)
+            plt.fill_between(ts, sum(memtotal), sum(memtotal) + mem,
+                             label=data.hostname.replace(self.commonprefix_hostname, ''))
 
             plt.plot(ts, sum(memtotal) * np.ones_like(ts), color="grey", lw=1)
             memtotal += [data.system_metrics.mem_prof["MemTotal"][0] / memunit]
@@ -387,7 +398,7 @@ class BenchmonMNSyncVisualizer:
             if len(yticks) < self.args.fig_yrange:
                 break
         plt.yticks(yticks)
-        self.set_frame(label="Memory (GiB)")
+        self.set_frame(label="Memory (GiB)", ncol=len(mem_sync) / self.nelm_per_col)
 
 
     def plot_sync_net(self, nodes_data: list) -> None:
@@ -419,7 +430,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and network RX data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, net_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.net_rx_data)} MB)")
+            plt.plot(ts, net_rx, marker="v",
+                     label=f"rx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + (f" ({int(data.system_metrics.net_rx_data)} MB)" if self.args.net_data else ""))
 
             ts_sync += [ts]
             net_rx_sync += [net_rx]
@@ -428,7 +441,7 @@ class BenchmonMNSyncVisualizer:
         if ts_sync and net_rx_sync:
             self.sync_metrics(ts_list=ts_sync,
                               dev_list=net_rx_sync,
-                              label=f"rx:sum ({int(rx_data)} MB)",
+                              label="rx:sum" + (f" ({int(rx_data)} MB)" if self.args.net_data else ""),
                               marker="v",
                               ls="--")
 
@@ -454,7 +467,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and network TX data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, net_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.net_tx_data)} MB)")
+            plt.plot(ts, net_tx, marker="^",
+                     label=f"tx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + (f" ({int(data.system_metrics.net_tx_data)} MB)" if self.args.net_data else ""))
 
             ts_sync += [ts]
             net_tx_sync += [net_tx]
@@ -463,12 +478,12 @@ class BenchmonMNSyncVisualizer:
         if ts_sync and net_tx_sync:
             self.sync_metrics(ts_list=ts_sync,
                               dev_list=net_tx_sync,
-                              label=f"tx:sum ({int(tx_data)} MB)",
+                              label="tx:sum" + (f" ({int(tx_data)} MB)" if self.args.net_data else ""),
                               marker="^",
                               ls="--",
                               with_yrange=(tx_data > rx_data))
 
-        self.set_frame(label="Network Activity (MB/s)")
+        self.set_frame(label="Network Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_net_binary(self, nodes_data: list) -> None:
@@ -487,7 +502,8 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.net_stamps
             net_rx = data.system_metrics.net_rx_total
-            plt.plot(ts, net_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.net_rx_data)} MB)")
+            plt.plot(ts, net_rx, marker="v", label=f"rx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                                                   + f" ({int(data.system_metrics.net_rx_data)} MB)")
 
             ts_sync += [ts]
             net_rx_sync += [net_rx]
@@ -499,7 +515,7 @@ class BenchmonMNSyncVisualizer:
 
         self.sync_metrics(ts_list=ts_sync,
                           dev_list=net_rx_sync,
-                          label=f"rx:sum ({int(rx_data)} MB)",
+                          label="rx:sum" + (f" ({int(rx_data)} MB)" if self.args.net_data else ""),
                           marker="v",
                           ls="--")
 
@@ -509,7 +525,9 @@ class BenchmonMNSyncVisualizer:
         for data in nodes_data:
             ts = data.system_metrics.net_stamps
             net_tx = data.system_metrics.net_tx_total
-            plt.plot(ts, net_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.net_tx_data)} MB)")
+            plt.plot(ts, net_tx, marker="^",
+                     label=f"tx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + (f" ({int(data.system_metrics.net_tx_data)} MB)" if self.args.net_data else ""))
 
             ts_sync += [ts]
             net_tx_sync += [net_tx]
@@ -517,12 +535,12 @@ class BenchmonMNSyncVisualizer:
 
         self.sync_metrics(ts_list=ts_sync,
                           dev_list=net_tx_sync,
-                          label=f"tx:sum ({int(tx_data)} MB)",
+                          label="tx:sum" + (f" ({int(tx_data)} MB)" if self.args.net_data else ""),
                           marker="^",
                           ls="--",
                           with_yrange=(tx_data > rx_data))
 
-        self.set_frame(label="Network Activity (MB/s)")
+        self.set_frame(label="Network Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_disk(self, nodes_data: list) -> None:
@@ -554,7 +572,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and disk read data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, disk_rd, marker="v", label=f"rd:{data.hostname} ({int(data.system_metrics.disk_rd_data)} MB)")
+            plt.plot(ts, disk_rd, marker="v",
+                     label=f"rd:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + (f" ({int(data.system_metrics.disk_rd_data)} MB)" if self.args.disk_data else ""))
 
             ts_sync += [ts]
             rd_sync += [disk_rd]
@@ -562,7 +582,8 @@ class BenchmonMNSyncVisualizer:
 
         if ts_sync and rd_sync:
             self.sync_metrics(ts_list=ts_sync, dev_list=rd_sync,
-                              label=f"rd:sum ({int(rd_data)} MB)", marker="v", ls="--")
+                              label="rd:sum"
+                                    + (f" ({int(rd_data)} MB)" if self.args.disk_data else ""), marker="v", ls="--")
 
         ts_sync = []
         wr_sync = []
@@ -586,7 +607,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and disk write data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, disk_wr, marker="^", label=f"wr:{data.hostname} ({int(data.system_metrics.disk_wr_data)} MB)")
+            plt.plot(ts, disk_wr, marker="^",
+                     label=f"wr:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + (f" ({int(data.system_metrics.disk_wr_data)} MB)" if self.args.disk_data else ""))
 
             ts_sync += [ts]
             wr_sync += [disk_wr]
@@ -595,12 +618,12 @@ class BenchmonMNSyncVisualizer:
         if ts_sync and wr_sync:
             self.sync_metrics(ts_list=ts_sync,
                               dev_list=wr_sync,
-                              label=f"wr:sum ({int(wr_data)} MB)",
+                              label="wr:sum" + (f" ({int(wr_data)} MB)" if self.args.disk_data else ""),
                               marker="^",
                               ls="--",
                               with_yrange=(wr_data > rd_data))
 
-        self.set_frame(label="Disk Activity (MB/s)")
+        self.set_frame(label="Disk Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_disk_binary(self, nodes_data: list) -> None:
@@ -619,12 +642,19 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.disk_stamps
             disk_rd = data.system_metrics.disk_rd_total
-            plt.plot(ts, disk_rd, marker="v", label=f"rd:{data.hostname} ({int(data.system_metrics.disk_rd_data)} MB)")
+            plt.plot(ts, disk_rd, marker="v",
+                     label=f"rd:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.disk_rd_data)} MB)")
 
             ts_sync += [ts]
             rd_sync += [disk_rd]
             rd_data += data.system_metrics.disk_rd_data
-        self.sync_metrics(ts_list=ts_sync, dev_list=rd_sync, label=f"rd:sum ({int(rd_data)} MB)", marker="v", ls="--")
+
+        self.sync_metrics(ts_list=ts_sync,
+                          dev_list=rd_sync,
+                          label="rd:sum" + (f" ({int(rd_data)} MB)" if self.args.disk_data else ""),
+                          marker="v",
+                          ls="--")
 
         if len(ts_sync) == 0:
             self.logger.warning("No disk read profile data available, no plot will be produced.")
@@ -639,7 +669,9 @@ class BenchmonMNSyncVisualizer:
                 continue
             ts = data.system_metrics.disk_stamps
             disk_wr = data.system_metrics.disk_wr_total
-            plt.plot(ts, disk_wr, marker="^", label=f"wr:{data.hostname} ({int(data.system_metrics.disk_wr_data)} MB)")
+            plt.plot(ts, disk_wr, marker="^",
+                     label=f"wr:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + (f" ({int(data.system_metrics.disk_wr_data)} MB)" if self.args.disk_data else ""))
 
             ts_sync += [ts]
             wr_sync += [disk_wr]
@@ -651,12 +683,12 @@ class BenchmonMNSyncVisualizer:
 
         self.sync_metrics(ts_list=ts_sync,
                           dev_list=wr_sync,
-                          label=f"wr:sum ({int(wr_data)} MB)",
+                          label="wr:sum" + (f" ({int(wr_data)} MB)" if self.args.disk_data else ""),
                           marker="^",
                           ls="--",
                           with_yrange=(wr_data > rd_data))
 
-        self.set_frame(label="Disk Activity (MB/s)")
+        self.set_frame(label="Disk Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_ib(self, nodes_data: list) -> None:
@@ -688,7 +720,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and InfiniBand RX data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, ib_rx, marker="v", label=f"rx:{data.hostname} ({int(data.system_metrics.ib_rx_data)} MB)")
+            plt.plot(ts, ib_rx, marker="v",
+                     label=f"rx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.ib_rx_data)} MB)")  # @todo if self.args.ib_rx_data else ""
 
             ts_sync += [ts]
             ib_rx_sync += [ib_rx]
@@ -697,7 +731,7 @@ class BenchmonMNSyncVisualizer:
         if ts_sync and ib_rx_sync:
             self.sync_metrics(ts_list=ts_sync,
                               dev_list=ib_rx_sync,
-                              label=f"rx:sum ({int(rx_data)} MB)",
+                              label=f"rx:sum ({int(rx_data)} MB)",  # @todo if self.args.ib_rx_data else ""
                               marker="v",
                               ls="--",
                               with_yrange=True)
@@ -724,7 +758,9 @@ class BenchmonMNSyncVisualizer:
                 self.logger.warning(f"Timestamp and InfiniBand TX data length mismatch for node {data.hostname}")
                 continue
 
-            plt.plot(ts, ib_tx, marker="^", label=f"tx:{data.hostname} ({int(data.system_metrics.ib_tx_data)} MB)")
+            plt.plot(ts, ib_tx, marker="^",
+                     label=f"tx:{data.hostname.replace(self.commonprefix_hostname, '')}"
+                           + f" ({int(data.system_metrics.ib_tx_data)} MB)")  # @todo if self.args.ib_tx_data else ""
 
             ts_sync += [ts]
             ib_tx_sync += [ib_tx]
@@ -733,12 +769,12 @@ class BenchmonMNSyncVisualizer:
         if ts_sync and ib_tx_sync:
             self.sync_metrics(ts_list=ts_sync,
                               dev_list=ib_tx_sync,
-                              label=f"tx:sum ({int(tx_data)} MB)",
+                              label=f"tx:sum ({int(tx_data)} MB)",  # @todo if self.args.ib_tx_data else ""
                               marker="^",
                               ls="--",
                               with_yrange=(tx_data > rx_data))
 
-        self.set_frame(label="Infiniband Activity (MB/s)")
+        self.set_frame(label="Infiniband Activity (MB/s)", ncol=len(ts_sync) * 2 / self.nelm_per_col)
 
 
     def plot_sync_pow(self, nodes_data: list) -> None:
