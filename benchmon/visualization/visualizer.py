@@ -505,7 +505,6 @@ class BenchmonVisualizer:
                 self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages)
-
             else:
                 self.logger.warning("No system metrics available for CPU plot")
 
@@ -520,7 +519,6 @@ class BenchmonVisualizer:
                                                  annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages)
-
             else:
                 self.logger.warning("No system metrics available for CPU cores plot")
 
@@ -535,7 +533,6 @@ class BenchmonVisualizer:
                                                       annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages)
-
             else:
                 self.logger.warning("No system metrics available for CPU per core plot")
 

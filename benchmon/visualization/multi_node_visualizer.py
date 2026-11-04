@@ -72,6 +72,7 @@ class BenchmonMNSyncVisualizer:
 
         fig, _ = plt.subplots(nsbp, sharex=True)
         fig.set_size_inches(self.args.fig_width, nsbp * self.args.fig_height_unit)
+        fig.add_gridspec(nsbp, hspace=0)
 
         sbp = 1
         ax_pipeline = None
