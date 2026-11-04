@@ -129,19 +129,8 @@ class BenchmonMNSyncVisualizer:
                 for hostname, stages in nodes_annotations
                 for s in stages
             ]
-            plot_stage_markers(
-                all_stages,
-                ax_top=ax_pipeline,
-                ax_bottom=ax_last,
-                xlim=self.xlim,
-                color_map=color_map,
-                linewidth=1.6,
-                linestyle_start=(0, (4, 3)),
-                linestyle_stop=(0, (4, 3)),
-                stop_as_markers=True,
-                show_legend=True,
-                legend_loc="upper center",
-            )
+            plot_stage_markers(all_stages, ax_top=ax_pipeline, ax_bottom=ax_last, xlim=self.xlim,
+                               color_map=color_map, stop_as_markers=True, show_legend=True, legend_loc="upper center")
 
         plt.tight_layout(h_pad=1.5)
 
