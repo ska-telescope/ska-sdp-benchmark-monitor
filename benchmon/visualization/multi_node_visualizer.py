@@ -48,26 +48,6 @@ class BenchmonMNSyncVisualizer:
         plt.grid(True)
 
 
-    @staticmethod
-    def build_color_map(nodes_annotations: list) -> dict:
-        """
-        Build the color index of each (hostname, stage)
-
-        Args:
-            list of (hostname, stages)
-
-        Returns:
-            color index
-        """
-        hostnames = [hostname for hostname, _ in nodes_annotations]
-        labels = list(dict.fromkeys(s["label"] for _, stages in nodes_annotations for s in stages))
-
-        return {
-            (hostname, label): stage_idx * len(hostnames) + node_idx
-            for stage_idx, label in enumerate(labels)
-            for node_idx, hostname in enumerate(hostnames)
-        }
-
     def run_sync_plots(self, nodes_data: list) -> None:
         """
         Run multi-node sync plots
@@ -802,6 +782,7 @@ class BenchmonMNSyncVisualizer:
 
         self.set_frame(label="Power (W)")
 
+
     def plot_sync_annotations(self, nodes_annotations: list, ax) -> None:
         """
         Plot the annotation timelines of all nodes, one row per node.
@@ -857,6 +838,7 @@ class BenchmonMNSyncVisualizer:
 
         ax.grid(True, axis="x")
         add_stage_legend(ax)
+
 
     def sync_metrics(self,
                      ts_list: list, dev_list: list, opt: str = "sum",
@@ -933,7 +915,7 @@ class BenchmonMNSyncVisualizer:
 
         ax.set_yticks([])
         ax.set_ylim(0, 1)
-        ax.set_ylabel(hostname, fontsize=8, rotation=0, labelpad=60, va="center")
+        ax.set_ylabel(hostname, rotation="vertical", va="center")
         ax.grid(True, axis="x")
 
         if not stages:
@@ -962,3 +944,24 @@ class BenchmonMNSyncVisualizer:
                 ha="center", va="bottom", fontsize=7, fontweight="bold",
                 color=color, transform=ax.get_xaxis_transform(),
             )
+
+
+    @staticmethod
+    def build_color_map(nodes_annotations: list) -> dict:
+        """
+        Build the color index of each (hostname, stage)
+
+        Args:
+            list of (hostname, stages)
+
+        Returns:
+            color index
+        """
+        hostnames = [hostname for hostname, _ in nodes_annotations]
+        labels = list(dict.fromkeys(s["label"] for _, stages in nodes_annotations for s in stages))
+
+        return {
+            (hostname, label): stage_idx * len(hostnames) + node_idx
+            for stage_idx, label in enumerate(labels)
+            for node_idx, hostname in enumerate(hostnames)
+        }
