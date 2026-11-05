@@ -48,8 +48,8 @@ class RunUtils:
 
         parser.add_argument(
             "--sys-freq",
-            type=int,
-            default=10,
+            type=float,
+            default=1,
             help="System monitoring frequency. Default: 10 Hz"
         )
 
@@ -175,6 +175,20 @@ class RunUtils:
             "-b",
             action="store_true",
             help="Use the C++ binary backend for sampling. Default: False"
+        )
+
+        parser.add_argument(
+            "--timing-mapping",
+            action="store_true",
+            default=False,
+            help="Enable timing mapping monitoring with CPU mapping"
+        )
+
+        parser.add_argument(
+            "--timing",
+            action="store_true",
+            default=False,
+            help="Enable timing monitoring without CPU mapping"
         )
 
         return parser.parse_args()

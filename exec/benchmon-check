@@ -2,6 +2,7 @@
 import logging
 import shutil
 import subprocess
+import sys
 import os
 import tempfile
 import atexit
@@ -12,18 +13,19 @@ log = logging.getLogger(__name__)
 # Global list to keep track of subprocesses for cleanup
 _running_processes = []
 
-base_command_check_set = {
+# All base commands are treated as optional for the global environment run
+command_check_set = {
     "bc": "bc",
     "perf": "perf",
-    "hpctoolkit": "hpcrun",
-    "hpctoolkit": "hpcstruct",
-    "hpctoolkit": "hpcprof"
+    "hpcrun": "hpcrun",
+    "hpcstruct": "hpcstruct",
+    "hpcprof": "hpcprof",
 }
 
-base_command_advice_set = {
+command_advice_set = {
     "bc": "The 'bc' command is not available. 'bc' is a basic calculator "
-           "utility. To install it, use the following command based on "
-           "your Linux distribution:\n"
+           "utility required for the Bash back-end. If unavailable, consider "
+           "using the C++ back-end. To install it, use:\n"
           "  - For Ubuntu/Debian: `sudo apt-get install bc`\n"
           "  - For CentOS/RHEL: `sudo yum install bc`\n"
           "  - For Fedora: `sudo dnf install bc`",
@@ -34,11 +36,15 @@ base_command_advice_set = {
             "  - For Ubuntu/Debian: `sudo apt-get install linux-tools-common linux-tools-generic`\n"
             "  - For CentOS/RHEL: `sudo yum install perf`\n"
             "  - For Fedora: `sudo dnf install perf`",
-    "hpctoolkit": "One at least of hpcrun, hpcstruct or hpcprof is not available.\n'hpctoolkit' is "
-                  "an execution trace collection tool which provides insight on software execution "
-                  "at a low overhead (without it more expensive trace collection is still possible via "
-                  "perf).\nTo install it, use the Spack recipe described in "
-                  "https://hpctoolkit.org/software-instructions.html"
+    "hpcrun": "'hpcrun' (hpctoolkit) is not available. hpctoolkit is an "
+              "execution trace collection tool with low overhead (without "
+              "it, more expensive trace collection is still possible via "
+              "perf). Install via Spack: "
+              "https://hpctoolkit.org/software-instructions.html",
+    "hpcstruct": "'hpcstruct' (hpctoolkit) is not available. See "
+                 "https://hpctoolkit.org/software-instructions.html",
+    "hpcprof": "'hpcprof' (hpctoolkit) is not available. See "
+               "https://hpctoolkit.org/software-instructions.html",
 }
 
 sys_monitor_check_set = {
@@ -114,6 +120,7 @@ def check_cmd(cmd, advice=None):
             log.info(f"Advice: {advice}")
         return False
 
+
 def check_binary_available(cmd, advice):
     """
     Check if the binary is available in the system PATH.
@@ -126,72 +133,84 @@ def check_binary_available(cmd, advice):
     """
     if shutil.which(cmd) is None:
         log.warning(f"Base command '{cmd}' is not available.")
-        log.info(f"Advice: {advice}")
+        if advice:
+            log.info(f"Advice: {advice}")
         return False
     return True
 
 def check_benchmon_env():
     """
     Check if the benchmark environment is ready.
-    Verifies the availability of base commands, essential files, and the ability to run
-    monitoring commands.
-    Returns:
-        bool: True if the environment is ready, False otherwise.
+    Runs ALL checks (never stops at the first failure) so every problem is
+    reported together in a single run. Returns False only if at least one
+    CRITICAL requirement is missing; non-critical issues are warnings only.
     """
-    # Check base commands
-    for name, cmd in base_command_check_set.items():
-        advice = base_command_advice_set.get(name, "No advice available.")
-        if not check_binary_available(cmd, advice):
-            return False
 
-    # Check essential files
-    essential_files = [
-        "/proc/stat",
-        "/proc/meminfo",
-        "/proc/net/dev",
-        "/proc/diskstats",
-        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
-        "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq",
-        "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"
-    ]
+    warning_count = 0
+    bc_available = True
+
+    # --- Base commands (bc, perf, hpctoolkit binaries) ---
+    for name, cmd in command_check_set.items():
+        if not check_binary_available(cmd, command_advice_set.get(name)):
+            warning_count += 1
+            if name == "bc":
+                bc_available = False
+
+    # --- Essential /proc files ---
+    essential_files = ["/proc/stat", "/proc/meminfo", "/proc/net/dev", "/proc/diskstats"]
     for file in essential_files:
         if not os.path.exists(file):
-            if file in [
-                "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
-                "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq",
-                "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"
-            ]:
-                log.warning(f"Essential file '{file}' does not exist, but continuing.")
-                continue
-            else:
-                log.warning(f"Essential file '{file}' does not exist.")
-                log.info("Advice: Ensure that the system is properly configured and the necessary kernel modules are loaded.")
-                return False
+            log.warning(f"File '{file}' does not exist.")
+            log.info("Advice: Ensure that the system is properly configured if using the Bash back-end.")
+            warning_count += 1
 
-    # Check monitoring commands
-    for check_set, advice_set in [(sys_monitor_check_set, {}), (perf_monitor_check_set, perf_monitor_advice_set)]:
-        for name, cmd in check_set.items():
-            advice = advice_set.get(name, None)
-            if not check_cmd(cmd, advice):
-                if name in ["cpufreq", "ib", "power_command"]:
-                    log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
-                    if advice:
-                        log.info(f"Optional Advice: {advice}")
-                    continue
-                else:
-                    log.warning(f"Command '{name}' failed to run: {cmd}")
-                    return False
+    # --- Optional /sys files (cpufreq: hardware-dependent, safe to continue) ---
+    optional_files = [
+        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
+        "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq",
+        "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
+    ]
+    for file in optional_files:
+        if not os.path.exists(file):
+            log.warning(f"Optional file '{file}' does not exist. Monitoring of CPU frequency will be affected.")
+            warning_count += 1
+
+    # --- Monitoring commands ---
+    for name, cmd in sys_monitor_check_set.items():
+        advice = f"Monitoring of {name} will be affected."
+        if not check_cmd(cmd, advice=advice):
+            log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
+            warning_count += 1
+
+    # --- perf-based checks: all optional (power/call profiling are opt-in) ---
+    for name, cmd in perf_monitor_check_set.items():
+        advice = perf_monitor_advice_set.get(name, f"Monitoring of {name.replace('_', ' ')} will be affected.")
+        if not check_cmd(cmd, advice):
+            log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
+            warning_count += 1
+
+    if warning_count:
+        log.info(f"{warning_count} non-critical warning(s) reported above; continuing.")
+
+    if not bc_available:
+        log.error("Critical requirement 'bc' is missing. Environment is NOT ready.")
+        return False
 
     return True
 
 def main():
     """
     Main function to check the benchmark environment and log the result.
+    Exits with status 1 if a critical requirement is missing, so calling
+    scripts (e.g. benchmon-setup) can detect failure and abort instead of
+    silently continuing with broken/incomplete monitoring.
     """
     if check_benchmon_env():
         log.info("Benchmark environment is ready.")
+        sys.exit(0)
     else:
-        log.info("Benchmark environment is not ready. Please check the errors above.")
+        log.error("Benchmark environment is NOT ready (see critical errors above). Aborting.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

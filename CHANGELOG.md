@@ -1,5 +1,22 @@
 ## Unreleased
+### Added
+- `benchmon-setup` (including `benchmon-check`) for pre-run validation, environment checks, and hardware/software characterisation
+- `benchmon-postprocess` for visualization, report generation, and HPCToolkit post-processing
 - Phase annotations in `benchmon-visu`: stages read from an `events.csv` file are drawn on the plots, using the parameter `--annotate-with-log <events.csv>`
+- `--pkl-cache` option in `benchmon-visu` to enable pickle caching
+
+### Changed
+- Refactored execution workflow: `benchmon-setup` → `benchmon-start` → `benchmon-stop` → `benchmon-postprocess`
+- `--sys-freq` type changed from `int` to `float` to support sub-Hz sampling (e.g. 0.1 Hz = 1 sample/10s)
+- Per-level system sampling frequency: 0.1 Hz (level 0), 1 Hz (level 1), 10 Hz (level 2)
+- Introduced a 3-level argument priority system in `benchmon-setup`, `benchmon-start` and `benchmon-postprocess`:
+  - (1) `BENCHMON_ARGS` env var (must be exported) — highest priority
+  - (2) command line args
+  - (3) defaults: `level=0`, `save-dir=./benchmon_savedir_JOBID`
+  - Extra args in `BENCHMON_ARGS` are forwarded to `benchmon-run` only
+  - `--report-template` in `benchmon-postprocess` is exclusively user-side
+- Pickle caching is now disabled by default
+
 ## 0.2.0 - 2025-08-08
 ### Added
 - InfluxDB integration for real-time monitoring
