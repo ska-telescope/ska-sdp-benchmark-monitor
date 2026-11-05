@@ -42,6 +42,8 @@ def test_unit_benchmon_visu():
            "--fig-dpi", "high",
            "--fig-rast",
            "--fig-legend-call-ncol", "8",
+           "--fig-legend-ncpu-per-col", "20",
+           "--fig-legend-nnodes-per-col", "15",
            "--fig-width", "25.6",
            "--fig-height-unit", "3",
            "--fig-xrange", "25",

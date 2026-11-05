@@ -202,6 +202,9 @@ Available options:
 - `--fig-height-unit`: Figure subplot height in inches (default: 3).
 - `--fig-xrange`: Number of ticks on the x-axis (default: 25).
 - `--fig-yrange`: Number of ticks on the y-axis (default: 11).
+- `--fig-legend-call-ncol`: Number of columns in the call legend (default: 8).
+- `--fig-legend-ncpu-per-col`: Number (max) of CPUs per column in the legend (default: 16).
+- `--fig-legend-nnodes-per-col`: Number (max) of nodes per column in the legend (default: 10).
 **
 
 # SW/HW contexts
