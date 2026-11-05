@@ -41,7 +41,7 @@ def test_unit_benchmon_visu():
            "--fig-name", "myfig",
            "--fig-dpi", "high",
            "--fig-rast",
-           "--fig-call-legend-ncol", "8",
+           "--fig-legend-call-ncol", "8",
            "--fig-width", "25.6",
            "--fig-height-unit", "3",
            "--fig-xrange", "25",

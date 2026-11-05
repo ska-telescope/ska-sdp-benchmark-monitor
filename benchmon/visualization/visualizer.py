@@ -645,7 +645,7 @@ class BenchmonVisualizer:
                 self.call_traces.plot(self.call_depths,
                                       xticks=self.xticks,
                                       xlim=self.xlim,
-                                      legend_ncol=self.args.fig_call_legend_ncol)
+                                      legend_ncol=self.args.fig_legend_call_ncol)
             else:
                 self.logger.warning("No call traces available for call graph plot")
         if self.annotation_stages and ax_pipeline is not None:
