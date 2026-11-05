@@ -26,9 +26,8 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Top-level traces repository path")
     parser.add_argument("--recursive", action="store_true", default=False,
                         help="Recursively visualize traces in nodes sub-directories")
-
-    parser.add_argument("--pkl-cache", action="store_true", default=False,
-                        help="Cache computed profiles as pickle files in <traces_repo>/pkl_dir (disabled by default)")
+    parser.add_argument("--enable-pkl-cache", action="store_true",
+                        help="Enable profiles caching as pickle files in <traces_repo>/pkl_dir. Disabled by default.")
 
     # Binary backend
     parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
