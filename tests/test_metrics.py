@@ -11,6 +11,7 @@ from benchmon.visualization import BenchmonVisualizer
 
 
 def create_args(traces_repo: str = "",
+                enable_pkl_cache: bool = False,
                 binary: bool = False,
                 cpu: bool = False,
                 cpu_all: bool = False,
@@ -72,7 +73,8 @@ def test_metrics():
     ref_repo = f"{cwd}/data_for_visu/benchmon_traces_neowise-8.lyon.grid5000.fr"
     shutil.copytree(ref_repo, test_repo, dirs_exist_ok=True)
 
-    args = create_args(cpu=True, cpu_freq=True, mem=True, net=True, disk=True, ib=True, call=True, pow=True)
+    args = create_args(enable_pkl_cache=True, cpu=True, cpu_freq=True, mem=True, net=True, disk=True, ib=True,
+                       call=True, pow=True)
 
     bm = BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo)
 
