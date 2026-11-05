@@ -61,7 +61,9 @@ class BenchmonVisualizer:
         self.traces_repo = traces_repo
 
         if self.args.enable_pkl_cache:
-            os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
+            pkl_dir = f"{self.traces_repo}/pkl_dir"
+            self.logger.info(f"Pickle cache enabled at {pkl_dir} (read/write)")
+            os.makedirs(name=pkl_dir, exist_ok=True)
 
         self.hostname = os.path.basename(os.path.realpath(traces_repo))[16:]
         self.system_metrics = None
