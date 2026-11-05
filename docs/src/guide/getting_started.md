@@ -155,13 +155,14 @@ benchmon-visu ./benchmon_influx_figures \
 
 Available options:
 ##### Resource usage
-- `--mem`: Visualize memory usage.
 - `--cpu`: Show average CPU usage (user, system, wait, idle, virt).
 - `--cpu-all`: Show all CPU cores usage.
 - `--cpu-freq`: Show CPU core frequencies.
 - `--cpu-cores-full`: Show core usage per space (comma-separated).
 - `--cpu-cores-in`: Include specific CPU cores (comma-separated).
 - `--cpu-cores-out`: Exclude specific CPU cores (comma-separated).
+- `--mem`: Visualize memory usage.
+- `--mem-shmem`: Include shared memory consumption from tmpfs (mainly /dev/shm).
 - `--net`: Show network activity.
 - `--net-all`: Show all network interfaces.
 - `--net-rx-only`: Show only RX activity.
