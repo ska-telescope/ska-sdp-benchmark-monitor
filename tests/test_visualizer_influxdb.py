@@ -566,6 +566,7 @@ def create_args(**overrides):
         cpu_cores_in="",
         cpu_cores_out="",
         mem=False,
+        mem_shmem=False,
         net=False,
         net_all=False,
         net_rx_only=False,

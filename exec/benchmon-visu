@@ -53,6 +53,7 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--cpu-cores-in", type=str, default="", help="CPU cores to display")
     parser.add_argument("--cpu-cores-out", type=str, default="", help="CPU cores to exclude")
     parser.add_argument("--mem", action="store_true", help="Visualize memory")
+    parser.add_argument("--mem-shmem", action="store_true", help="Visualize memory consumed in tmpfs filesystem")
     parser.add_argument("--net", action="store_true", help="Visualize network activity")
     parser.add_argument("--net-all", action="store_true", help="Visualize network activity of all interfaces ")
     parser.add_argument("--net-rx-only", action="store_true", help="Visualize rx network only")
