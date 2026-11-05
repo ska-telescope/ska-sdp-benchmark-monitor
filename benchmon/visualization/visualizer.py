@@ -155,6 +155,7 @@ class BenchmonVisualizer:
         if self.is_any_sys:
             self.system_metrics = SystemData(logger=self.logger,
                                              traces_repo=self.traces_repo,
+                                             args=self.args,
                                              **csv_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
@@ -194,6 +195,7 @@ class BenchmonVisualizer:
         if self.is_any_sys:
             self.system_metrics = SystemDataBinary(logger=self.logger,
                                                    traces_repo=self.traces_repo,
+                                                   args=self.args,
                                                    **bin_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \

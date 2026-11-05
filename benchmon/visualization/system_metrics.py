@@ -2,6 +2,7 @@
 Python module to read and plot system resources measurements
 """
 
+import argparse
 import csv
 import itertools
 import logging
@@ -21,6 +22,7 @@ class SystemData:
     """
 
     def __init__(self,
+                 args: argparse.Namespace,
                  logger: logging.Logger,
                  traces_repo: str,
                  csv_cpu_report: str,
@@ -32,6 +34,7 @@ class SystemData:
         """
         Construct and profile system resource usage profile
         """
+        self.args = args
         self.logger = logger
         self.traces_repo = traces_repo
 
