@@ -285,11 +285,14 @@ class SystemData:
 
         return 0
 
-    def plot_cpu_per_core(self, cores_in: str = ",", cores_out: str = "", annotate_with_cmds=None,
-                          ncpu_per_col: int = 16) -> int:
+    def plot_cpu_per_core(self, annotate_with_cmds=None) -> int:
         """
         Plot cpu per core
         """
+        # Previous signature arguments
+        cores_in = self.args.cpu_cores_in
+        cores_out = self.args.cpu_cores_out
+        ncpu_per_col = self.args.fig_legend_ncpu_per_col
 
         # Check there is content
         if (len(self.cpu_stamps) < 1):
@@ -566,11 +569,15 @@ class SystemData:
 
         return 0
 
-    def plot_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None,
-                     ncpu_per_col: int = 16) -> float:
+    def plot_cpufreq(self, annotate_with_cmds=None) -> float:
         """
         Plot cpu frequency per core
         """
+        # Previous signature arguments
+        cores_in = self.args.cpu_cores_in
+        cores_out = self.args.cpu_cores_out
+        ncpu_per_col = self.args.fig_legend_ncpu_per_col
+
         HZ_UNIT = 1e6  # noqa: N806
 
         cores = [core for core in range(self.ncpu_freq)]
@@ -724,16 +731,16 @@ class SystemData:
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-    def plot_network(self,
-                     all_interfaces=False,
-                     total_network=True,
-                     is_rx_only=False,
-                     is_tx_only=False,
-                     is_netdata_label=True,
-                     annotate_with_cmds=None) -> float:
+    def plot_network(self, total_network=True, annotate_with_cmds=None) -> float:
         """
         Plot network activity
         """
+        # Previous signature arguments
+        all_interfaces = self.args.net_all
+        is_rx_only = self.args.net_rx_only
+        is_tx_only = self.args.net_tx_only
+        is_netdata_label = self.args.net_data
+
         BYTES_UNIT = 1000**2  # noqa: N806  (MB)
         _alpha = 0.5
         _mrksz = 3.5
@@ -983,15 +990,16 @@ class SystemData:
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-    def plot_disk(self,
-                  is_rd_only=False,
-                  is_wr_only=False,
-                  is_with_iops=False,
-                  is_diskdata_label=True,
-                  annotate_with_cmds=None) -> float:
+    def plot_disk(self, annotate_with_cmds=None) -> float:
         """
         Plot disk activity
         """
+        # Previous signature arguments
+        is_with_iops = self.args.disk_iops
+        is_rd_only = self.args.disk_rd_only
+        is_wr_only = self.args.disk_wr_only
+        is_diskdata_label = self.args.disk_data
+
         alpha = 0.5
         diskmax = 0.0
         bandwidth_ylabel = getattr(self, "disk_bandwidth_ylabel", "Disk bandwidth (MB/s)")

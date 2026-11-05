@@ -529,10 +529,7 @@ class BenchmonVisualizer:
                 self.logger.debug("Plotting  cpu per core")
                 ax = plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
-                                                      cores_out=self.args.cpu_cores_out,
-                                                      annotate_with_cmds=annotate_with_cmds,
-                                                      ncpu_per_col=self.args.fig_legend_ncpu_per_col)
+                self.system_metrics.plot_cpu_per_core(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages)
             else:
@@ -544,10 +541,7 @@ class BenchmonVisualizer:
                 self.logger.debug("Plotting  cpu cores frequency")
                 ax = plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
-                                                           cores_out=self.args.cpu_cores_out,
-                                                           annotate_with_cmds=annotate_with_cmds,
-                                                           ncpu_per_col=self.args.fig_legend_ncpu_per_col)
+                freqmax = self.system_metrics.plot_cpufreq(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=freqmax)
             else:
@@ -571,11 +565,7 @@ class BenchmonVisualizer:
                 self.logger.debug("Plotting  network")
                 ax = plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
-                                                          is_rx_only=self.args.net_rx_only,
-                                                          is_tx_only=self.args.net_tx_only,
-                                                          is_netdata_label=self.args.net_data,
-                                                          annotate_with_cmds=annotate_with_cmds)
+                netmax = self.system_metrics.plot_network(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=netmax)
             else:
@@ -599,11 +589,7 @@ class BenchmonVisualizer:
                 self.logger.debug("Plotting  disk")
                 ax = plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
-                                                        is_rd_only=self.args.disk_rd_only,
-                                                        is_wr_only=self.args.disk_wr_only,
-                                                        is_diskdata_label=self.args.disk_data,
-                                                        annotate_with_cmds=annotate_with_cmds)
+                diskmax = self.system_metrics.plot_disk(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=diskmax)
             else:
