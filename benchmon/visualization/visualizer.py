@@ -629,8 +629,13 @@ class BenchmonVisualizer:
             if self.call_traces:
                 self.logger.debug("Plotting perf call graph")
                 plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=plt.gca())
-                ax = axes[-1] if self.n_subplots > 1 else axes
-                ax.set_yticks([], [])
+
+                if self.n_subplots == 1:
+                    axes = [axes]
+                axes[-1].set_yticks([], [])
+                if len(self.call_depths) > 2:
+                    axes[-2].set_yticks([], [])
+
                 ret = self.call_traces.plot(self.call_depths,
                                             xticks=self.xticks,
                                             xlim=self.xlim,
