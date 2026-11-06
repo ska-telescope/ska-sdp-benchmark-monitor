@@ -87,8 +87,9 @@ class BenchmonVisualizer:
         self.load_power_metrics()
         self.load_call_metrics()
 
-        self.get_xaxis_params(xmargin=0)
-        self.apply_xaxis_params()
+        if self.system_metrics:
+            self.get_xaxis_params(xmargin=0)
+            self.apply_xaxis_params()
 
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
@@ -346,15 +347,13 @@ class BenchmonVisualizer:
 
         return inline_calls_prof
 
-    def get_xaxis_params(self, xmargin=0.02) -> None:
+    def get_xaxis_params(self, t0=None, tf=None, xmargin=0.02) -> None:
         """
         Get x-axis params: limits and ticks
 
         Args:
             xmargin (float): xmaring percent
         """
-        t0, tf = None, None
-
         # Try to get timestamps from different metrics with proper error handling
         def safe_get_timestamps(stamps, metric_name):
             """Safely get first and last timestamps from a stamps array"""
@@ -447,7 +446,7 @@ class BenchmonVisualizer:
             self.logger.warning("No subplots to create, skipping plotting")
             return
 
-        fig, _ = plt.subplots(self.n_subplots, sharex=True)
+        fig, axes = plt.subplots(self.n_subplots, sharex=True)
         fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
         fig.add_gridspec(self.n_subplots, hspace=0)
 
@@ -458,7 +457,7 @@ class BenchmonVisualizer:
         if self.args.cpu:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -471,7 +470,7 @@ class BenchmonVisualizer:
             if self.system_metrics:
                 for core_number in self.args.cpu_cores_full.split(","):
                     self.logger.debug(f"Plotting  full cpu core {core_number}")
-                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     self.system_metrics.plot_cpu(number=core_number,
                                                  annotate_with_cmds=annotate_with_cmds)
@@ -484,7 +483,7 @@ class BenchmonVisualizer:
         if self.args.cpu_all:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu per core")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
                                                       cores_out=self.args.cpu_cores_out,
@@ -498,7 +497,7 @@ class BenchmonVisualizer:
         if self.args.cpu_freq:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu cores frequency")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
                                                            cores_out=self.args.cpu_cores_out,
@@ -512,7 +511,7 @@ class BenchmonVisualizer:
         if self.args.mem:
             if self.system_metrics:
                 self.logger.debug("Plotting  memory/swap")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 memmax = self.system_metrics.plot_memory_usage(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -524,7 +523,7 @@ class BenchmonVisualizer:
         if self.args.net or self.args.net_all or self.args.net_data:
             if self.system_metrics:
                 self.logger.debug("Plotting  network")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
                                                           is_rx_only=self.args.net_rx_only,
@@ -540,7 +539,7 @@ class BenchmonVisualizer:
         if self.args.ib:
             if self.system_metrics:
                 self.logger.debug("Plotting  infiniband")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -552,7 +551,7 @@ class BenchmonVisualizer:
         if self.args.disk:
             if self.system_metrics:
                 self.logger.debug("Plotting  disk")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
                                                         is_rd_only=self.args.disk_rd_only,
@@ -567,7 +566,7 @@ class BenchmonVisualizer:
         # (perf+g5k) Power plot
         if self.args.pow or self.args.pow_g5k:
             self.logger.debug("Plotting perf power")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
+            plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
             powmax = [0]
 
@@ -598,11 +597,19 @@ class BenchmonVisualizer:
         if self.args.call:
             if self.call_traces:
                 self.logger.debug("Plotting perf call graph")
-                plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=ax)
-                self.call_traces.plot(self.call_depths,
-                                      xticks=self.xticks,
-                                      xlim=self.xlim,
-                                      legend_ncol=self.args.fig_call_legend_ncol)
+                plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=plt.gca())
+                ax = axes[-1] if self.n_subplots > 1 else axes
+                ax.set_yticks([], [])
+                ret = self.call_traces.plot(self.call_depths,
+                                            xticks=self.xticks,
+                                            xlim=self.xlim,
+                                            legend_ncol=self.args.fig_call_legend_ncol)
+
+                # Enabled when call-graph is called alone
+                if self.xticks == []:
+                    self.get_xaxis_params(t0=ret[0], tf=ret[1])
+                    plt.xticks(self.xticks[0], self.xticks[1])
+                    plt.xlim(self.xlim)
             else:
                 self.logger.warning("No call traces available for call graph plot")
 
