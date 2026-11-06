@@ -1,3 +1,5 @@
+## Unreleased
+- Phase annotations in `benchmon-visu`: stages read from an `events.csv` file are drawn on the plots, using the parameter `--annotate-with-log <events.csv>`
 ## 0.2.0 - 2025-08-08
 ### Added
 - InfluxDB integration for real-time monitoring

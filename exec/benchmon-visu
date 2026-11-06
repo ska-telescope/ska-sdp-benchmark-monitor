@@ -4,6 +4,8 @@
 import argparse
 import logging
 import os
+import sys
+
 from datetime import datetime
 
 from benchmon.visualization import BenchmonMNSyncVisualizer
@@ -64,7 +66,7 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--ib", action="store_true", help="Visualize infiniband activity")
     parser.add_argument("--sys", action="store_true", help="Visualize all system data")
 
-    # Power profile
+    # Power profiles
     parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power")
     parser.add_argument("--pow", action="store_true", help="Visualize power")
 
@@ -76,13 +78,14 @@ def parsing() -> argparse.Namespace:
     parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
     parser.add_argument('--call-cmd', type=str, default="", help="Command to visualize")
 
+    # Annotate from log/event csv file
     parser.add_argument("--annotate-with-log", type=str, default="", help="Annotate the plots with a given log file")
 
     # Time limits
     parser.add_argument("--start-time", type=str, help="Start time")
     parser.add_argument("--end-time", type=str, help="End time")
 
-    # Figures
+    # Figure parameters
     parser.add_argument("--interactive", action="store_true", help="Interactive visualization")
     parser.add_argument("--fig-path", type=str, help="Figure output directory")
     parser.add_argument("--fig-fmt", type=str, default="svg", help="Figure format")
@@ -97,6 +100,8 @@ def parsing() -> argparse.Namespace:
 
     # Enable verbosity
     parser.add_argument("--verbose", action="store_true", help="Enable debug information")
+
+    # Test without reading databases
     parser.add_argument("--test", action="store_true", help="Test without reading dbs")
 
     args = parser.parse_args()
@@ -156,7 +161,6 @@ def main():
     # Init
     args = parsing()
     traces_repo = args.traces_repo
-    is_recursive = args.recursive
 
     if args.influxdb:
         os.makedirs(traces_repo, exist_ok=True)
@@ -167,6 +171,8 @@ def main():
     # Create logging
     logger = create_logger(traces_repo=traces_repo, verbose=args.verbose)
     logger.info(f"benchmon-visu processes traces on {traces_repo}")
+
+    logger.debug(f"benchmon-visu commands: {' '.join(sys.argv)}")
 
     args_str = "benchmon-visu arguments:\n"
     for key, value in vars(args).items():
