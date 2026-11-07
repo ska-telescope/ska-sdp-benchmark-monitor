@@ -85,9 +85,10 @@ def main():
                     "optional": ["/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
                                  "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq",
                                  "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"]}
-    fsfiles_dict["optional"].extend(
-        subprocess.getoutput('ls /sys/class/infiniband/*/ports/1/counters/port*data').strip().split()
-    )
+    if os.path.exists('/sys/class/infiniband'):
+        fsfiles_dict["optional"].extend(
+            subprocess.getoutput('ls /sys/class/infiniband/*/ports/1/counters/port*data').strip().split()
+        )
     for level, file_list in fsfiles_dict.items():
         for fsfile in file_list:
             if not os.access(fsfile, os.R_OK):
