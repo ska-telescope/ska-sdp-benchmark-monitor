@@ -22,6 +22,11 @@ def main() -> None:
     logger.info("benchmon-run starts")
     logger.debug(f"benchmon-run command: {' '.join(sys.argv)}")
 
+    # args_str = ""
+    # for key, value in vars(args).items():
+    #     args_str += f"\t--{key.replace('_', '-')} {value}\n"
+    # logger.debug(f"benchmon-run arguments:\n{args_str}")
+
     runmonitor = RunMonitor(args, logger)
     runmonitor.run(timeout=args.test_timeout)
 
