@@ -519,11 +519,6 @@ class PerfCallData:
                     if self.nt > 0:  # Avoid division by zero
                         yvals += [depth + self._plt_depth_size / self.nt * tid]
 
-            # Without threads ticks
-            if False:
-                ylabels = [f"CallStack {depth}" for depth in depths]
-                yvals = [depth for depth in depths]
-
             if yvals and ylabels:
                 plt.yticks(yvals, ylabels, rotation="vertical", va="bottom")
 

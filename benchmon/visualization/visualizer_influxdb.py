@@ -435,6 +435,7 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         )
         return SystemDataInfluxDB(
             logger=self.logger,
+            args=self.args,
             client=self.client,
             database=self.args.influxdb_database,
             hostname=hostname,

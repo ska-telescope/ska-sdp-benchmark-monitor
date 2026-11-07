@@ -160,7 +160,7 @@ class BenchmonVisualizer:
         if self.is_any_sys:
             self.system_metrics = SystemData(logger=self.logger,
                                              traces_repo=self.traces_repo,
-                                             enable_pkl_cache=self.args.enable_pkl_cache,
+                                             args=self.args,
                                              **csv_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
@@ -200,6 +200,7 @@ class BenchmonVisualizer:
         if self.is_any_sys:
             self.system_metrics = SystemDataBinary(logger=self.logger,
                                                    traces_repo=self.traces_repo,
+                                                   args=self.args,
                                                    **bin_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
@@ -533,9 +534,7 @@ class BenchmonVisualizer:
                 self.logger.debug("Plotting  cpu per core")
                 plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
-                                                      cores_out=self.args.cpu_cores_out,
-                                                      annotate_with_cmds=annotate_with_cmds)
+                self.system_metrics.plot_cpu_per_core(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages)
             else:
@@ -547,9 +546,7 @@ class BenchmonVisualizer:
                 self.logger.debug("Plotting  cpu cores frequency")
                 plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
-                                                           cores_out=self.args.cpu_cores_out,
-                                                           annotate_with_cmds=annotate_with_cmds)
+                freqmax = self.system_metrics.plot_cpufreq(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=freqmax)
             else:
@@ -573,11 +570,7 @@ class BenchmonVisualizer:
                 self.logger.debug("Plotting  network")
                 plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
-                                                          is_rx_only=self.args.net_rx_only,
-                                                          is_tx_only=self.args.net_tx_only,
-                                                          is_netdata_label=self.args.net_data,
-                                                          annotate_with_cmds=annotate_with_cmds)
+                netmax = self.system_metrics.plot_network(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=netmax)
             else:
@@ -601,11 +594,7 @@ class BenchmonVisualizer:
                 self.logger.debug("Plotting  disk")
                 plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
-                                                        is_rd_only=self.args.disk_rd_only,
-                                                        is_wr_only=self.args.disk_wr_only,
-                                                        is_diskdata_label=self.args.disk_data,
-                                                        annotate_with_cmds=annotate_with_cmds)
+                diskmax = self.system_metrics.plot_disk(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=diskmax)
             else:
@@ -646,12 +635,17 @@ class BenchmonVisualizer:
             if self.call_traces:
                 self.logger.debug("Plotting perf call graph")
                 plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=plt.gca())
-                ax = axes[-1] if self.n_subplots > 1 else axes
-                ax.set_yticks([], [])
+
+                if self.n_subplots == 1:
+                    axes = [axes]
+                axes[-1].set_yticks([], [])
+                if len(self.call_depths) > 2:
+                    axes[-2].set_yticks([], [])
+
                 ret = self.call_traces.plot(self.call_depths,
                                             xticks=self.xticks,
                                             xlim=self.xlim,
-                                            legend_ncol=self.args.fig_call_legend_ncol)
+                                            legend_ncol=self.args.fig_legend_call_ncol)
 
                 # Enabled when call-graph is called alone
                 if self.xticks == []:
@@ -664,8 +658,9 @@ class BenchmonVisualizer:
             plot_stage_markers(self.annotation_stages, ax_top=ax_pipeline, ax_bottom=plt.gca(), xlim=self.xlim,)
 
         fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
-        plt.subplots_adjust(hspace=.5)
+        plt.subplots_adjust(hspace=0.015)
         plt.tight_layout()
+        # plt.rcParams['savefig.facecolor'] = "0.5"
 
         # Enable interactive plot
         if self.args.interactive:

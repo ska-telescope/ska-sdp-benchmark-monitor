@@ -32,7 +32,7 @@ def parsing() -> argparse.Namespace:
     # Binary backend
     parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
 
-    # InfluxDB
+    # InfluxDB arguments
     parser.add_argument("--influxdb", action="store_true", help="Visualize data directly from InfluxDB")
     parser.add_argument("--influxdb-url", type=str, default="", help="InfluxDB URL")
     parser.add_argument("--influxdb-token", type=str, default="", help="InfluxDB token")
@@ -55,6 +55,7 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--cpu-cores-in", type=str, default="", help="CPU cores to display")
     parser.add_argument("--cpu-cores-out", type=str, default="", help="CPU cores to exclude")
     parser.add_argument("--mem", action="store_true", help="Visualize memory")
+    parser.add_argument("--mem-shmem", action="store_true", help="Visualize memory consumed in tmpfs filesystem")
     parser.add_argument("--net", action="store_true", help="Visualize network activity")
     parser.add_argument("--net-all", action="store_true", help="Visualize network activity of all interfaces ")
     parser.add_argument("--net-rx-only", action="store_true", help="Visualize rx network only")
@@ -94,11 +95,18 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--fig-name", type=str, default="benchmon_fig", help="Figure name")
     parser.add_argument("--fig-dpi", type=str, default="unset", help="Quality of figure: low, medium, high")
     parser.add_argument("--fig-rast", action="store_true", help="Rasterize vectorized formats (eg. svg, pdf)")
-    parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
     parser.add_argument("--fig-width", type=float, default=25.6, help="Figure width")
     parser.add_argument("--fig-height-unit", type=float, default=3, help="Figure height unit for each subplot")
     parser.add_argument("--fig-xrange", type=int, default=25, help="Number of xticks on x-axis")
     parser.add_argument("--fig-yrange", type=int, default=11, help="Number of yticks on y-axis")
+
+    # Figure legend parameters
+    parser.add_argument("--fig-legend-call-ncol", type=int, default=8,
+                        help="Number of columns in the legend for call traces")
+    parser.add_argument("--fig-legend-ncpu-per-col", type=int, default=16,
+                        help="Number of elements per column in the legend for multiple cores plots")
+    parser.add_argument("--fig-legend-nnodes-per-col", type=int, default=10,
+                        help="Number of elements per column in the legend for multinode plots")
 
     # Enable verbosity
     parser.add_argument("--verbose", action="store_true", help="Enable debug information")
