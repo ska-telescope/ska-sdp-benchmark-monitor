@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -164,6 +165,7 @@ class SystemDataInfluxDB(SystemData):
 
     def __init__(
         self,
+        args: argparse.Namespace,
         logger: logging.Logger,
         client: Any,
         database: str,
@@ -175,6 +177,7 @@ class SystemDataInfluxDB(SystemData):
         target_points: int,
     ) -> None:
         self.logger = logger
+        self.args = args
         self.traces_repo = ""
         self.client = client
         self.database = database

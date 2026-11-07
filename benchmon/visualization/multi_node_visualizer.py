@@ -36,7 +36,7 @@ class BenchmonMNSyncVisualizer:
         hostnames = [data.hostname for data in nodes_data]
         self.commonprefix_hostname = os.path.commonprefix(hostnames)
 
-        self.nelm_per_col = 10
+        self.nelm_per_col = self.args.fig_legend_nnodes_per_col
 
         self.run_sync_plots(nodes_data=nodes_data)
 

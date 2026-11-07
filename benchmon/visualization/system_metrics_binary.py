@@ -295,10 +295,14 @@ class SystemDataBinary:
 
         return True
 
-    def plot_cpu_per_core(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> bool:
+    def plot_cpu_per_core(self, annotate_with_cmds=None) -> bool:
         """
         Plot cpu per core
         """
+        # Previous signature arguments
+        cores_in = self.args.cpu_cores_in
+        cores_out = self.args.cpu_cores_out
+
         if not self.cpu_profile_valid:
             self.logger.warning("CPU profile data not available, will not be plotted.")
             return False
@@ -450,11 +454,14 @@ class SystemDataBinary:
         total = self.mem_prof["MemTotal"] / memunit
         cached = (self.mem_prof["Buffers"] + self.mem_prof["Cached"] + self.mem_prof["Slab"]) / memunit
         used = - cached + (self.mem_prof["MemTotal"] - self.mem_prof["MemFree"]) / memunit
-        shmem = self.mem_prof["Shmem"] / memunit
         plt.fill_between(self.mem_stamps, total, alpha=alpha, label="MemTotal", color="b")
         plt.fill_between(self.mem_stamps, used, alpha=alpha * 3, label="MemUsed", color="b")
         plt.fill_between(self.mem_stamps, used, used + cached, alpha=alpha * 2, label="Cach/Buff", color="g")
-        plt.plot(self.mem_stamps, used + shmem, "--", label="Shmem", color="g")
+
+        # Shared fs-mounted memory
+        if self.args.mem_shmem:
+            shmem = self.mem_prof["Shmem"] / memunit
+            plt.plot(self.mem_stamps, used + shmem, "--", label="Shmem", color="g")
 
         # Swap
         swap_total = self.mem_prof["SwapTotal"] / memunit
@@ -621,10 +628,14 @@ class SystemDataBinary:
             self.logger.error(f"Exception in get_cpufreq_prof: {e}")
             return False
 
-    def plot_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> float:
+    def plot_cpufreq(self, annotate_with_cmds=None) -> float:
         """
         Plot cpu frequency per core
         """
+        # Previous signature arguments
+        cores_in = self.args.cpu_cores_in
+        cores_out = self.args.cpu_cores_out
+
         if not self.cpufreq_profile_valid:
             self.logger.warning("CPU frequency profile data not available, will not be plotted.")
             return False
@@ -767,16 +778,16 @@ class SystemDataBinary:
 
         return True
 
-    def plot_network(self,
-                     all_interfaces=False,
-                     total_network=True,
-                     is_rx_only=False,
-                     is_tx_only=False,
-                     is_netdata_label=True,
-                     annotate_with_cmds=None) -> float:
+    def plot_network(self, total_network=True, annotate_with_cmds=None) -> float:
         """
         Plot network activity
         """
+        # Previous signature arguments
+        all_interfaces = self.args.net_all
+        is_rx_only = self.args.net_rx_only
+        is_tx_only = self.args.net_tx_only
+        is_netdata_label = self.args.net_data
+
         if not self.net_profile_valid:
             self.logger.warning("Network profile data not available, will not be plotted.")
             return False
@@ -1007,22 +1018,24 @@ class SystemDataBinary:
                 with open(ts_pkl, "wb") as _pf:
                     pickle.dump(self.disk_stamps, _pf)
 
-                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
         except Exception as e:
             self.logger.error(f"Exception in get_disk_prof: {e}")
             return False
 
         return True
 
-    def plot_disk(self,
-                  is_rd_only=False,
-                  is_wr_only=False,
-                  is_with_iops=False,
-                  is_diskdata_label=True,
-                  annotate_with_cmds=None) -> float:
+
+    def plot_disk(self, annotate_with_cmds=None) -> float:
         """
         Plot disk activity
         """
+        # Previous signature arguments
+        is_with_iops = self.args.disk_iops
+        is_rd_only = self.args.disk_rd_only
+        is_wr_only = self.args.disk_wr_only
+        is_diskdata_label = self.args.disk_data
+
         if not self.disk_profile_valid:
             self.logger.warning("Disk profile data not available, will not be plotted.")
             return False
