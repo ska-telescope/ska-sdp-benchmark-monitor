@@ -4,6 +4,8 @@
 import argparse
 import logging
 import os
+import sys
+
 from datetime import datetime
 
 from benchmon.visualization import BenchmonMNSyncVisualizer
@@ -11,13 +13,24 @@ from benchmon.visualization import BenchmonVisualizer
 
 
 def parsing() -> argparse.Namespace:
-    """Parse benchmon-visu arguments."""
+    """
+    Parse benchmon-visu arguments
+
+    Returns:
+        argparse.Namespace: Arguments namespace storing attributes
+    """
+    # Parser
     parser = argparse.ArgumentParser()
 
+    # Repositories
     parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Top-level traces repository path")
-    parser.add_argument("--recursive", action="store_true", default=False)
+    parser.add_argument("--recursive", action="store_true", default=False,
+                        help="Recursively visualize traces in nodes sub-directories")
 
+    # Binary backend
     parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
+
+    # InfluxDB arguments
     parser.add_argument("--influxdb", action="store_true", help="Visualize data directly from InfluxDB")
     parser.add_argument("--influxdb-url", type=str, default="", help="InfluxDB URL")
     parser.add_argument("--influxdb-token", type=str, default="", help="InfluxDB token")
@@ -32,6 +45,7 @@ def parsing() -> argparse.Namespace:
         help="Temporal resolution when querying InfluxDB",
     )
 
+    # System metrics
     parser.add_argument("--cpu", action="store_true", help="Visualize CPU")
     parser.add_argument("--cpu-all", action="store_true", help="Visualize all CPU cores")
     parser.add_argument("--cpu-freq", action="store_true", help="Visualize all CPU cores frequencies")
@@ -39,6 +53,7 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--cpu-cores-in", type=str, default="", help="CPU cores to display")
     parser.add_argument("--cpu-cores-out", type=str, default="", help="CPU cores to exclude")
     parser.add_argument("--mem", action="store_true", help="Visualize memory")
+    parser.add_argument("--mem-shmem", action="store_true", help="Visualize memory consumed in tmpfs filesystem")
     parser.add_argument("--net", action="store_true", help="Visualize network activity")
     parser.add_argument("--net-all", action="store_true", help="Visualize network activity of all interfaces ")
     parser.add_argument("--net-rx-only", action="store_true", help="Visualize rx network only")
@@ -52,9 +67,11 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--ib", action="store_true", help="Visualize infiniband activity")
     parser.add_argument("--sys", action="store_true", help="Visualize all system data")
 
+    # Power profiles
     parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power")
     parser.add_argument("--pow", action="store_true", help="Visualize power")
 
+    # Callstack
     parser.add_argument("--inline-call", action="store_true", help="Visualize callstack inline within monitoring")
     parser.add_argument("--inline-call-cmd", type=str, default="", help="Inline command to visualize")
     parser.add_argument("--call", action="store_true", help="Visualize callstack")
@@ -62,23 +79,37 @@ def parsing() -> argparse.Namespace:
     parser.add_argument('--call-depths', type=str, default="", help="Comma-separated depth levels")
     parser.add_argument('--call-cmd', type=str, default="", help="Command to visualize")
 
+    # Annotate from log/event csv file
     parser.add_argument("--annotate-with-log", type=str, default="", help="Annotate the plots with a given log file")
 
+    # Time limits
     parser.add_argument("--start-time", type=str, help="Start time")
     parser.add_argument("--end-time", type=str, help="End time")
 
+    # Figure parameters
     parser.add_argument("--interactive", action="store_true", help="Interactive visualization")
     parser.add_argument("--fig-path", type=str, help="Figure output directory")
     parser.add_argument("--fig-fmt", type=str, default="svg", help="Figure format")
     parser.add_argument("--fig-name", type=str, default="benchmon_fig", help="Figure name")
     parser.add_argument("--fig-dpi", type=str, default="unset", help="Quality of figure: low, medium, high")
-    parser.add_argument("--fig-call-legend-ncol", type=int, default=8, help="Number of columns of call traces legend")
+    parser.add_argument("--fig-rast", action="store_true", help="Rasterize vectorized formats (eg. svg, pdf)")
     parser.add_argument("--fig-width", type=float, default=25.6, help="Figure width")
     parser.add_argument("--fig-height-unit", type=float, default=3, help="Figure height unit for each subplot")
     parser.add_argument("--fig-xrange", type=int, default=25, help="Number of xticks on x-axis")
     parser.add_argument("--fig-yrange", type=int, default=11, help="Number of yticks on y-axis")
 
+    # Figure legend parameters
+    parser.add_argument("--fig-legend-call-ncol", type=int, default=8,
+                        help="Number of columns in the legend for call traces")
+    parser.add_argument("--fig-legend-ncpu-per-col", type=int, default=16,
+                        help="Number of elements per column in the legend for multiple cores plots")
+    parser.add_argument("--fig-legend-nnodes-per-col", type=int, default=10,
+                        help="Number of elements per column in the legend for multinode plots")
+
+    # Enable verbosity
     parser.add_argument("--verbose", action="store_true", help="Enable debug information")
+
+    # Test without reading databases
     parser.add_argument("--test", action="store_true", help="Test without reading dbs")
 
     args = parser.parse_args()
@@ -99,7 +130,16 @@ def expand_sys_args(args: argparse.Namespace) -> None:
 
 
 def create_logger(traces_repo: str, verbose: bool) -> logging.Logger:
-    """Create logging manager."""
+    """
+    Create logging manager
+
+    Args:
+        traces_repo (str) : Traces repository
+        verbose     (bool): Enable verbosity
+
+    Return:
+        logging.Logger: The logger object
+    """
     logger = logging.getLogger("benchmon_logger")
     logger.setLevel(logging.DEBUG)
     fmt = "<%(filename)s> [%(asctime)s] [%(levelname)s] %(message)s"
@@ -133,44 +173,43 @@ def main():
         print(f"Input trace directory {traces_repo} not found. Exiting.")
         return -1
 
+    # Create logging
     logger = create_logger(traces_repo=traces_repo, verbose=args.verbose)
     logger.info(f"benchmon-visu processes traces on {traces_repo}")
+
+    logger.debug(f"benchmon-visu commands: {' '.join(sys.argv)}")
 
     args_str = "benchmon-visu arguments:\n"
     for key, value in vars(args).items():
         args_str += f"\t--{key.replace('_', '-')} {value}\n"
     logger.debug(args_str)
 
-    try:
-        if args.influxdb:
-            from benchmon.visualization.visualizer_influxdb import BenchmonInfluxDBVisualizer
+    if args.influxdb:
+        from benchmon.visualization.visualizer_influxdb import BenchmonInfluxDBVisualizer
 
-            visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=traces_repo)
-            visualizer.run_plots()
-            logger.info("benchmon-visu closes")
-            return 0
-
-        traces_repos = []
-        if not args.test:
-            for name in os.listdir(traces_repo):
-                if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
-                    traces_repos.append(f"{traces_repo}/{name}")
-        if not traces_repos:
-            logger.warning(f"No *bennchmon_traces* directory found in {traces_repo}")
-
-        nodes_data = []
-        for repo in traces_repos:
-            nodes_data.append(BenchmonVisualizer(args=args, logger=logger, traces_repo=repo))
-            nodes_data[-1].run_plots()
-
-        if args.recursive and nodes_data:
-            BenchmonMNSyncVisualizer(args, logger, nodes_data)
-
+        visualizer = BenchmonInfluxDBVisualizer(args=args, logger=logger, traces_repo=traces_repo)
+        visualizer.run_plots()
         logger.info("benchmon-visu closes")
         return 0
-    except Exception as exc:
-        logger.error(f"benchmon-visu failed: {exc}")
-        return 1
+
+    traces_repos = []
+    if not args.test:
+        for name in os.listdir(traces_repo):
+            if os.path.isdir(os.path.join(traces_repo, name)) and "benchmon_traces" in name:
+                traces_repos.append(f"{traces_repo}/{name}")
+    if not traces_repos:
+        logger.warning(f"No *benchmon_traces* directory found in {traces_repo}")
+
+    nodes_data = []
+    for repo in traces_repos:
+        nodes_data.append(BenchmonVisualizer(args=args, logger=logger, traces_repo=repo))
+        nodes_data[-1].run_plots()
+
+    if args.recursive and nodes_data:
+        BenchmonMNSyncVisualizer(args, logger, nodes_data)
+
+    logger.info("benchmon-visu closes")
+    return 0
 
 
 if __name__ == "__main__":

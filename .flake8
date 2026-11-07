@@ -17,13 +17,13 @@ docstring-min-length = 15 # @hc
 
 filename =
     *.py,
-;   benchmon-check,
-;   benchmon-config,
-;   benchmon-hardware,
+    ; exec/benchmon-check,
+    ; exec/benchmon-config,
+    ; exec/benchmon-hardware,
     ./exec/benchmon-report,
     ./exec/benchmon-run,
     ./exec/benchmon-software,
-    ./exec/benchmon-start-grafana,
+    ; ./exec/benchmon-start-grafana,
     ./exec/benchmon-stop-grafana,
     ./exec/benchmon-visu
 
@@ -38,10 +38,7 @@ exclude =
     .pytest_cache,
     mytest,
     .make,
-    libs,
-    .pyenv,
-    benchmon-server,
-    benchmon-stack
+    libs
 
 per-file-ignores =
     __init__.py: F401, D104
