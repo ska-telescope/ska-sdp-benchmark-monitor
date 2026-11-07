@@ -217,7 +217,6 @@ pyrightconfig.json
 .vscode/
 
 # exec files
-
 exec/bin
 exec/include
 exec/lib64
