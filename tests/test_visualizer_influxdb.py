@@ -566,6 +566,7 @@ def create_args(**overrides):
         cpu_cores_in="",
         cpu_cores_out="",
         mem=False,
+        mem_shmem=False,
         net=False,
         net_all=False,
         net_rx_only=False,
@@ -594,11 +595,13 @@ def create_args(**overrides):
         fig_fmt="png",
         fig_name="benchmon_test_fig",
         fig_dpi="unset",
-        fig_call_legend_ncol=8,
         fig_width=12.8,
         fig_height_unit=3,
         fig_xrange=10,
         fig_yrange=11,
+        fig_legend_call_ncol=8,
+        fig_legend_ncpu_per_col=16,
+        fig_legend_nnodes_per_col=10,
         verbose=False,
         test=False,
     )
@@ -619,6 +622,7 @@ def test_system_data_influxdb_builds_profiles_with_runtime_memory_fields(
 ):
     client = FakeInfluxDBClient3()
     metrics = SystemDataInfluxDB(
+        args=create_args(),
         logger=logger,
         client=client,
         database="metrics",
@@ -655,6 +659,7 @@ def test_system_data_influxdb_builds_profiles_with_runtime_memory_fields(
 def test_system_data_influxdb_auto_resolution_buckets_memory(logger):
     client = FakeInfluxDBClient3()
     metrics = SystemDataInfluxDB(
+        args=create_args(),
         logger=logger,
         client=client,
         database="metrics",
@@ -681,6 +686,7 @@ def test_system_data_influxdb_auto_resolution_buckets_memory(logger):
 def test_plot_network_renders_influx_data_in_mb_per_second(logger):
     client = FakeInfluxDBClient3()
     metrics = SystemDataInfluxDB(
+        args=create_args(),
         logger=logger,
         client=client,
         database="metrics",
@@ -805,6 +811,7 @@ def test_plot_disk_uses_sector_units_without_sector_size(logger):
     )
 
     metrics = SystemDataInfluxDB(
+        args=create_args(),
         logger=logger,
         client=client,
         database="metrics",
@@ -876,6 +883,7 @@ def test_plot_disk_uses_real_sector_size_from_influxdb(logger):
     )
 
     metrics = SystemDataInfluxDB(
+        args=create_args(),
         logger=logger,
         client=client,
         database="metrics",
