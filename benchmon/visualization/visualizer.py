@@ -161,6 +161,7 @@ class BenchmonVisualizer:
             self.system_metrics = SystemData(logger=self.logger,
                                              traces_repo=self.traces_repo,
                                              args=self.args,
+                                             enable_pkl_cache=self.args.enable_pkl_cache,
                                              **csv_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
