@@ -10,6 +10,7 @@ from benchmon.visualization import BenchmonVisualizer
 
 
 def create_args(traces_repo: str = "",
+                enable_pkl_cache: bool = False,
                 binary: bool = False,
                 cpu: bool = False,
                 cpu_all: bool = False,
@@ -76,7 +77,6 @@ def run(args: argparse.ArgumentParser):
     shutil.copytree(ref_repo, test_repo, dirs_exist_ok=True)
 
     BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo).run_plots()
-    BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo).run_plots()
 
 
 def test_visu_cpu():
@@ -140,9 +140,10 @@ def test_visu_call():
     run(args=create_args(cpu=True, call=True, call_depth=4, call_cmd="ft.C.x"))
 
 
-def test_visu_all():
+def test_visu_all(enable_pkl_cache=False):
     """Test all reading and visualization"""
-    run(args=create_args(cpu=True, cpu_all=True, cpu_cores_full="0",
+    run(args=create_args(enable_pkl_cache=enable_pkl_cache,
+                         cpu=True, cpu_all=True, cpu_cores_full="0",
                          cpu_freq=True,
                          mem=True,
                          net=True, net_all=True, net_data=True,
@@ -150,4 +151,11 @@ def test_visu_all():
                          ib=True,
                          pow=True,
                          pow_g5k=True,
-                         inline_call=True, call=True, call_depth=4))
+                         inline_call=True,
+                         call=True, call_depth=4))
+
+
+def test_visu_all_enable_pkl_cache():
+    """Test all reading and visualization with PKL cache enabled"""
+    test_visu_all(enable_pkl_cache=True)  # To create PKL cache
+    test_visu_all(enable_pkl_cache=True)  # To use PKL cache

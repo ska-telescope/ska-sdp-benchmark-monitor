@@ -106,6 +106,8 @@ benchmon-visu <traces-directory> [options]
 ```
 If no directory is specified, the current directory (`./`) is used.
 
+`benchmon-visu` can store pickled results for faster subsequent visualizations. This is controlled by the `--enable-pkl-cache` flag. When enabled, `benchmon-visu` will write intermediate results to pickle files and read from them if available, reducing the need to reprocess raw trace data.
+
 `benchmon-visu` also supports reading system metrics directly from InfluxDB v3 instead of local CSV/BIN traces. In this mode, the positional argument is still required, but it is used as the output directory for figures and logs rather than as an input trace directory.
 
 ##### InfluxDB-backed visualization
@@ -193,6 +195,7 @@ Available options:
 ##### Global visualization
 - `--recursive`: Generate synchronized plots for multi-node runs.
 - `--interactive`: Enable interactive mode (matplotlib).
+- `--enable-pkl-cache`: Enable (write and read) caching of results using pickle files.
 - `--start-time`: Set start time (`YYYY-MM-DDTHH:MM:SS`).
 - `--end-time`: Set end time (`YYYY-MM-DDTHH:MM:SS`).
 - `--fig-path`: Directory to save figures (default: traces directory).
