@@ -686,7 +686,7 @@ def test_system_data_influxdb_auto_resolution_buckets_memory(logger):
 def test_plot_network_renders_influx_data_in_mb_per_second(logger):
     client = FakeInfluxDBClient3()
     metrics = SystemDataInfluxDB(
-        args=create_args(),
+        args=create_args(net_data=True),
         logger=logger,
         client=client,
         database="metrics",
@@ -811,7 +811,7 @@ def test_plot_disk_uses_sector_units_without_sector_size(logger):
     )
 
     metrics = SystemDataInfluxDB(
-        args=create_args(),
+        args=create_args(disk_data=True),
         logger=logger,
         client=client,
         database="metrics",
@@ -883,7 +883,7 @@ def test_plot_disk_uses_real_sector_size_from_influxdb(logger):
     )
 
     metrics = SystemDataInfluxDB(
-        args=create_args(),
+        args=create_args(disk_data=True),
         logger=logger,
         client=client,
         database="metrics",
