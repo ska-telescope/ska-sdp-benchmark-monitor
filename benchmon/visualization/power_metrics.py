@@ -37,17 +37,19 @@ class PerfPowerData:
     Perf power database
     """
 
-    def __init__(self, logger: logging.Logger, csv_filename: str):
+    def __init__(self, logger: logging.Logger, csv_filename: str, enable_pkl_cache: bool = False):
         """
         Construct PerfPowData object
 
         Args:
             csv_filename    (str)               csv filename
             logger          (logging.Logger)    logging object
+            enable_pkl_cache (bool)           Enable pickle cache (default: False)
         """
         self.logger = logger
         self.csv_filename = csv_filename
         self.csv_list = []
+        self.enable_pkl_cache = enable_pkl_cache
 
         self.cpus = []
         self.pow_prof = {}
@@ -96,12 +98,13 @@ class PerfPowerData:
         """
         Create power profiles
         """
-        pow_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_prof.pkl"
-        ts_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_stamps.pkl"
+        if self.enable_pkl_cache:
+            pow_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_prof.pkl"
+            ts_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_stamps.pkl"
 
         pickle_loaded = False
 
-        if os.access(pow_pkl, os.R_OK):
+        if self.enable_pkl_cache and os.access(pow_pkl, os.R_OK):
             try:
                 self.logger.debug("Load Power profile..."); t0 = time.time()  # noqa: E702
 
@@ -187,10 +190,11 @@ class PerfPowerData:
             for i in range(0, self.nstamps):
                 self.time_stamps[i + 1] = epoch0 + self.pow_prof["time"][i]
 
-            with open(pow_pkl, "wb") as _pf:
-                pickle.dump(self.pow_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.time_stamps, _pf)
+            if self.enable_pkl_cache:
+                with open(pow_pkl, "wb") as _pf:
+                    pickle.dump(self.pow_prof, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.time_stamps, _pf)
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
