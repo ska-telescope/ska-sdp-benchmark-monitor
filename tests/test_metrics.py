@@ -102,10 +102,8 @@ def test_metrics():
 
         for device in expected_prof.keys():
             for space in expected_prof[device].keys():
-                print(f"Asserting {device}/{space}")
                 err = np.linalg.norm(expected_prof[device][space] - profiles[key][device][space])
-                if err > eps:
-                    print(f"Unexpected results for {device}/{space}")
+                assert err < eps, f"Unexpected results for {device}/{space}"
 
     profiles = {
         f"{ref_repo}/pkl_dir/mem_prof.pkl": bm.system_metrics.mem_prof,
