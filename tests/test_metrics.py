@@ -11,6 +11,7 @@ from benchmon.visualization import BenchmonVisualizer
 
 
 def create_args(traces_repo: str = "",
+                enable_pkl_cache: bool = False,
                 binary: bool = False,
                 cpu: bool = False,
                 cpu_all: bool = False,
@@ -19,6 +20,7 @@ def create_args(traces_repo: str = "",
                 cpu_cores_out: str = "",
                 cpu_freq: bool = False,
                 mem: bool = False,
+                mem_shmem: bool = False,
                 net: bool = False,
                 net_all: bool = False,
                 net_data: bool = False,
@@ -47,7 +49,7 @@ def create_args(traces_repo: str = "",
                 fig_fmt: str = "svg",
                 fig_name: str = "benchmon_test_fig",
                 fig_dpi: str = "unset",
-                fig_call_legend_ncol: int = 8,
+                fig_legend_call_ncol: int = 8,
                 fig_width: float = 25.6,
                 fig_height_unit: float = 3,
                 fig_xrange: int = 25,
@@ -72,7 +74,8 @@ def test_metrics():
     ref_repo = f"{cwd}/data_for_visu/benchmon_traces_neowise-8.lyon.grid5000.fr"
     shutil.copytree(ref_repo, test_repo, dirs_exist_ok=True)
 
-    args = create_args(cpu=True, cpu_freq=True, mem=True, net=True, disk=True, ib=True, call=True, pow=True)
+    args = create_args(cpu=True, cpu_freq=True, mem=True, net=True, disk=True, ib=True, pow=True,
+                       enable_pkl_cache=True)
 
     bm = BenchmonVisualizer(args=args, logger=logger, traces_repo=test_repo)
 
