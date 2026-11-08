@@ -92,6 +92,14 @@ test_visualizer:
     - source $VENV_DIR/bin/activate
     - pytest --no-cov tests/test_visualizer.py
 
+test_visualizer_influxdb:
+  stage: test
+  extends: .test_env
+  needs: ["install"]
+  script:
+    - source $VENV_DIR/bin/activate
+    - pytest --no-cov tests/test_visualizer_influxdb.py
+
 test_metrics:
   stage: test
   extends: .test_env

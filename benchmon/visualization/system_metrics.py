@@ -2,14 +2,15 @@
 Python module to read and plot system resources measurements
 """
 
+import argparse
 import csv
 import itertools
 import logging
+import math
 import os
 import pickle
 import sys
 import time
-from math import ceil
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,6 +22,7 @@ class SystemData:
     """
 
     def __init__(self,
+                 args: argparse.Namespace,
                  logger: logging.Logger,
                  traces_repo: str,
                  csv_cpu_report: str,
@@ -33,6 +35,7 @@ class SystemData:
         """
         Construct and profile system resource usage profile
         """
+        self.args = args
         self.logger = logger
         self.traces_repo = traces_repo
         self.enable_pkl_cache = enable_pkl_cache
@@ -278,17 +281,22 @@ class SystemData:
         # Order legend
         _order = [0, 4, 3, 2, 1]
         _handles, _labels = plt.gca().get_legend_handles_labels()
-        plt.legend([_handles[idx] for idx in _order], [_labels[idx] for idx in _order], loc=1)
+        plt.legend([_handles[idx] for idx in _order], [_labels[idx] for idx in _order],
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
 
         return 0
 
-    def plot_cpu_per_core(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> int:
+    def plot_cpu_per_core(self, annotate_with_cmds=None) -> int:
         """
         Plot cpu per core
         """
+        # Previous signature arguments
+        cores_in = self.args.cpu_cores_in
+        cores_out = self.args.cpu_cores_out
+        ncpu_per_col = self.args.fig_legend_ncpu_per_col
 
         # Check there is content
         if (len(self.cpu_stamps) < 1):
@@ -316,14 +324,15 @@ class SystemData:
 
             cpu_wai = self.cpu_prof[core_name]["iowait"]
 
-            plt.plot(self.cpu_stamps, cpu_usr + cpu_sys + cpu_wai, color=cm[idx], label=f"core-{core}")
+            plt.plot(self.cpu_stamps, cpu_usr + cpu_sys + cpu_wai, color=cm[idx], label=f"{core}")
 
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         plt.yticks(100 / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU Cores (%)")
         plt.grid()
-        plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu / 16), fontsize="6")
+        plt.legend(ncols=math.ceil(_ncpu / ncpu_per_col), fontsize="6",  # alignment="left",
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0,)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
@@ -416,11 +425,13 @@ class SystemData:
         total = self.mem_prof["MemTotal"] / memunit
         cached = (self.mem_prof["Buffers"] + self.mem_prof["Cached"] + self.mem_prof["Slab"]) / memunit
         used = - cached + (self.mem_prof["MemTotal"] - self.mem_prof["MemFree"]) / memunit
-        shmem = self.mem_prof["Shmem"] / memunit
         plt.fill_between(self.mem_stamps, total, alpha=alpha, label="MemTotal", color="b")
         plt.fill_between(self.mem_stamps, used, alpha=alpha * 3, label="MemUsed", color="b")
         plt.fill_between(self.mem_stamps, used, used + cached, alpha=alpha * 2, label="Cach/Buff", color="g")
-        plt.plot(self.mem_stamps, used + shmem, "--", label="Shmem", color="g")
+
+        if self.args.mem_shmem:
+            shmem = self.mem_prof["Shmem"] / memunit
+            plt.plot(self.mem_stamps, used + shmem, "--", label="Shmem", color="g")
 
         # Swap
         swap_total = self.mem_prof["SwapTotal"] / memunit
@@ -444,7 +455,7 @@ class SystemData:
         plt.yticks(yticks)
 
         plt.ylabel("Memory (GiB)")
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid()
 
         if annotate_with_cmds:
@@ -566,10 +577,15 @@ class SystemData:
 
         return 0
 
-    def plot_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> float:
+    def plot_cpufreq(self, annotate_with_cmds=None) -> float:
         """
         Plot cpu frequency per core
         """
+        # Previous signature arguments
+        cores_in = self.args.cpu_cores_in
+        cores_out = self.args.cpu_cores_out
+        ncpu_per_col = self.args.fig_legend_ncpu_per_col
+
         HZ_UNIT = 1e6  # noqa: N806
 
         cores = [core for core in range(self.ncpu_freq)]
@@ -605,7 +621,8 @@ class SystemData:
         plt.yticks(cpu_freq_max / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU frequencies (GHz)")
         plt.grid()
-        plt.legend(loc=0, ncol=self.ncpu_freq // ceil(self.ncpu_freq / 16), fontsize="6")
+        plt.legend(ncols=math.ceil(_ncpu / ncpu_per_col), fontsize="6",  # alignment="left",
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=cpu_freq_max)
@@ -725,16 +742,16 @@ class SystemData:
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-    def plot_network(self,
-                     all_interfaces=False,
-                     total_network=True,
-                     is_rx_only=False,
-                     is_tx_only=False,
-                     is_netdata_label=True,
-                     annotate_with_cmds=None) -> float:
+    def plot_network(self, total_network=True, annotate_with_cmds=None) -> float:
         """
         Plot network activity
         """
+        # Previous signature arguments
+        all_interfaces = self.args.net_all
+        is_rx_only = self.args.net_rx_only
+        is_tx_only = self.args.net_tx_only
+        is_netdata_label = self.args.net_data
+
         BYTES_UNIT = 1000**2  # noqa: N806  (MB)
         _alpha = 0.5
         _mrksz = 3.5
@@ -812,7 +829,7 @@ class SystemData:
                 break
         plt.yticks(yticks)
         plt.ylabel("Network (MB/s)")
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid()
 
         if annotate_with_cmds:
@@ -987,15 +1004,16 @@ class SystemData:
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
-    def plot_disk(self,
-                  is_rd_only=False,
-                  is_wr_only=False,
-                  is_with_iops=False,
-                  is_diskdata_label=True,
-                  annotate_with_cmds=None) -> float:
+    def plot_disk(self, annotate_with_cmds=None) -> float:
         """
         Plot disk activity
         """
+        # Previous signature arguments
+        is_with_iops = self.args.disk_iops
+        is_rd_only = self.args.disk_rd_only
+        is_wr_only = self.args.disk_wr_only
+        is_diskdata_label = self.args.disk_data
+
         alpha = 0.5
         diskmax = 0.0
         bandwidth_ylabel = getattr(self, "disk_bandwidth_ylabel", "Disk bandwidth (MB/s)")
@@ -1070,9 +1088,9 @@ class SystemData:
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         if is_with_iops:
-            plt.legend(hand + hand_twin, lab + lab_twin, loc=1)
+            plt.legend(hand + hand_twin, lab + lab_twin, loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         else:
-            plt.legend(loc=1)
+            plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds and not is_with_iops:
             annotate_with_cmds(ymax=diskmax)  # @todo
@@ -1244,7 +1262,7 @@ class SystemData:
         plt.yticks(yticks)
         plt.ylabel("Infiniband bandwidth (MB/s)")
         plt.grid()
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         ibmax = max(max(self.ib_rx_total), max(self.ib_tx_total))
 

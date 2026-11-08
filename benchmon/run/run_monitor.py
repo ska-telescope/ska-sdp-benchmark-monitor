@@ -30,7 +30,6 @@ class RunMonitor:
 
         self.args = args
         self.logger = logger
-        self.should_run = True
         self.is_shutting_down = False
 
         self.save_dir_base = args.save_dir
@@ -94,15 +93,6 @@ class RunMonitor:
         self.perfpow_process = None
         self.perfcall_process = None
 
-    def _check_control_node(self):
-        """Checks if the current node is the control node for post-processing."""
-        oar_check = subprocess.run(args=["oarprint", "host"],
-                                   capture_output=True,
-                                   shell=True,
-                                   text=True,
-                                   check=False).stdout.split("\n")[0] == HOSTNAME
-        slurm_check = os.environ.get("SLURM_NODEID") == "0"
-        self.is_benchmon_control_node = oar_check or slurm_check
 
     def run(self, timeout: int = None):
         """
@@ -115,9 +105,6 @@ class RunMonitor:
         self.t0 = time.time()
 
         os.makedirs(self.save_dir, exist_ok=True)
-
-        # Check if this is the control node
-        self._check_control_node()
 
         if self.is_grafana:
             # --- REFACTOR: Load connection info from the correct shared path ---
@@ -160,20 +147,24 @@ class RunMonitor:
         if self.is_call:
             self.run_perf_call()
 
-        # --- FIX: Replace blocking wait() with a main loop ---
         if timeout:
             self.logger.info(f"Running for a fixed duration of {timeout} seconds.")
             time.sleep(timeout)
         else:
             self.logger.info("Monitoring started. Press Ctrl+C to stop.")
             try:
-                while self.should_run:
-                    time.sleep(1)
+                if self.is_system:
+                    self.sys_process[0].wait()
+                elif self.is_power:
+                    self.perfpow_process.wait()
+                elif self.is_call:
+                    self.perfcall_process.wait()
             except KeyboardInterrupt:
                 self.logger.info("Ctrl+C received, initiating termination.")
-                self.should_run = False
 
-        self._shutdown()
+        # Perform post-processing after all processes are terminated
+        self.post_process()
+
 
     def run_sys_monitoring(self):
         """
@@ -372,19 +363,8 @@ class RunMonitor:
         Terminate background process after catching term signal
         """
         # This method is now only for signal handling
-        self.logger.info(f"Signal {signum} received, initiating termination.")
-        self.should_run = False
+        self.logger.debug(f"Signal {signum} received, initiating termination.")
 
-    def _shutdown(self):
-        """
-        Internal method to perform all shutdown operations once.
-        """
-        if self.is_shutting_down:
-            return
-        self.is_shutting_down = True
-        self.logger.info("Shutting down monitoring processes...")
-
-        # --- REFACTOR: Stop the new HP Collector ---
         if self.is_grafana and self.hp_collector:
             self.hp_collector.stop()
 
@@ -446,8 +426,6 @@ class RunMonitor:
 
             self.logger.debug(f"Terminated system monitoring with stdout: {process_stdout}")
 
-        # Perform post-processing after all processes are terminated
-        self.post_process()
 
     def post_process(self):
         """

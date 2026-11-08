@@ -157,13 +157,14 @@ benchmon-visu ./benchmon_influx_figures \
 
 Available options:
 ##### Resource usage
-- `--mem`: Visualize memory usage.
 - `--cpu`: Show average CPU usage (user, system, wait, idle, virt).
 - `--cpu-all`: Show all CPU cores usage.
 - `--cpu-freq`: Show CPU core frequencies.
 - `--cpu-cores-full`: Show core usage per space (comma-separated).
 - `--cpu-cores-in`: Include specific CPU cores (comma-separated).
 - `--cpu-cores-out`: Exclude specific CPU cores (comma-separated).
+- `--mem`: Visualize memory usage.
+- `--mem-shmem`: Include shared memory consumption from tmpfs (mainly /dev/shm).
 - `--net`: Show network activity.
 - `--net-all`: Show all network interfaces.
 - `--net-rx-only`: Show only RX activity.
@@ -205,6 +206,9 @@ Available options:
 - `--fig-height-unit`: Figure subplot height in inches (default: 3).
 - `--fig-xrange`: Number of ticks on the x-axis (default: 25).
 - `--fig-yrange`: Number of ticks on the y-axis (default: 11).
+- `--fig-legend-call-ncol`: Number of columns in the call legend (default: 8).
+- `--fig-legend-ncpu-per-col`: Number (max) of CPUs per column in the legend (default: 16).
+- `--fig-legend-nnodes-per-col`: Number (max) of nodes per column in the legend (default: 10).
 **
 
 # SW/HW contexts

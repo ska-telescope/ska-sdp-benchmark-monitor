@@ -7,7 +7,6 @@ import itertools
 import os
 import pickle
 import time
-from math import ceil
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -288,17 +287,22 @@ class SystemDataBinary:
         # Order legend
         _order = [0, 4, 3, 2, 1]
         _handles, _labels = plt.gca().get_legend_handles_labels()
-        plt.legend([_handles[idx] for idx in _order], [_labels[idx] for idx in _order], loc=1)
+        plt.legend([_handles[idx] for idx in _order], [_labels[idx] for idx in _order],
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
 
         return True
 
-    def plot_cpu_per_core(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> bool:
+    def plot_cpu_per_core(self, annotate_with_cmds=None) -> bool:
         """
         Plot cpu per core
         """
+        # Previous signature arguments
+        cores_in = self.args.cpu_cores_in
+        cores_out = self.args.cpu_cores_out
+
         if not self.cpu_profile_valid:
             self.logger.warning("CPU profile data not available, will not be plotted.")
             return False
@@ -329,7 +333,8 @@ class SystemDataBinary:
         plt.yticks(100 / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU Cores (%)")
         plt.grid()
-        plt.legend(loc=0, ncol=_ncpu // ceil(_ncpu / 16), fontsize="6")
+        plt.legend(ncol=_ncpu // 16, fontsize="6",
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=100)
@@ -449,11 +454,14 @@ class SystemDataBinary:
         total = self.mem_prof["MemTotal"] / memunit
         cached = (self.mem_prof["Buffers"] + self.mem_prof["Cached"] + self.mem_prof["Slab"]) / memunit
         used = - cached + (self.mem_prof["MemTotal"] - self.mem_prof["MemFree"]) / memunit
-        shmem = self.mem_prof["Shmem"] / memunit
         plt.fill_between(self.mem_stamps, total, alpha=alpha, label="MemTotal", color="b")
         plt.fill_between(self.mem_stamps, used, alpha=alpha * 3, label="MemUsed", color="b")
         plt.fill_between(self.mem_stamps, used, used + cached, alpha=alpha * 2, label="Cach/Buff", color="g")
-        plt.plot(self.mem_stamps, used + shmem, "--", label="Shmem", color="g")
+
+        # Shared fs-mounted memory
+        if self.args.mem_shmem:
+            shmem = self.mem_prof["Shmem"] / memunit
+            plt.plot(self.mem_stamps, used + shmem, "--", label="Shmem", color="g")
 
         # Swap
         swap_total = self.mem_prof["SwapTotal"] / memunit
@@ -472,7 +480,7 @@ class SystemDataBinary:
         plt.yticks(yticks)
 
         plt.ylabel("Memory (GiB)")
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid()
 
         if annotate_with_cmds:
@@ -620,10 +628,14 @@ class SystemDataBinary:
             self.logger.error(f"Exception in get_cpufreq_prof: {e}")
             return False
 
-    def plot_cpufreq(self, cores_in: str = "", cores_out: str = "", annotate_with_cmds=None) -> float:
+    def plot_cpufreq(self, annotate_with_cmds=None) -> float:
         """
         Plot cpu frequency per core
         """
+        # Previous signature arguments
+        cores_in = self.args.cpu_cores_in
+        cores_out = self.args.cpu_cores_out
+
         if not self.cpufreq_profile_valid:
             self.logger.warning("CPU frequency profile data not available, will not be plotted.")
             return False
@@ -641,7 +653,7 @@ class SystemDataBinary:
         cm = plt.cm.jet(np.linspace(0, 1, _ncpu + 1))
 
         for idx, core in enumerate(cores):
-            plt.plot(self.cpufreq_stamps, self.cpufreq_prof[core], color=cm[idx], label=f"core-{core}")
+            plt.plot(self.cpufreq_stamps, self.cpufreq_prof[core], color=cm[idx], label=f"{core}")
 
         if not self.cpufreq_vals:
             self.logger.error("No CPU frequency data found.")
@@ -663,7 +675,8 @@ class SystemDataBinary:
         plt.yticks(cpu_freq_max / (self.yrange - 1) * np.arange(self.yrange))
         plt.ylabel("CPU frequencies (GHz)")
         plt.grid()
-        plt.legend(loc=0, ncol=self.ncpu_freq // ceil(self.ncpu_freq / 16), fontsize="6")
+        plt.legend(ncol=self.ncpu_freq // 16, fontsize="6",
+                   loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0, )
 
         if annotate_with_cmds:
             annotate_with_cmds(ymax=cpu_freq_max)
@@ -765,16 +778,16 @@ class SystemDataBinary:
 
         return True
 
-    def plot_network(self,
-                     all_interfaces=False,
-                     total_network=True,
-                     is_rx_only=False,
-                     is_tx_only=False,
-                     is_netdata_label=True,
-                     annotate_with_cmds=None) -> float:
+    def plot_network(self, total_network=True, annotate_with_cmds=None) -> float:
         """
         Plot network activity
         """
+        # Previous signature arguments
+        all_interfaces = self.args.net_all
+        is_rx_only = self.args.net_rx_only
+        is_tx_only = self.args.net_tx_only
+        is_netdata_label = self.args.net_data
+
         if not self.net_profile_valid:
             self.logger.warning("Network profile data not available, will not be plotted.")
             return False
@@ -851,7 +864,7 @@ class SystemDataBinary:
                 break
         plt.yticks(yticks)
         plt.ylabel("Network (MB/s)")
-        plt.legend(loc=1)
+        plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         plt.grid()
 
         if annotate_with_cmds:
@@ -1005,22 +1018,24 @@ class SystemDataBinary:
                 with open(ts_pkl, "wb") as _pf:
                     pickle.dump(self.disk_stamps, _pf)
 
-                self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
+            self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
         except Exception as e:
             self.logger.error(f"Exception in get_disk_prof: {e}")
             return False
 
         return True
 
-    def plot_disk(self,
-                  is_rd_only=False,
-                  is_wr_only=False,
-                  is_with_iops=False,
-                  is_diskdata_label=True,
-                  annotate_with_cmds=None) -> float:
+
+    def plot_disk(self, annotate_with_cmds=None) -> float:
         """
         Plot disk activity
         """
+        # Previous signature arguments
+        is_with_iops = self.args.disk_iops
+        is_rd_only = self.args.disk_rd_only
+        is_wr_only = self.args.disk_wr_only
+        is_diskdata_label = self.args.disk_data
+
         if not self.disk_profile_valid:
             self.logger.warning("Disk profile data not available, will not be plotted.")
             return False
@@ -1091,9 +1106,9 @@ class SystemDataBinary:
         plt.xticks(*self.xticks)
         plt.xlim(self.xlim)
         if is_with_iops:
-            plt.legend(hand + hand_twin, lab + lab_twin, loc=1)
+            plt.legend(hand + hand_twin, lab + lab_twin, loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         else:
-            plt.legend(loc=1)
+            plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
 
         if annotate_with_cmds and not is_with_iops:
             annotate_with_cmds(ymax=diskmax)  # @todo
