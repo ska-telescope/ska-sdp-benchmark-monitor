@@ -11,8 +11,8 @@ def pytest_collection_modifyitems(session, config, items):
         "tests/test_visualizer.py",
         "tests/test_visualizer_influxdb.py",
         "tests/test_benchmon-visu_func.py",
-        "tests/test_g5k.py",
         "tests/test_metrics.py",
+        "tests/test_g5k.py",
     ]
 
     def sort_key(item):
