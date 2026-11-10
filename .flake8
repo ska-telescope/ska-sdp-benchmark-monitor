@@ -17,9 +17,9 @@ docstring-min-length = 15 # @hc
 
 filename =
     *.py,
-;   benchmon-check,
-;   benchmon-config,
-;   benchmon-hardware,
+    ./exec/benchmon-check,
+    ; ./exec/benchmon-config,
+    ; ./exec/benchmon-hardware,
     ./exec/benchmon-report,
     ./exec/benchmon-run,
     ./exec/benchmon-software,

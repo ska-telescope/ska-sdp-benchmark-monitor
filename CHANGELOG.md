@@ -2,6 +2,8 @@
 ### Added
 - `benchmon-setup` (including `benchmon-check`) for pre-run validation, environment checks, and hardware/software characterisation
 - `benchmon-postprocess` for visualization, report generation, and HPCToolkit post-processing
+### Added
+- `--enable-pkl-cache` option in `benchmon-visu` to enable pickle caching. Disabled by default.
 - Phase annotations in `benchmon-visu`: stages read from an `events.csv` file are drawn on the plots, using the parameter `--annotate-with-log <events.csv>`
 - `--pkl-cache` option in `benchmon-visu` to enable pickle caching
 
@@ -15,6 +17,10 @@
   - (3) defaults: `level=0`, `save-dir=./benchmon_savedir_JOBID`
   - Extra args in `BENCHMON_ARGS` are forwarded to `benchmon-run` only
   - `--report-template` in `benchmon-postprocess` is exclusively user-side
+- Pickle caching is now disabled by default
+
+
+### Changed
 - Pickle caching is now disabled by default
 
 ## 0.2.0 - 2025-08-08

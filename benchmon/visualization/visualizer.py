@@ -59,8 +59,11 @@ class BenchmonVisualizer:
         self.logger = logger
 
         self.traces_repo = traces_repo
-        if args.pkl_cache:
-            os.makedirs(name=f"{self.traces_repo}/pkl_dir", exist_ok=True)
+
+        if self.args.enable_pkl_cache:
+            pkl_dir = f"{self.traces_repo}/pkl_dir"
+            self.logger.info(f"Pickle cache enabled at {pkl_dir} (read/write)")
+            os.makedirs(name=pkl_dir, exist_ok=True)
 
         self.hostname = os.path.basename(os.path.realpath(traces_repo))[16:]
         self.system_metrics = None
@@ -95,8 +98,9 @@ class BenchmonVisualizer:
         self.load_power_metrics()
         self.load_call_metrics()
 
-        self.get_xaxis_params(xmargin=0)
-        self.apply_xaxis_params()
+        if self.system_metrics:
+            self.get_xaxis_params(xmargin=0)
+            self.apply_xaxis_params()
 
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
@@ -156,6 +160,8 @@ class BenchmonVisualizer:
         if self.is_any_sys:
             self.system_metrics = SystemData(logger=self.logger,
                                              traces_repo=self.traces_repo,
+                                             args=self.args,
+                                             enable_pkl_cache=self.args.enable_pkl_cache,
                                              **csv_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
@@ -195,6 +201,7 @@ class BenchmonVisualizer:
         if self.is_any_sys:
             self.system_metrics = SystemDataBinary(logger=self.logger,
                                                    traces_repo=self.traces_repo,
+                                                   args=self.args,
                                                    **bin_reports)
 
         self.n_subplots += self.args.cpu + self.args.cpu_all + self.args.cpu_freq + _n_cores_full \
@@ -209,12 +216,13 @@ class BenchmonVisualizer:
         """
         if self.args.pow:
             self.power_perf_metrics = PerfPowerData(logger=self.logger,
-                                                    csv_filename=f"{self.traces_repo}/pow_report.csv")
-
+                                                    csv_filename=f"{self.traces_repo}/pow_report.csv",
+                                                    enable_pkl_cache=self.args.enable_pkl_cache)
         if self.args.pow_g5k:
             self.power_g5k_metrics = G5KPowerData(traces_dir=self.traces_repo)
 
         self.n_subplots += (self.args.pow or self.args.pow_g5k)
+
 
     def load_call_metrics(self) -> None:
         """
@@ -233,7 +241,6 @@ class BenchmonVisualizer:
                     self.logger.warning(f"Empty monotonic time file: {mono_file}")
                     return
                 self.call_monotonic_to_real = float(line)
-
 
             call_raw = PerfCallRawData(logger=self.logger,
                                        filename=f"{self.traces_repo}/call_report.txt")
@@ -265,7 +272,8 @@ class BenchmonVisualizer:
                                             cmd=self.call_chosen_cmd,
                                             samples=samples,
                                             m2r=self.call_monotonic_to_real,
-                                            traces_repo=self.traces_repo)
+                                            traces_repo=self.traces_repo,
+                                            enable_pkl_cache=self.args.enable_pkl_cache)
 
             if self.args.call_depth:
                 self.call_depths = [depth for depth in range(self.args.call_depth)]
@@ -380,15 +388,13 @@ class BenchmonVisualizer:
 
         return inline_calls_prof
 
-    def get_xaxis_params(self, xmargin=0.02) -> None:
+    def get_xaxis_params(self, t0=None, tf=None, xmargin=0.02) -> None:
         """
         Get x-axis params: limits and ticks
 
         Args:
             xmargin (float): xmaring percent
         """
-        t0, tf = None, None
-
         # Try to get timestamps from different metrics with proper error handling
         def safe_get_timestamps(stamps, metric_name):
             """Safely get first and last timestamps from a stamps array"""
@@ -482,7 +488,7 @@ class BenchmonVisualizer:
             self.logger.warning("No subplots to create, skipping plotting")
             return
 
-        fig, _ = plt.subplots(self.n_subplots, sharex=True)
+        fig, axes = plt.subplots(self.n_subplots, sharex=True)
         fig.set_size_inches(self.args.fig_width, self.n_subplots * self.args.fig_height_unit)
         fig.add_gridspec(self.n_subplots, hspace=0)
 
@@ -501,7 +507,7 @@ class BenchmonVisualizer:
         if self.args.cpu:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 self.system_metrics.plot_cpu(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -514,7 +520,7 @@ class BenchmonVisualizer:
             if self.system_metrics:
                 for core_number in self.args.cpu_cores_full.split(","):
                     self.logger.debug(f"Plotting  full cpu core {core_number}")
-                    ax = plt.subplot(self.n_subplots, 1, sbp)
+                    plt.subplot(self.n_subplots, 1, sbp)
                     sbp += 1
                     self.system_metrics.plot_cpu(number=core_number,
                                                  annotate_with_cmds=annotate_with_cmds)
@@ -527,11 +533,9 @@ class BenchmonVisualizer:
         if self.args.cpu_all:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu per core")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                self.system_metrics.plot_cpu_per_core(cores_in=self.args.cpu_cores_in,
-                                                      cores_out=self.args.cpu_cores_out,
-                                                      annotate_with_cmds=annotate_with_cmds)
+                self.system_metrics.plot_cpu_per_core(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages)
             else:
@@ -541,11 +545,9 @@ class BenchmonVisualizer:
         if self.args.cpu_freq:
             if self.system_metrics:
                 self.logger.debug("Plotting  cpu cores frequency")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                freqmax = self.system_metrics.plot_cpufreq(cores_in=self.args.cpu_cores_in,
-                                                           cores_out=self.args.cpu_cores_out,
-                                                           annotate_with_cmds=annotate_with_cmds)
+                freqmax = self.system_metrics.plot_cpufreq(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=freqmax)
             else:
@@ -555,7 +557,7 @@ class BenchmonVisualizer:
         if self.args.mem:
             if self.system_metrics:
                 self.logger.debug("Plotting  memory/swap")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 memmax = self.system_metrics.plot_memory_usage(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -567,13 +569,9 @@ class BenchmonVisualizer:
         if self.args.net or self.args.net_all or self.args.net_data:
             if self.system_metrics:
                 self.logger.debug("Plotting  network")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                netmax = self.system_metrics.plot_network(all_interfaces=self.args.net_all,
-                                                          is_rx_only=self.args.net_rx_only,
-                                                          is_tx_only=self.args.net_tx_only,
-                                                          is_netdata_label=self.args.net_data,
-                                                          annotate_with_cmds=annotate_with_cmds)
+                netmax = self.system_metrics.plot_network(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=netmax)
             else:
@@ -583,7 +581,7 @@ class BenchmonVisualizer:
         if self.args.ib:
             if self.system_metrics:
                 self.logger.debug("Plotting  infiniband")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
                 ibmax = self.system_metrics.plot_ib(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
@@ -595,13 +593,9 @@ class BenchmonVisualizer:
         if self.args.disk:
             if self.system_metrics:
                 self.logger.debug("Plotting  disk")
-                ax = plt.subplot(self.n_subplots, 1, sbp)
+                plt.subplot(self.n_subplots, 1, sbp)
                 sbp += 1
-                diskmax = self.system_metrics.plot_disk(is_with_iops=self.args.disk_iops,
-                                                        is_rd_only=self.args.disk_rd_only,
-                                                        is_wr_only=self.args.disk_wr_only,
-                                                        is_diskdata_label=self.args.disk_data,
-                                                        annotate_with_cmds=annotate_with_cmds)
+                diskmax = self.system_metrics.plot_disk(annotate_with_cmds=annotate_with_cmds)
                 if self.ical_stages:
                     plot_ical_stages(self.ical_stages, ymax=diskmax)
             else:
@@ -610,7 +604,7 @@ class BenchmonVisualizer:
         # (perf+g5k) Power plot
         if self.args.pow or self.args.pow_g5k:
             self.logger.debug("Plotting perf power")
-            ax = plt.subplot(self.n_subplots, 1, sbp)
+            plt.subplot(self.n_subplots, 1, sbp)
             sbp += 1
             powmax = [0]
 
@@ -634,26 +628,40 @@ class BenchmonVisualizer:
             plt.xticks(*self.xticks)
             plt.xlim(self.xlim)
             plt.ylabel("Power (W)")
-            plt.legend(loc=1)
+            plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
             plt.grid()
 
         # (perf) Calltrace plot
         if self.args.call:
             if self.call_traces:
                 self.logger.debug("Plotting perf call graph")
-                plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=ax)
-                self.call_traces.plot(self.call_depths,
-                                      xticks=self.xticks,
-                                      xlim=self.xlim,
-                                      legend_ncol=self.args.fig_call_legend_ncol)
+                plt.subplot(self.n_subplots, 1, (sbp, sbp + 1), sharex=plt.gca())
+
+                if self.n_subplots == 1:
+                    axes = [axes]
+                axes[-1].set_yticks([], [])
+                if len(self.call_depths) > 2:
+                    axes[-2].set_yticks([], [])
+
+                ret = self.call_traces.plot(self.call_depths,
+                                            xticks=self.xticks,
+                                            xlim=self.xlim,
+                                            legend_ncol=self.args.fig_legend_call_ncol)
+
+                # Enabled when call-graph is called alone
+                if self.xticks == []:
+                    self.get_xaxis_params(t0=ret[0], tf=ret[1])
+                    plt.xticks(self.xticks[0], self.xticks[1])
+                    plt.xlim(self.xlim)
             else:
                 self.logger.warning("No call traces available for call graph plot")
         if self.annotation_stages and ax_pipeline is not None:
             plot_stage_markers(self.annotation_stages, ax_top=ax_pipeline, ax_bottom=plt.gca(), xlim=self.xlim,)
 
         fig.suptitle(f"{os.path.basename(os.path.realpath(self.traces_repo))[16:]}")
-        plt.subplots_adjust(hspace=.5)
+        plt.subplots_adjust(hspace=0.015)
         plt.tight_layout()
+        # plt.rcParams['savefig.facecolor'] = "0.5"
 
         # Enable interactive plot
         if self.args.interactive:

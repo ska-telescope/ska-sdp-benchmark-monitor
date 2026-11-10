@@ -17,16 +17,18 @@ class PerfCallRawData:
     Perf callsatck raw data
     """
 
-    def __init__(self, logger: logging.Logger, filename: str):
+    def __init__(self, logger: logging.Logger, filename: str, enable_pkl_cache: bool = False):
         """
         Construct RawData class
 
         Args:
-            logger      (logging.Logger)    Logging object
-            filename    (str)               Data filename
+            logger           (logging.Logger) Logging object
+            filename         (str)            Data filename
+            enable_pkl_cache (bool)           Enable pickle cache (default: False)
         """
         self.logger = logger
         self.filename = filename
+        self.enable_pkl_cache = enable_pkl_cache
 
 
     def load_data(self) -> list:
@@ -159,10 +161,11 @@ class PerfCallRawData:
         """
         Get samples and commands
         """
-        samples_pkl = f"{os.path.dirname(self.filename)}/pkl_dir/call_samples.pkl"
-        cmds_pkl = f"{os.path.dirname(self.filename)}/pkl_dir/call_cmds.pkl"
+        if self.enable_pkl_cache:
+            samples_pkl = f"{os.path.dirname(self.filename)}/pkl_dir/call_samples.pkl"
+            cmds_pkl = f"{os.path.dirname(self.filename)}/pkl_dir/call_cmds.pkl"
 
-        if os.access(samples_pkl, os.R_OK) and os.access(cmds_pkl, os.R_OK):
+        if self.enable_pkl_cache and os.access(samples_pkl, os.R_OK) and os.access(cmds_pkl, os.R_OK):
             self.logger.debug("Load PerfCall samples + PerfCall commands list..."); t0 = time.time()  # noqa: E702
 
             try:
@@ -208,10 +211,10 @@ class PerfCallRawData:
                 self.logger.warning("No samples created from raw data")
                 return [], {}
 
-            os.makedirs(os.path.dirname(samples_pkl), exist_ok=True)
-            with open(samples_pkl, "wb") as _pf:
-                pickle.dump(samples, _pf)
-
+            if self.enable_pkl_cache:
+                os.makedirs(os.path.dirname(samples_pkl), exist_ok=True)
+                with open(samples_pkl, "wb") as _pf:
+                    pickle.dump(samples, _pf)
 
             self.logger.debug("Get PerfCall command list..."); t0 = time.time()  # noqa: E702
 
@@ -224,8 +227,9 @@ class PerfCallRawData:
                     cmds[cmd] = 1
             cmds = {ky: val for ky, val in sorted(cmds.items(), key=lambda item: -item[1])}
 
-            with open(cmds_pkl, "wb") as _pf:
-                pickle.dump(cmds, _pf)
+            if self.enable_pkl_cache:
+                with open(cmds_pkl, "wb") as _pf:
+                    pickle.dump(cmds, _pf)
 
         list_filename = f"{os.path.realpath(os.path.dirname(self.filename))}/list_recorded_perf_cmds.txt"
         with open(list_filename, "w") as _file:
@@ -243,7 +247,8 @@ class PerfCallData:
     Per callstack data with cmd
     """
 
-    def __init__(self, logger: logging.Logger, cmd: str, samples: list, m2r: float, traces_repo: str):
+    def __init__(self, logger: logging.Logger, cmd: str, samples: list, m2r: float, traces_repo: str,
+                 enable_pkl_cache: bool = False):
         """
         Construct PerfCallData class for a given command
 
@@ -253,6 +258,7 @@ class PerfCallData:
             samples     (list)              Samples of recorded command
             m2r         (int)               Delta monotonic time to real
             traces_repo (str)               Traces repository
+            enable_pkl_cache (bool)         Enable pickle cache for samples and tids
         """
         self.logger = logger
         self.cmd = cmd
@@ -261,6 +267,7 @@ class PerfCallData:
         self._plt_depth_size = 2 / 3
 
         self.traces_repo = traces_repo
+        self.enable_pkl_cache = enable_pkl_cache
 
         self._construct(samples)
 
@@ -275,7 +282,7 @@ class PerfCallData:
         cmd_samples = f"{self.traces_repo}/pkl_dir/call_{self.cmd}_samples.pkl"
         cmd_tids = f"{self.traces_repo}/pkl_dir/call_{self.cmd}_tids.pkl"
 
-        if os.access(cmd_samples, os.R_OK) and os.access(cmd_tids, os.R_OK):
+        if self.enable_pkl_cache and os.access(cmd_samples, os.R_OK) and os.access(cmd_tids, os.R_OK):
             self.logger.debug(f"Load PerfCall samples for command = {self.cmd} ...")
             t0 = time.time()
 
@@ -306,7 +313,7 @@ class PerfCallData:
 
         return 0
 
-    def _construct_from_samples(self, samples: list, cmd_samples: str, cmd_tids: str):
+    def _construct_from_samples(self, samples: list, cmd_samples: str = "", cmd_tids: str = ""):
         """
         Construct samples and tids from raw samples
 
@@ -346,14 +353,15 @@ class PerfCallData:
         # self.pids = {pid: rel_pid for rel_pid, pid in enumerate(set(pids))} # @hc
         self.tids = {tid: rel_tid for rel_tid, tid in enumerate(set(tids))}
 
-        try:
-            os.makedirs(os.path.dirname(cmd_samples), exist_ok=True)
-            with open(cmd_samples, "wb") as _pf:
-                pickle.dump(self.samples, _pf)
-            with open(cmd_tids, "wb") as _pf:
-                pickle.dump(self.tids, _pf)
-        except (IOError, OSError) as e:
-            self.logger.warning(f"Could not save pickle files for command {self.cmd}: {e}")
+        if self.enable_pkl_cache:
+            try:
+                os.makedirs(os.path.dirname(cmd_samples), exist_ok=True)
+                with open(cmd_samples, "wb") as _pf:
+                    pickle.dump(self.samples, _pf)
+                with open(cmd_tids, "wb") as _pf:
+                    pickle.dump(self.tids, _pf)
+            except (IOError, OSError) as e:
+                self.logger.warning(f"Could not save pickle files for command {self.cmd}: {e}")
 
 
     def _depth_data(self, depth: int) -> dict:
@@ -416,6 +424,8 @@ class PerfCallData:
         if not self.tids:
             self.logger.warning("No thread IDs available for plotting")
             return -1
+
+        stamps_for_xticks = []
 
         for depth in depths:
             calls = self._depth_data(depth)
@@ -482,6 +492,9 @@ class PerfCallData:
                             color=call_line[call]["color"],
                         )
 
+                        if xticks == []:
+                            stamps_for_xticks += call_line[call]["stamps"]
+
                         # Avoid division by zero
                         if call in calls and self.nsamples > 0:
                             if calls[call] / self.nsamples > self._plt_legend_threshold:
@@ -506,13 +519,8 @@ class PerfCallData:
                     if self.nt > 0:  # Avoid division by zero
                         yvals += [depth + self._plt_depth_size / self.nt * tid]
 
-            # Without threads ticks
-            if False:
-                ylabels = [f"CallStack {depth}" for depth in depths]
-                yvals = [depth for depth in depths]
-
             if yvals and ylabels:
-                plt.yticks(yvals, ylabels)
+                plt.yticks(yvals, ylabels, rotation="vertical", va="bottom")
 
             # X axis options
             if xticks and len(xticks) >= 2:
@@ -531,4 +539,10 @@ class PerfCallData:
             plt.grid()
             plt.title(self.cmd)
 
-        return 0
+
+        if xticks == []:
+            import numpy as np
+            stamps_for_xticks = np.unique(stamps_for_xticks)
+            return stamps_for_xticks[0], stamps_for_xticks[-1]
+        else:
+            return 0

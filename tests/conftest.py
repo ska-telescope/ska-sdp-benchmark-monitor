@@ -5,14 +5,15 @@ def pytest_collection_modifyitems(session, config, items):
     """Define order for testing files."""
     file_order = [
         "tests/test_flake8.py",
+        "tests/test_benchmon-check.py",
         "tests/test_run_monitor.py",
         "tests/test_benchmon-run.py",
         "tests/test_benchmon-visu.py",
         "tests/test_visualizer.py",
         "tests/test_visualizer_influxdb.py",
         "tests/test_benchmon-visu_func.py",
-        "tests/test_g5k.py",
         "tests/test_metrics.py",
+        "tests/test_g5k.py",
     ]
 
     def sort_key(item):

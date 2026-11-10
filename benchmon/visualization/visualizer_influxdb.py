@@ -435,6 +435,7 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
         )
         return SystemDataInfluxDB(
             logger=self.logger,
+            args=self.args,
             client=self.client,
             database=self.args.influxdb_database,
             hostname=hostname,
@@ -523,76 +524,26 @@ class BenchmonInfluxDBVisualizer(BenchmonVisualizer):
 
         if self.args.cpu_cores_full and cpu_available:
             for core in self.args.cpu_cores_full.split(","):
-                specs.append(
-                    (
-                        f"cpu-core-{core}",
-                        lambda core=core: self.system_metrics.plot_cpu(
-                            number=core
-                        ),
-                        100,
-                    )
-                )
+                specs.append((f"cpu-core-{core}", lambda core=core: self.system_metrics.plot_cpu(number=core), 100))
 
         if self.args.cpu_all and cpu_available:
-            specs.append(
-                (
-                    "cpu-all",
-                    lambda: self.system_metrics.plot_cpu_per_core(
-                        cores_in=self.args.cpu_cores_in,
-                        cores_out=self.args.cpu_cores_out,
-                    ),
-                    100,
-                )
-            )
+            specs.append(("cpu-all", lambda: self.system_metrics.plot_cpu_per_core(), 100))
 
         if self.args.cpu_freq and cpufreq_available:
-            specs.append(
-                (
-                    "cpu-freq",
-                    lambda: self.system_metrics.plot_cpufreq(
-                        cores_in=self.args.cpu_cores_in,
-                        cores_out=self.args.cpu_cores_out,
-                    ),
-                    None,
-                )
-            )
+            specs.append(("cpu-freq", lambda: self.system_metrics.plot_cpufreq(), None))
 
         if self.args.mem and mem_available:
-            specs.append(
-                ("mem", lambda: self.system_metrics.plot_memory_usage(), None)
-            )
+            specs.append(("mem", lambda: self.system_metrics.plot_memory_usage(), None))
 
         if (
             self.args.net or self.args.net_all or self.args.net_data
         ) and net_available:
-            specs.append(
-                (
-                    "net",
-                    lambda: self.system_metrics.plot_network(
-                        all_interfaces=self.args.net_all,
-                        is_rx_only=self.args.net_rx_only,
-                        is_tx_only=self.args.net_tx_only,
-                        is_netdata_label=self.args.net_data,
-                    ),
-                    None,
-                )
-            )
+            specs.append(("net", lambda: self.system_metrics.plot_network(), None))
 
         if (
             self.args.disk or self.args.disk_iops or self.args.disk_data
         ) and disk_available:
-            specs.append(
-                (
-                    "disk",
-                    lambda: self.system_metrics.plot_disk(
-                        is_with_iops=self.args.disk_iops,
-                        is_rd_only=self.args.disk_rd_only,
-                        is_wr_only=self.args.disk_wr_only,
-                        is_diskdata_label=self.args.disk_data,
-                    ),
-                    None,
-                )
-            )
+            specs.append(("disk", lambda: self.system_metrics.plot_disk(), None))
 
         if self.args.ib and ib_available:
             specs.append(("ib", lambda: self.system_metrics.plot_ib(), None))
