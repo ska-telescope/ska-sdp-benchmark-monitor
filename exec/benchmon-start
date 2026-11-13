@@ -1,7 +1,12 @@
 #!/usr/bin/bash
 
 args=""
-save_dir_arg="--save-dir ./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"
+save_dir_arg="./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"
+hpcrun_flags=""
+index=0
+# Load environment variables exported by the Python benchmon-config script
+eval "$($(dirname ${BASH_SOURCE[0]})/benchmon-config)"
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         "-l" | "--level")
@@ -9,9 +14,20 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         "-d" | "--save-dir")
-            save_dir_arg="--save-dir $2"
+            save_dir_arg=$2
             shift 2
             ;;
+	"-e" | "--hpc-exe")
+            while [[ $2 != "-"* && -n $2 ]]; do
+                exe[((index++))]=$2
+                shift 1
+            done
+            shift 1
+            ;;
+	"-f" | "--hpc-flags")
+            hpcrun_flags=$2
+	    shift 2
+	    ;;
         *)
             args="$args $1"
             shift 1
@@ -19,23 +35,55 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-args="$args $save_dir_arg"
+args="$args --save-dir $save_dir_arg"
+
+# Create the target directory
+mkdir -p "$save_dir_arg"
 
 if [[ $level == 0 ]]; then
-    $(dirname $0)/benchmon-hardware $save_dir_arg
-    $(dirname $0)/benchmon-software $save_dir_arg
+    $(dirname ${BASH_SOURCE[0]})/benchmon-hardware --save-dir $save_dir_arg
+    $(dirname ${BASH_SOURCE[0]})/benchmon-software --save-dir $save_dir_arg
     args="--sys --sys-freq 1 $args"
+    # Collect data with hpctoolkit only if hpc-exe and hpc-flags have been passed,
+    # (this is not standard for level 0 so there are no defaults)
+    if [[ ${#exe[@]} != 0 && -n "$hpcrun_flags" ]]; then
+        echo "[INFO] benchmon: tracing ${exe[*]} with \"$hpcrun_flags\" in $save_dir_arg"
+        mkdir -p 
+	source $BENCHMON_LIB_PATH/run/tracing_wrappers.sh --save-dir ${save_dir_arg}/hpctoolkit_traces --hpc-flags "$hpcrunf_flags" --hpc-exe ${exe[*]}
+    fi
 
 elif [[ $level == 1 ]]; then
-    $(dirname $0)/benchmon-hardware $save_dir_arg
-    $(dirname $0)/benchmon-software $save_dir_arg
-    args="--sys --sys-freq 5 --call --call-prof-freq 1 $args" # --pow --pow-freq 10
+    $(dirname ${BASH_SOURCE[0]})/benchmon-hardware --save-dir $save_dir_arg
+    $(dirname ${BASH_SOURCE[0]})/benchmon-software --save-dir $save_dir_arg
+    # Collect overall performance metrics with hpctoolkit if executables have been passed, otherwise rely on perf
+    if [[ ${#exe[@]} != 0 ]]; then
+        # Collect overall performance metrics with hpctoolkit, if no hpc-flags have been passed use defaults
+        if [[ -z "$hpcrun_flags" ]]; then
+            hpcrun_flags="-e REALTIME"
+        fi
+        source $BENCHMON_LIB_PATH/run/tracing_wrappers.sh --save-dir ${save_dir_arg}/hpctoolkit_traces --hpc-flags "$hpcrun_flags" --hpc-exe ${exe[*]}
+        args="--sys --sys-freq 5 $args" # --pow --pow-freq 10
+    else
+        args="--sys --sys-freq 5 --call --call-prof-freq 1 $args" # --pow --pow-freq 10
+    fi
 
 elif [[ $level == 2 ]]; then
-    $(dirname $0)/benchmon-hardware $save_dir_arg
-    $(dirname $0)/benchmon-software $save_dir_arg
-    args="--sys --sys-freq 100 --call --call-prof-freq 50 $args" # --pow --pow-freq 10
-
+    $(dirname ${BASH_SOURCE[0]})/benchmon-hardware --save-dir $save_dir_arg
+    $(dirname ${BASH_SOURCE[0]})/benchmon-software --save-dir $save_dir_arg
+    # Collect execution traces with hpctoolkit if executables have been passed, otherwise rely on perf
+    if [[ ${#exe[@]} != 0 ]]; then
+        # if no hpc-flags have been passed use defaults
+        if [[ -z "$hpcrun_flags" ]]; then
+	    hpcrun_flags="-e cycles -t"
+        fi
+        source $BENCHMON_LIB_PATH/run/tracing_wrappers.sh --save-dir ${save_dir_arg}/hpctoolkit_traces --hpc-flags "$hpcrun_flags" --hpc-exe ${exe[*]}
+        args="--sys --sys-freq 100 $args" # --pow --pow-freq 10
+    else
+        args="--sys --sys-freq 100 --call --call-prof-freq 50 $args" # --pow --pow-freq 10
+    fi
 fi
 
-$(dirname $0)/benchmon-run $args &
+$(dirname ${BASH_SOURCE[0]})/benchmon-run $args &
+
+# In case this file was sourced, unset all local variables
+unset args save_dir_arg hpcrun_flags index level exe 

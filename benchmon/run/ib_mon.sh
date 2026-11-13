@@ -4,7 +4,7 @@ freq=$1
 delay=$(bc <<< "scale=6; 1/$freq")
 
 # Check if Infiband is available
-cat /sys/class/infiniband/*/ports/1/counters/port*data
+cat /sys/class/infiniband/*/ports/1/counters/port*data >/dev/null 2>&1
 retval=$?
 if [ $retval != 0 ]; then
     echo "Infiniband is not available"
@@ -22,7 +22,9 @@ do
     timestamp="$(date +'%s.%N')"
     buff=""
     for file in /sys/class/infiniband/*/ports/1/counters/port*data; do
-        buff+="$timestamp,$(echo $file | awk -F'/' '{print $5":"$7","$9}'),$(cat $file)\n"
+        if [[ -r "$file" ]]; then
+            buff+="$timestamp,$(echo $file | awk -F'/' '{print $5":"$7","$9}'),$(cat $file)\n"
+        fi
     done
     echo -ne $buff >> $report_ib_stat
 

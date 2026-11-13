@@ -11,6 +11,7 @@ from benchmon.visualization import BenchmonVisualizer
 
 
 def create_args(traces_repo: str = "",
+                binary: bool = False,
                 cpu: bool = False,
                 cpu_all: bool = False,
                 cpu_cores_full: str = "",

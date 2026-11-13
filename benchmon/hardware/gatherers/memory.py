@@ -16,16 +16,15 @@ class MemoryReader:
 
     def get_memory_info(self):
         """
-        Get output from free command
-        Example free output:
+        Get output from free command.
 
-        <code>
-        $ free -b -t -w
-                       total        used        free      shared     buffers       cache   available
-        Mem:     33321914368  7101882368 21159034880    90648576   196591616  4864405504 25648345088
-        Swap:     2147479552           0  2147479552
-        Total:   35469393920  7101882368 23306514432
-        </code>
+        Example free output::
+
+            $ free -b -t -w
+                           total        used        free      shared     buffers       cache   available
+            Mem:     33321914368  7101882368 21159034880    90648576   196591616  4864405504 25648345088
+            Swap:     2147479552           0  2147479552
+            Total:   35469393920  7101882368 23306514432
 
         We are interested in the "total" column
         """

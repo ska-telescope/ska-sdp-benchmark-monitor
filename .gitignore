@@ -169,6 +169,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.pyenv
 
 # Spyder project settings
 .spyderproject
@@ -208,7 +209,20 @@ poetry.toml
 # ruff
 .ruff_cache/
 
+benchmon_traces_/
+
 # LSP config files
 pyrightconfig.json
 
+# VSCode
+.vscode/
+
+# exec files
+exec/bin
+exec/include
+exec/lib64
+exec/share
+exec/rt-monitor
+
 # End of https://www.toptal.com/developers/gitignore/api/pycharm+all,python
+

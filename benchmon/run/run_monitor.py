@@ -7,13 +7,17 @@ import os
 import signal
 import subprocess
 import time
+from pathlib import Path
 
 import psutil
 import requests
 
+from .hp_collector import HighPerformanceCollector
+
 
 HOSTNAME = os.uname()[1]
 PID = (os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID")) or "nosched"
+JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
 
 
 class RunMonitor:
@@ -24,19 +28,21 @@ class RunMonitor:
     def __init__(self, args, logger):
         """Docstring @todo."""
 
+        self.args = args
         self.logger = logger
-
         self.should_run = True
-
-        self.save_dir = args.save_dir
+        self.is_shutting_down = False
 
         self.save_dir_base = args.save_dir
-        self.save_dir = f"{self.save_dir}/benchmon_traces_{HOSTNAME}"
+        # This is the unique directory for this node's CSV files
+        self.save_dir = f"{self.save_dir_base}/benchmon_traces_{HOSTNAME}"
 
         self.verbose = args.verbose
 
         # System monitoring
+        self.binary_sys_monitoring = args.binary
         self.sys_filename = lambda device: f"{device}_report.csv"  # @nc
+        self.bin_sys_filename = lambda device: f"{device}_report.bin"
         self.is_system = args.system
         self.sys_freq = args.sys_freq
 
@@ -48,6 +54,17 @@ class RunMonitor:
         # G5K Power monitoring
         self.pow_filename_base = "pow_g5k_.csv"
         self.is_power_g5k = args.power_g5k
+
+        # CSV file output control
+        self.is_csv = args.csv
+
+        # InfluxDB integration
+        self.is_grafana = args.grafana
+
+        # --- REFACTOR: Use the new HighPerformanceCollector ---
+        self.hp_collector = None
+        # This is now just a placeholder; config is loaded in run()
+        self.influxdb_config = {}
 
         # Profiling and callstack parameters
         self.call_filename = "call_report.txt"
@@ -66,7 +83,7 @@ class RunMonitor:
                                    shell=True,
                                    text=True,
                                    check=False).stdout.split("\n")[0] == HOSTNAME
-        slurm_check = os.environ.get("SLURM_NODEID") == "0"
+        slurm_check = os.environ.get("SLURM_NODEID") == "0" or os.environ.get("SLURM_NODEID") is None
         self.is_benchmon_control_node = True if oar_check or slurm_check else False
 
         # Setup SIGTERM handler for graceful termination
@@ -77,6 +94,15 @@ class RunMonitor:
         self.perfpow_process = None
         self.perfcall_process = None
 
+    def _check_control_node(self):
+        """Checks if the current node is the control node for post-processing."""
+        oar_check = subprocess.run(args=["oarprint", "host"],
+                                   capture_output=True,
+                                   shell=True,
+                                   text=True,
+                                   check=False).stdout.split("\n")[0] == HOSTNAME
+        slurm_check = os.environ.get("SLURM_NODEID") == "0"
+        self.is_benchmon_control_node = oar_check or slurm_check
 
     def run(self, timeout: int = None):
         """
@@ -90,8 +116,43 @@ class RunMonitor:
 
         os.makedirs(self.save_dir, exist_ok=True)
 
+        # Check if this is the control node
+        self._check_control_node()
+
+        if self.is_grafana:
+            # --- REFACTOR: Load connection info from the correct shared path ---
+            connection_file = Path(self.save_dir_base) / "grafana-data" / "connection.json"
+            if not connection_file.is_file():
+                self.logger.error(f"Grafana connection file not found at {connection_file}")
+                self.logger.error("Hint: Run 'benchmon-start-grafana' before 'benchmon-run'.")
+                self.is_grafana = False  # Disable grafana features if config is missing
+            else:
+                with open(connection_file, "r") as f:
+                    conn_info = json.load(f)
+                if self.args.grafana_influxdb_url != "http://localhost:8181":
+                    conn_info["influxdb_url"] = self.args.grafana_influxdb_url
+                self.influxdb_config = {
+                    'url': conn_info.get("influxdb_url"),
+                    'token': conn_info.get("influxdb_token"),
+                    'database': 'metrics',
+                }
+
+        # --- REFACTOR: Initialize and start the new HP Collector ---
+        if self.is_grafana:
+            self.hp_collector = HighPerformanceCollector(
+                self.logger,
+                self.influxdb_config,
+                self.args.grafana_sample_interval,
+                self.args.grafana_batch_size
+            )
+            self.hp_collector.start()
+
+        # Start writer processes (Only for CSV now)
         if self.is_system:
-            self.run_sys_monitoring()
+            if self.binary_sys_monitoring:
+                self.run_sys_monitoring_binary()
+            else:
+                self.run_sys_monitoring()
 
         if self.is_power:
             self.run_perf_pow()
@@ -99,18 +160,20 @@ class RunMonitor:
         if self.is_call:
             self.run_perf_call()
 
+        # --- FIX: Replace blocking wait() with a main loop ---
         if timeout:
+            self.logger.info(f"Running for a fixed duration of {timeout} seconds.")
             time.sleep(timeout)
-        elif self.is_system:
-            self.sys_process[0].wait()
-        elif self.is_power:
-            self.perfpow_process.wait()
-        elif self.is_call:
-            self.perfcall_process.wait()
+        else:
+            self.logger.info("Monitoring started. Press Ctrl+C to stop.")
+            try:
+                while self.should_run:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                self.logger.info("Ctrl+C received, initiating termination.")
+                self.should_run = False
 
-        self.terminate("", "")
-        self.post_process()
-
+        self._shutdown()
 
     def run_sys_monitoring(self):
         """
@@ -121,24 +184,78 @@ class RunMonitor:
         self.logger.debug("Starting system monitoring")
 
         sh_repo = os.path.dirname(os.path.realpath(__file__))
-        exec_sh_file = lambda device: f"{sh_repo}/{device}_mon.sh"
 
         # CPU + CPUfreq + Memory + Network + Disk monitoring processes
-        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib"):  # , "timing_mapping"):
+        for device in ("cpu", "cpufreq", "mem", "net", "disk", "ib", "timing_mapping"):
+            # Determine which script to use
+            sh_repo = os.path.dirname(os.path.realpath(__file__))
 
-            msg = f"{exec_sh_file(device)} {freq} {self.save_dir}/{self.sys_filename(device)}"
-            self.logger.debug(f"Starting: {msg}")
+            # Start CSV monitoring if enabled (default behavior)
+            if self.is_csv:
+                script_path = f"{sh_repo}/{device}_mon.sh"
+                csv_file = f"{self.save_dir}/{self.sys_filename(device)}"
+                args = ["bash", script_path, f"{freq}", csv_file]
+                msg = f"CSV script: {script_path} → {csv_file}"
 
-            self.sys_process += [
-                subprocess.Popen(
-                    args=["bash", exec_sh_file(device),
-                          f"{freq}",
-                          f"{self.save_dir}/{self.sys_filename(device)}"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True
-                )
-            ]
+                self.logger.debug(f"Starting: {msg}")
+                self.sys_process += [
+                    subprocess.Popen(
+                        args=args,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True
+                    )
+                ]
+
+            # The 'if self.is_grafana:' block is no longer needed here.
+
+
+    def write_benchmon_pid(self, pids) -> None:
+        """
+        Get benchmon-run pid
+        """
+        filename = f"./.benchmon-run_pid_{JOBID}_{HOSTNAME}"
+        with open(filename, "w") as fn:
+            for id in pids:
+                fn.write(f"{id},")
+
+        self.logger.debug(f"PID file created: {filename}")
+
+
+    def run_sys_monitoring_binary(self):
+        """
+        Run system monitoring with the C++ backend
+        """
+        freq = self.sys_freq
+        self.logger.debug("Starting system monitoring")
+
+        try:
+            self.sys_process.append(subprocess.Popen(
+                args=[
+                    "rt-monitor",
+                    "--sampling-frequency",
+                    f"{freq}",
+                    "--cpu",
+                    f"{self.save_dir}/{self.bin_sys_filename('cpu')}",
+                    "--mem",
+                    f"{self.save_dir}/{self.bin_sys_filename('mem')}",
+                    "--disk",
+                    f"{self.save_dir}/{self.bin_sys_filename('disk')}",
+                    "--cpu-freq",
+                    f"{self.save_dir}/{self.bin_sys_filename('cpufreq')}",
+                    "--net",
+                    f"{self.save_dir}/{self.bin_sys_filename('net')}",
+                    "--log-level",
+                    "err",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True))
+        except FileNotFoundError:
+            self.logger.error("Unable to find the monitor executable file.")
+
+        pids = [process.pid for process in self.sys_process]
+        self.write_benchmon_pid(pids)
 
 
     def run_perf_pow(self):
@@ -215,8 +332,14 @@ class RunMonitor:
         """
         Download grid5000 power consumption report
         """
-        _site = HOSTNAME.split(".")[1]
-        _cluster = HOSTNAME.split(".")[0]
+        # Check if hostname is in Grid5000 format
+        hostname_parts = HOSTNAME.split(".")
+        if len(hostname_parts) < 2 or "grid5000" not in HOSTNAME:
+            self.logger.info(f"Hostname {HOSTNAME} is not a Grid5000 node, skipping G5K power download")
+            return
+
+        _site = hostname_parts[1]
+        _cluster = hostname_parts[0]
 
         requests.packages.urllib3.disable_warnings(
             requests.packages.urllib3.exceptions.InsecureRequestWarning
@@ -247,8 +370,22 @@ class RunMonitor:
         """
         Terminate background process after catching term signal
         """
-        signum = signum
-        frame = frame
+        # This method is now only for signal handling
+        self.logger.info(f"Signal {signum} received, initiating termination.")
+        self.should_run = False
+
+    def _shutdown(self):
+        """
+        Internal method to perform all shutdown operations once.
+        """
+        if self.is_shutting_down:
+            return
+        self.is_shutting_down = True
+        self.logger.info("Shutting down monitoring processes...")
+
+        # --- REFACTOR: Stop the new HP Collector ---
+        if self.is_grafana and self.hp_collector:
+            self.hp_collector.stop()
 
         # kill perf (call)
         if self.perfcall_process:
@@ -298,6 +435,8 @@ class RunMonitor:
 
             self.logger.debug(f"Terminated system monitoring with stdout: {process_stdout}")
 
+        # Perform post-processing after all processes are terminated
+        self.post_process()
 
     def post_process(self):
         """
