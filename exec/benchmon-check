@@ -1,69 +1,45 @@
 #!/usr/bin/env python3
+import argparse
 import logging
+import os
 import shutil
 import subprocess
-import os
-import tempfile
-import atexit
 
+
+# Create argument parser
+parser = argparse.ArgumentParser(description="Check for required commands and tools.")
+parser.add_argument("--advice", action="store_true", help="Show advice for missing commands and tools.")
+parser.add_argument("--verbose", action="store_true", help="Enable verbose output.")
+args = parser.parse_args()
+do_advice = args.advice
+do_verbose = args.verbose
+
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+log_level = logging.DEBUG if do_verbose else logging.INFO
 log = logging.getLogger(__name__)
+log.setLevel(log_level)
 
-# Global list to keep track of subprocesses for cleanup
-_running_processes = []
-
-base_command_check_set = {
-    "bc": "bc",
-    "perf": "perf",
-    "hpctoolkit": "hpcrun",
-    "hpctoolkit": "hpcstruct",
-    "hpctoolkit": "hpcprof"
-}
-
-base_command_advice_set = {
-    "bc": "The 'bc' command is not available. 'bc' is a basic calculator "
-           "utility. To install it, use the following command based on "
-           "your Linux distribution:\n"
-          "  - For Ubuntu/Debian: `sudo apt-get install bc`\n"
-          "  - For CentOS/RHEL: `sudo yum install bc`\n"
+# Command advice dictionary
+COMMAND_ADVICE = {
+    "bc": "The 'bc' command is not available. 'bc' is a basic calculator utility required for the Bash back-end. "
+          "If unavailable, consider using the C++ back-end. To install it, use:\n"
+          "  - For Ubuntu/Debian: `sudo apt-get install bc`\n  - For CentOS/RHEL: `sudo yum install bc`\n"
           "  - For Fedora: `sudo dnf install bc`",
-    "perf": "The 'perf' command is not available. 'perf' is a performance "
-             "analysis tool that is part of the Linux kernel tools. "
-             "To install it, use the following command based on your "
-             "Linux distribution:\n"
+    "perf": "The 'perf' command is not available. 'perf' is a performance analysis tool that is part of the Linux "
+            "kernel tools. To install it, use the following command based on your Linux distribution:\n"
             "  - For Ubuntu/Debian: `sudo apt-get install linux-tools-common linux-tools-generic`\n"
-            "  - For CentOS/RHEL: `sudo yum install perf`\n"
-            "  - For Fedora: `sudo dnf install perf`",
-    "hpctoolkit": "One at least of hpcrun, hpcstruct or hpcprof is not available.\n'hpctoolkit' is "
-                  "an execution trace collection tool which provides insight on software execution "
-                  "at a low overhead (without it more expensive trace collection is still possible via "
-                  "perf).\nTo install it, use the Spack recipe described in "
-                  "https://hpctoolkit.org/software-instructions.html"
+            "  - For CentOS/RHEL: `sudo yum install perf`\n  - For Fedora: `sudo dnf install perf`",
+    "hpcrun": "'hpcrun' (hpctoolkit) is not available. hpctoolkit is an execution trace collection tool with low "
+              "overhead without it, more expensive trace collection is still possible via perf). Install via Spack: "
+              "https://hpctoolkit.org/software-instructions.html",
+    "hpcstruct": "'hpcstruct' (hpctoolkit) is not available. See https://hpctoolkit.org/software-instructions.html",
+    "hpcprof": "'hpcprof' (hpctoolkit) is not available. See https://hpctoolkit.org/software-instructions.html",
 }
 
-sys_monitor_check_set = {
-    "cpu": "cat /proc/stat | grep cpu",
-    "cpufreq": "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
-    "mem": "cat /proc/meminfo",
-    "net": "cat /proc/net/dev",
-    "disk": "cat /proc/diskstats",
-    "ib": "cat /sys/class/infiniband/*/ports/1/counters/port*data"
-}
-
-# Temporary file for perf record
-_temp_file = tempfile.NamedTemporaryFile(delete=False)
-TEMP_PERF_FILE = _temp_file.name
-_temp_file.close()
-
-perf_monitor_check_set = {
-    "power_event": "perf list | grep -i power/energy | awk '{print $1}'",
-    "power_command": "perf stat -A -a -e power/energy-pkg/ -I 100 -x , -- sleep 0.1",
-    "call_command": f"perf record --running-time -T -a -F 10 --call-graph dwarf -o {TEMP_PERF_FILE} -- sleep 0.1"
-}
-
-perf_monitor_advice_set = {
+PERF_ADVICE = {
     "call_command": "The 'perf record' command requires specific kernel settings to collect call "
-                   "graph data. To enable this, you need to modify the following kernel parameters:\n"
+                    "graph data. To enable this, you need to modify the following kernel parameters:\n"
                     "  - Set `kernel.perf_event_paranoid` to -1\n"
                     "  - Set `kernel.kptr_restrict` to 0\n"
                     "You can do this by running:\n"
@@ -75,123 +51,95 @@ perf_monitor_advice_set = {
                     "Then, reload the configuration with `sudo sysctl -p`."
 }
 
-def cleanup():
-    """Clean up temporary files and terminate running processes."""
-    if os.path.exists(TEMP_PERF_FILE):
-        os.remove(TEMP_PERF_FILE)
-    for proc in _running_processes:
-        if proc.poll() is None:  # Process is still running
-            proc.terminate()
-            try:
-                proc.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                proc.kill()
 
-# Register cleanup function to run at exit
-atexit.register(cleanup)
+def check_binary_available(cmd):
+    """Check if the binary is available in the system PATH"""
+    return False if shutil.which(cmd) is None else True
 
-def check_cmd(cmd, advice=None):
-    """
-    Check if the command is valid by running it and checking the return code.
-    If the command fails, log the error message from stderr and any provided advice.
-    Args:
-        cmd (str): The command to check as a shell string.
-        advice (str, optional): Advice to log if the command fails.
-    Returns:
-        bool: True if the command runs successfully (return code 0), False otherwise.
-    """
-    try:
-        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode != 0:
-            log.warning(f"Command '{cmd}' failed with return code {result.returncode}: {result.stderr.strip()}")
-            if advice:
-                log.info(f"Advice: {advice}")
-            return False
-        return True
-    except Exception as e:
-        log.warning(f"Exception while running command '{cmd}': {e}")
-        if advice:
-            log.info(f"Advice: {advice}")
-        return False
 
-def check_binary_available(cmd, advice):
-    """
-    Check if the binary is available in the system PATH.
-    If not, log the advice.
-    Args:
-        cmd (str): The command/binary name to check.
-        advice (str): Advice to log if the binary is not found.
-    Returns:
-        bool: True if the binary is found, False otherwise.
-    """
-    if shutil.which(cmd) is None:
-        log.warning(f"Base command '{cmd}' is not available.")
-        log.info(f"Advice: {advice}")
-        return False
-    return True
+def check_perf_command(cmd):
+    """Check if the perf command can be executed successfully"""
+    return subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).returncode == 0
 
-def check_benchmon_env():
-    """
-    Check if the benchmark environment is ready.
-    Verifies the availability of base commands, essential files, and the ability to run
-    monitoring commands.
-    Returns:
-        bool: True if the environment is ready, False otherwise.
-    """
-    # Check base commands
-    for name, cmd in base_command_check_set.items():
-        advice = base_command_advice_set.get(name, "No advice available.")
-        if not check_binary_available(cmd, advice):
-            return False
-
-    # Check essential files
-    essential_files = [
-        "/proc/stat",
-        "/proc/meminfo",
-        "/proc/net/dev",
-        "/proc/diskstats",
-        "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
-        "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq",
-        "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"
-    ]
-    for file in essential_files:
-        if not os.path.exists(file):
-            if file in [
-                "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
-                "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq",
-                "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"
-            ]:
-                log.warning(f"Essential file '{file}' does not exist, but continuing.")
-                continue
-            else:
-                log.warning(f"Essential file '{file}' does not exist.")
-                log.info("Advice: Ensure that the system is properly configured and the necessary kernel modules are loaded.")
-                return False
-
-    # Check monitoring commands
-    for check_set, advice_set in [(sys_monitor_check_set, {}), (perf_monitor_check_set, perf_monitor_advice_set)]:
-        for name, cmd in check_set.items():
-            advice = advice_set.get(name, None)
-            if not check_cmd(cmd, advice):
-                if name in ["cpufreq", "ib", "power_command"]:
-                    log.info(f"Command '{name}' failed to run: {cmd}, but continuing.")
-                    if advice:
-                        log.info(f"Optional Advice: {advice}")
-                    continue
-                else:
-                    log.warning(f"Command '{name}' failed to run: {cmd}")
-                    return False
-
-    return True
 
 def main():
     """
-    Main function to check the benchmark environment and log the result.
+    Check if the benchmark environment is ready.
+    Runs ALL checks (never stops at the first failure) so every problem is reported together in a single run.
+
+    Returns
+        bool: False only if at least one CRITICAL requirement is missing; non-critical issues are warnings only.
     """
-    if check_benchmon_env():
-        log.info("Benchmark environment is ready.")
-    else:
-        log.info("Benchmark environment is not ready. Please check the errors above.")
+    # Check availability of critical and optional commands
+    cmd_failures = {}
+    commands_dict = {"critical": ["bc"],
+                     "optional": ["perf", "hpcrun", "hpcstruct", "hpcprof"]}
+    for level, command_list in commands_dict.items():
+        for command in command_list:
+            if not check_binary_available(command):
+                cmd_failures[command] = level
+
+    # Check availability of critical and optional filesystem files
+    fsf_failures = {}
+    fsfiles_dict = {"critical": ["/proc/stat", "/proc/meminfo", "/proc/net/dev", "/proc/diskstats"],
+                    "optional": ["/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq",
+                                 "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq",
+                                 "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"]}
+    if os.path.exists('/sys/class/infiniband'):
+        fsfiles_dict["optional"].extend(
+            subprocess.getoutput('ls /sys/class/infiniband/*/ports/1/counters/port*data').strip().split()
+        )
+    for level, file_list in fsfiles_dict.items():
+        for fsfile in file_list:
+            if not os.access(fsfile, os.R_OK):
+                fsf_failures[fsfile] = level
+
+    # Report command failures
+    status = 0
+    for command, level in cmd_failures.items():
+        if do_verbose:
+            log.debug(f"Checking availability of command '{command}'")
+        message = f"{level} command '{command}' is not available."
+        if level == "critical":
+            log.error(message)
+            status = 1
+        elif level == "optional":
+            log.warning(message)
+
+        advice = COMMAND_ADVICE.get(command, f"{level} command '{command}' is not available.")
+        if do_advice:
+            log.info(advice)
+
+    # Report filesystem file failures
+    for fsfile, level in fsf_failures.items():
+        if do_verbose:
+            log.debug(f"Checking existence/readability of filesystem file '{fsfile}'")
+        message = f"{level} filesystem file '{fsfile}' does not exist or is not readable."
+        if level == "critical":
+            log.error(message)
+            status = 1
+        elif level == "optional":
+            log.warning(message)
+
+    # Check perf-based commands
+    perf_commands_dict = {
+        "power_event": "perf list | grep -i power/energy | awk '{print $1}'",
+        "power_command": "perf stat -A -a -e power/energy-pkg/ -I 100 -x , -- sleep 0.1",
+        "call_command": "perf record --running-time -T -a -F 10 --call-graph dwarf -o /tmp/perf_test.data -- sleep 0.1"
+    }
+    for name, command in perf_commands_dict.items():
+        if "grid5000.fr" in os.uname().nodename:
+            command = "sudo-g5k " + command
+        if do_verbose:
+            log.debug(f"Checking availability of perf command '{name}': {command}")
+        if not check_perf_command(command):
+            log.warning(f"Command '{name}' failed.")
+            if do_advice:
+                advice = PERF_ADVICE.get(name, f"Monitoring of {name.replace('_', ' ')} will be affected.")
+                log.info(advice)
+
+    exit(status)
+
 
 if __name__ == "__main__":
     main()

@@ -28,7 +28,7 @@ to generate software performance metrics or collect execution traces, HPCToolkit
 ---
 
 # Check System availability
-`benchmon-check` can be used to check the system availability and check if the environment is compatible for `benchmon`. We recommended that the users should run this command before running `benchmon` for the first time.
+`benchmon-check` can be used to check the system availability and check if the environment is compatible for `benchmon`. We recommended that the users should run this command before running `benchmon` for the first time. `--advice` and `--verbose` flags can be used to get additional guidance and detailed output.
 
 ```bash
 benchmon-check
