@@ -105,7 +105,7 @@ class BenchmonVisualizer:
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
 
-    def load_annotation_stages(self) -> list | None:
+    def load_annotation_stages(self):
         """
         Load the annotation stages of this node from the --annotate-with-log file
 
