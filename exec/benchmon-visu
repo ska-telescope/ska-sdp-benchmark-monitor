@@ -71,7 +71,8 @@ def parsing() -> argparse.Namespace:
 
     # Power profiles
     parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power")
-    parser.add_argument("--pow", action="store_true", help="Visualize power")
+    parser.add_argument("--pow", action="store_true", help="Visualize power monitored by perf")
+    parser.add_argument("--pow-per-cpu", action="store_true", help="Visualize power monitored by perf per CPU")
 
     # Callstack
     parser.add_argument("--inline-call", action="store_true", help="Visualize callstack inline within monitoring")

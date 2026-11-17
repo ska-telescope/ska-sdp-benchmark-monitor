@@ -614,6 +614,12 @@ class BenchmonVisualizer:
                 except Exception as e:
                     self.logger.warning(f"Error plotting perf power events: {e}")
 
+            if self.args.pow_per_cpu and self.power_perf_metrics:
+                try:
+                    powmax += [self.power_perf_metrics.plot_events_per_cpu()]
+                except Exception as e:
+                    self.logger.warning(f"Error plotting perf power events per CPU: {e}")
+
             if self.args.pow_g5k and self.power_g5k_metrics:
                 try:
                     powmax += [self.power_g5k_metrics.plot_g5k_pow_profiles()]

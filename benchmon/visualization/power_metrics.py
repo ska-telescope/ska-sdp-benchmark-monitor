@@ -202,7 +202,7 @@ class PerfPowerData:
         self.time_stamps = np.array([])
         self.nstamps = 0
 
-    def plot_events_per_cpu(self) -> int:
+    def plot_events_per_cpu(self) -> float:
         """
         Plot power events per cpu
         """
@@ -211,15 +211,16 @@ class PerfPowerData:
             self.logger.warning("No power data available for plotting")
             return 0
 
+        ymax = 0
         for event in self.events:
             for cpu in self.cpus:
-                plt.plot(self.time_stamps, self.pow_prof[cpu][event], label=f"{cpu}/{self.events_table[event]}")
-        plt.xticks(self._xticks[0], self._xticks[1])
-        plt.ylabel("Power (W)")
-        plt.legend(loc=1)
-        plt.grid()
+                power_array = np.append(self.pow_prof[cpu][event], self.pow_prof[cpu][event][-1])
+                energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
+                plt.step(self.time_stamps, power_array, where="mid",
+                         label=f"{cpu}/{event.split('/')[1].split('-')[1]} ({round(energy, 1)} Wh)")
+                ymax = max(ymax, max(power_array))
 
-        return 0
+        return ymax
 
 
     def plot_events(self, pre_label: str = "") -> float:
