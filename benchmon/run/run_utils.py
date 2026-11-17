@@ -71,6 +71,13 @@ class RunUtils:
         )
 
         parser.add_argument(
+            "--power-hg",
+            "--pow-hg",
+            action="store_true",
+            help="Enable power monitoring with HG suffix for events"
+        )
+
+        parser.add_argument(
             "--power-g5k",
             "--pow-g5k",
             action="store_true",

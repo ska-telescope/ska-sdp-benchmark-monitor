@@ -47,7 +47,7 @@ class RunMonitor:
 
         # Power monitoring parameters
         self.pow_filename = "pow_report.csv"
-        self.is_power = args.power
+        self.is_power = args.power or args.power_hg
         self.power_sampling_interval = args.power_sampling_interval
 
         # G5K Power monitoring
@@ -265,7 +265,7 @@ class RunMonitor:
 
         event_flags = []
         for event in events:
-            event_flags += ["-e"] + [event]
+            event_flags += ["-e"] + [event + ("HG" if self.args.power_hg else "")]
 
         # Reporting in/ouput
         sampl_intv = self.power_sampling_interval
