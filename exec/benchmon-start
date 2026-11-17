@@ -3,6 +3,7 @@
 args=""
 save_dir_arg=""
 hpcrun_flags=""
+level=""
 index=0
 # Load environment variables exported by the Python benchmon-config script
 eval "$($(dirname ${BASH_SOURCE[0]})/benchmon-config)"
