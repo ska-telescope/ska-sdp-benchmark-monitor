@@ -161,6 +161,7 @@ class RunMonitor:
                     self.perfcall_process.wait()
             except KeyboardInterrupt:
                 self.logger.info("Ctrl+C received, initiating termination.")
+                self.terminate(signum=signal.SIGINT)
 
         # Perform post-processing after all processes are terminated
         self.post_process()
