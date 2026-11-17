@@ -3,6 +3,7 @@
 import argparse
 import logging
 import os
+import time
 
 HOSTNAME = os.uname()[1]
 JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
@@ -19,7 +20,7 @@ class RunUtils:
         Parse benchmon-run arguments
 
         Returns:
-            argaprse.ArgumentParser Argument namespace
+            argparse.ArgumentParser Argument namespace
         """
         parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
@@ -27,7 +28,8 @@ class RunUtils:
         parser.add_argument(
             "-d",
             "--save-dir",
-            default=f"{os.getcwd()}/benchmon_traces_{JOBID}",
+            "--savedir",
+            default=f"{os.getcwd()}/benchmon_savedir_{JOBID}.{int(time.time())}",
             help="Base directory where metrics will be saved"
         )
 
