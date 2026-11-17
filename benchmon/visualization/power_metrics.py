@@ -202,7 +202,7 @@ class PerfPowerData:
         self.time_stamps = np.array([])
         self.nstamps = 0
 
-    def plot_events_per_cpu(self) -> float:
+    def plot_events_per_cpu(self, domain: str = "") -> float:
         """
         Plot power events per cpu
         """
@@ -213,6 +213,8 @@ class PerfPowerData:
 
         ymax = 0
         for event in self.events:
+            if domain and all(d not in event for d in domain.split(",")):
+                continue
             for cpu in self.cpus:
                 power_array = np.append(self.pow_prof[cpu][event], self.pow_prof[cpu][event][-1])
                 energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
@@ -223,7 +225,7 @@ class PerfPowerData:
         return ymax
 
 
-    def plot_events(self, pre_label: str = "") -> float:
+    def plot_events(self, pre_label: str = "", domain: str = "") -> float:
         """
         Plot total power events
 
@@ -251,6 +253,8 @@ class PerfPowerData:
 
         ymax = 0
         for event in self.events:
+            if domain and all(d not in event for d in domain.split(",")):
+                continue
             if len(pow_total[event]) > 0:
                 power_array = np.append(pow_total[event], pow_total[event][-1])
                 energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
