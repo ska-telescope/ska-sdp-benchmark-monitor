@@ -55,14 +55,6 @@ class PerfPowerData:
         self.pow_prof = {}
         self.time_stamps = np.array([])
 
-        self.events_table = {
-            "power/energy-cores/": "cores",
-            "power/energy-ram/": "dram",
-            "power/energy-pkg/": "cpu-pkg",
-            "power/energy-psys/": "psys",
-            "power/energy-gpu/": "gpu"
-        }
-
         self.create_profile()
 
 
@@ -249,19 +241,22 @@ class PerfPowerData:
                 pow_total[event] += self.pow_prof[cpu][event]
 
         events_style = {}
-        events_style["power/energy-cores/"] = {"color": "C4", "ls": "--"}
-        events_style["power/energy-ram/"] = {"color": "C1", "ls": "-."}
-        events_style["power/energy-pkg/"] = {"color": "k", "ls": "-"}
-        events_style["power/energy-psys/"] = {"color": "b", "ls": "-"}
-        events_style["power/energy-gpu/"] = {"color": "g", "ls": ":"}
-        ymax = 0
+        for event in self.events:
+            if "cores" in event: events_style[event] = {"color": "C4", "ls": "--"}  # noqa: E701
+            elif "ram" in event: events_style[event] = {"color": "C1", "ls": "-."}  # noqa: E701
+            elif "pkg" in event: events_style[event] = {"color": "k", "ls": "-"}    # noqa: E701
+            elif "gpu" in event: events_style[event] = {"color": "g", "ls": ":"}    # noqa: E701
+            elif "psys" in event: events_style[event] = {"color": "b", "ls": "-"}   # noqa: E701
 
+        ymax = 0
         for event in self.events:
             if len(pow_total[event]) > 0:
                 power_array = np.append(pow_total[event], pow_total[event][-1])
                 energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
-                plt.step(self.time_stamps, power_array, where="post",
-                         label=f"{pre_label}{event} ({round(energy, 1)} Wh)",)
+                plt.step(self.time_stamps, power_array, where="mid",
+                         label=f"{pre_label}{event.split('/')[1].split('-')[1]} ({round(energy, 1)} Wh)",
+                         color=events_style[event]["color"],
+                         ls=events_style[event]["ls"])
                 ymax = max(ymax, max(power_array))
 
         return ymax
