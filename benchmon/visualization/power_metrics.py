@@ -11,6 +11,8 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
+UNUSUAL_THRESHOLD = 10000  # Example threshold for unusual power values (W)
+
 
 def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     """
@@ -162,6 +164,12 @@ class PerfPowerData:
                 cpu = _list[1]
                 event = _list[4]
                 value = float(_list[2]) / (float(_list[5]) * 1e-9)  # J = W/S
+
+                if value > UNUSUAL_THRESHOLD:
+                    self.logger.warning(f"Unusually high power value detected: "
+                                        f"CPU={cpu}, Event={event}, Value={value} set to 0")
+                    value = 0
+
                 self.pow_prof[cpu][event] += [value]
 
             for cpu in self.cpus:
