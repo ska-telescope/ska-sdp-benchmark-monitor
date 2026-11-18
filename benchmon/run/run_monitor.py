@@ -271,10 +271,6 @@ class RunMonitor:
         sampl_intv = self.power_sampling_interval
         filename = f"{self.save_dir}{os.path.sep}{self.pow_filename}"
 
-        # Get start time for
-        with open(filename, "w") as fn:
-            fn.write(f"# {time.time()}\n")
-
         # Perf power command
         perf_pow_cmd = ["perf", "stat", "-A", "-a"] + event_flags + \
                        ["-I", f"{sampl_intv}"] + ["-x", ",", "--append", "-o", f"{filename}"]
@@ -283,6 +279,10 @@ class RunMonitor:
             perf_pow_cmd.insert(0, self.sudo_g5k)
 
         self.logger.debug(f"Starting perf (power):\n\t{' '.join(perf_pow_cmd)}")
+
+        # Get start time for
+        with open(filename, "w") as fn:
+            fn.write(f"# {time.time_ns() / 1e9}\n")
 
         # Run perf (power)
         self.perfpow_process = subprocess.Popen(args=perf_pow_cmd,

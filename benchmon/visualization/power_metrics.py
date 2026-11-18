@@ -226,7 +226,7 @@ class PerfPowerData:
             for cpu in self.cpus:
                 power_array = np.append(self.pow_prof[cpu][event], self.pow_prof[cpu][event][-1])
                 energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
-                plt.step(self.time_stamps, power_array, where="mid",
+                plt.step(self.time_stamps, power_array, where="post",
                          label=f"{cpu}/{event.split('/')[1].split('-')[1]} ({round(energy, 1)} Wh)")
                 ymax = max(ymax, max(power_array))
 
@@ -266,7 +266,7 @@ class PerfPowerData:
             if len(pow_total[event]) > 0:
                 power_array = np.append(pow_total[event], pow_total[event][-1])
                 energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
-                plt.step(self.time_stamps, power_array, where="mid",
+                plt.step(self.time_stamps, power_array, where="post",
                          label=f"{pre_label}{event.split('/')[1].split('-')[1]} ({round(energy, 1)} Wh)",
                          color=events_style[event]["color"],
                          ls=events_style[event]["ls"])
