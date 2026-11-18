@@ -71,10 +71,10 @@ def parsing() -> argparse.Namespace:
 
     # Power profiles
     parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power p")
-    parser.add_argument("--pow", action="store_true", help="Visualize the (rapl) power profile by perf")
-    parser.add_argument("--pow-per-cpu", action="store_true",
+    parser.add_argument("--pow", "--power", action="store_true", help="Visualize the (rapl) power profile by perf")
+    parser.add_argument("--pow-per-cpu", "--power-per-cpu", "--pow-per-socket", action="store_true",
                         help="Visualize the (rapl) power profile by perf per CPU (Socket)")
-    parser.add_argument("--pow-domain", type=str,
+    parser.add_argument("--pow-domain", "--power-domain", type=str,
                         help="Visualize specific domains of the (rapl) power profile by perf."
                              "Comma-separated, possible values: cores, ram, pkg, gpu, psys")
 
