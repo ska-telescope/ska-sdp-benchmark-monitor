@@ -38,6 +38,9 @@ done
 
 if [[ -n $level ]]; then
     save_dir_arg=${save_dir_arg:-"./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"}
+fi
+
+if [[ -n $save_dir_arg ]]; then
     args="$args --save-dir $save_dir_arg"
 fi
 
