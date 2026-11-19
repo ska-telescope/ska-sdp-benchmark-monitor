@@ -11,6 +11,8 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
+UNUSUAL_THRESHOLD = 10000  # Example threshold for unusual power values (W)
+
 
 def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     """
@@ -54,14 +56,6 @@ class PerfPowerData:
         self.cpus = []
         self.pow_prof = {}
         self.time_stamps = np.array([])
-
-        self.events_table = {
-            "power/energy-cores/": "cores",
-            "power/energy-ram/": "dram",
-            "power/energy-pkg/": "cpu-pkg",
-            "power/energy-psys/": "psys",
-            "power/energy-gpu/": "gpu"
-        }
 
         self.create_profile()
 
@@ -170,6 +164,12 @@ class PerfPowerData:
                 cpu = _list[1]
                 event = _list[4]
                 value = float(_list[2]) / (float(_list[5]) * 1e-9)  # J = W/S
+
+                if value > UNUSUAL_THRESHOLD:
+                    self.logger.warning(f"Unusually high power value detected: "
+                                        f"CPU={cpu}, Event={event}, Value={value} set to 0")
+                    value = 0
+
                 self.pow_prof[cpu][event] += [value]
 
             for cpu in self.cpus:
@@ -210,7 +210,7 @@ class PerfPowerData:
         self.time_stamps = np.array([])
         self.nstamps = 0
 
-    def plot_events_per_cpu(self) -> int:
+    def plot_events_per_cpu(self, domain: str = "") -> float:
         """
         Plot power events per cpu
         """
@@ -219,18 +219,21 @@ class PerfPowerData:
             self.logger.warning("No power data available for plotting")
             return 0
 
+        ymax = 0
         for event in self.events:
+            if domain and all(d not in event for d in domain.split(",")):
+                continue
             for cpu in self.cpus:
-                plt.plot(self.time_stamps, self.pow_prof[cpu][event], label=f"{cpu}/{self.events_table[event]}")
-        plt.xticks(self._xticks[0], self._xticks[1])
-        plt.ylabel("Power (W)")
-        plt.legend(loc=1)
-        plt.grid()
+                power_array = np.append(self.pow_prof[cpu][event], self.pow_prof[cpu][event][-1])
+                energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
+                plt.step(self.time_stamps, power_array, where="post",
+                         label=f"{cpu}/{event.split('/')[1].split('-')[1]} ({round(energy, 1)} Wh)")
+                ymax = max(ymax, max(power_array))
 
-        return 0
+        return ymax
 
 
-    def plot_events(self, pre_label: str = "") -> float:
+    def plot_events(self, pre_label: str = "", domain: str = "") -> float:
         """
         Plot total power events
 
@@ -249,19 +252,22 @@ class PerfPowerData:
                 pow_total[event] += self.pow_prof[cpu][event]
 
         events_style = {}
-        events_style["power/energy-cores/"] = {"color": "C4", "ls": "--"}
-        events_style["power/energy-ram/"] = {"color": "C1", "ls": "-."}
-        events_style["power/energy-pkg/"] = {"color": "k", "ls": "-"}
-        events_style["power/energy-psys/"] = {"color": "b", "ls": "-"}
-        events_style["power/energy-gpu/"] = {"color": "g", "ls": ":"}
-        ymax = 0
-
         for event in self.events:
+            if "cores" in event: events_style[event] = {"color": "C4", "ls": "--"}  # noqa: E701
+            elif "ram" in event: events_style[event] = {"color": "C1", "ls": "-."}  # noqa: E701
+            elif "pkg" in event: events_style[event] = {"color": "k", "ls": "-"}    # noqa: E701
+            elif "gpu" in event: events_style[event] = {"color": "g", "ls": ":"}    # noqa: E701
+            elif "psys" in event: events_style[event] = {"color": "b", "ls": "-"}   # noqa: E701
+
+        ymax = 0
+        for event in self.events:
+            if domain and all(d not in event for d in domain.split(",")):
+                continue
             if len(pow_total[event]) > 0:
                 power_array = np.append(pow_total[event], pow_total[event][-1])
                 energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
                 plt.step(self.time_stamps, power_array, where="post",
-                         label=f"{pre_label}{self.events_table[event]} ({round(energy, 1)} Wh)",
+                         label=f"{pre_label}{event.split('/')[1].split('-')[1]} ({round(energy, 1)} Wh)",
                          color=events_style[event]["color"],
                          ls=events_style[event]["ls"])
                 ymax = max(ymax, max(power_array))
