@@ -18,6 +18,10 @@ class build_rtmonitor(_build_py):
         build_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "build", "rt-monitor")
         os.makedirs(build_dir, exist_ok=True)
 
+        # check if the directory "./exec/__pycache__" exists, if so remove it (@hard-coded)
+        if os.path.isdir(f"{build_dir}/../../exec/__pycache__"):
+            subprocess.check_call(["rm", "-rf", f"{build_dir}/../../exec/__pycache__"])
+
         # Run cmake and build/install
         subprocess.check_call([
             "cmake",
@@ -29,15 +33,6 @@ class build_rtmonitor(_build_py):
 
         super().run()
 
-
-if not os.path.exists("pytest.ini"):
-    with open("pytest.ini", "w") as f:
-        f.write("""\
-[pytest]
-addopts = -vsra --cov=benchmon/run --cov=benchmon/visualization --cov-report=term-missing
-testpaths = tests
-python_files = test_*.py
-""")
 
 setup(
     name="ska-sdp-benchmark-monitor",

@@ -1,7 +1,9 @@
 #!/usr/bin/bash
 
 args=""
+save_dir_arg=""
 hpcrun_flags=""
+level=""
 index=0
 # Load environment variables exported by the Python benchmon-config script
 eval "$($(dirname ${BASH_SOURCE[0]})/benchmon-config)"
@@ -65,14 +67,27 @@ fi
 level=${level:-0}
 save_dir_arg="${save_dir_arg:-./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}}"
 
-echo "[INFO]: benchmon-start level=$level save-dir=$save_dir_arg" >&2
-args="$args --save-dir $save_dir_arg"
+if [[ -n $level ]]; then
+    save_dir_arg=${save_dir_arg:-"./benchmon_savedir_${SLURM_JOB_ID}${OAR_JOB_ID}"}
+    echo "[INFO]: benchmon-start level=$level save-dir=$save_dir_arg" >&2
 
-# Create the target directory
-mkdir -p "$save_dir_arg"
+fi
+
+if [[ -n $save_dir_arg ]]; then
+    args="$args --save-dir $save_dir_arg"
+fi
 
 if [[ $level == 0 ]]; then
-    args="--sys --sys-freq 0.2 --timing $args"
+    $(dirname ${BASH_SOURCE[0]})/benchmon-hardware --save-dir $save_dir_arg
+    $(dirname ${BASH_SOURCE[0]})/benchmon-software --save-dir $save_dir_arg
+    args="--sys --sys-freq 1 $args"
+    # Collect data with hpctoolkit only if hpc-exe and hpc-flags have been passed,
+    # (this is not standard for level 0 so there are no defaults)
+    if [[ ${#exe[@]} != 0 && -n "$hpcrun_flags" ]]; then
+        echo "[INFO] benchmon: tracing ${exe[*]} with \"$hpcrun_flags\" in $save_dir_arg"
+        mkdir -p ${save_dir_arg}/hpctoolkit_traces
+        source $BENCHMON_LIB_PATH/run/tracing_wrappers.sh --save-dir ${save_dir_arg}/hpctoolkit_traces --hpc-flags "$hpcrun_flags" --hpc-exe ${exe[*]}
+    fi
 
 elif [[ $level == 1 ]]; then
     # Collect overall performance metrics with hpctoolkit if executables have been passed, otherwise rely on perf
@@ -97,4 +112,4 @@ $(dirname ${BASH_SOURCE[0]})/benchmon-run $args &
 
 echo "[INFO]: benchmon-run args: $args" >&2
 # In case this file was sourced, unset all local variables
-unset args save_dir_arg hpcrun_flags index level exe 
+unset args save_dir_arg hpcrun_flags index level exe

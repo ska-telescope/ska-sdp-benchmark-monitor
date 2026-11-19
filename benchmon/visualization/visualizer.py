@@ -105,7 +105,7 @@ class BenchmonVisualizer:
         if "grid5000.fr" in self.hostname:
             self.hostname = self.hostname.split(".")[0]
 
-    def load_annotation_stages(self) -> list | None:
+    def load_annotation_stages(self):
         """
         Load the annotation stages of this node from the --annotate-with-log file
 
@@ -610,9 +610,15 @@ class BenchmonVisualizer:
 
             if self.args.pow and self.power_perf_metrics:
                 try:
-                    powmax += [self.power_perf_metrics.plot_events()]
+                    powmax += [self.power_perf_metrics.plot_events(domain=self.args.pow_domain)]
                 except Exception as e:
                     self.logger.warning(f"Error plotting perf power events: {e}")
+
+            if self.args.pow_per_cpu and self.power_perf_metrics:
+                try:
+                    powmax += [self.power_perf_metrics.plot_events_per_cpu(domain=self.args.pow_domain)]
+                except Exception as e:
+                    self.logger.warning(f"Error plotting perf power events per CPU: {e}")
 
             if self.args.pow_g5k and self.power_g5k_metrics:
                 try:
