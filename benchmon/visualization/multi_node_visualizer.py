@@ -10,7 +10,7 @@ import numpy as np
 from math import ceil
 from scipy.interpolate import interp1d
 
-from .utils import plot_stage_markers, get_stage_color, add_stage_legend
+from .utils import plot_stage_markers, plot_stage_timeline, get_stage_color, add_stage_legend
 
 
 class BenchmonMNSyncVisualizer:
@@ -132,7 +132,7 @@ class BenchmonMNSyncVisualizer:
         if has_annotations and ax_pipeline is not None:
             all_stages = [{**s, "_hostname": hostname} for hostname, stages in nodes_annotations for s in stages]
             plot_stage_markers(all_stages, ax_top=ax_pipeline, ax_bottom=plt.gca(), xlim=self.xlim,
-                               color_map=color_map, stop_as_markers=True, show_legend=True, legend_loc="upper center")
+                               color_map=color_map, stop_as_markers=False, show_legend=False, legend_loc="upper center")
 
         plt.suptitle(f"Multi-node Sync for nodes: {self.commonprefix_hostname}*")
         plt.subplots_adjust(hspace=0.5)
@@ -933,23 +933,10 @@ class BenchmonMNSyncVisualizer:
         if not stages:
             return
 
-        # Same layout as plot_stage_timeline
-        y_base = 0.2
-        y_step = 0.6 / max(len(stages), 1)
-        cap_height = 0.03
-
-        for i, stage in enumerate(stages):
-            # color from (hostname, label)
-            color = get_stage_color(color_map.get((hostname, stage["label"]), i))
-            y = y_base + i * y_step
-            start = stage["start"]
-            stop = stage["stop"]
-
-            ax.hlines(y=y, xmin=start, xmax=stop, linewidth=1.6, color=color, transform=ax.get_xaxis_transform())
-            ax.axvline(x=start, ymin=y - cap_height, ymax=y + cap_height, linewidth=1.6, color=color)
-            ax.axvline(x=stop, ymin=y - cap_height, ymax=y + cap_height, linewidth=1.6, color=color)
-            ax.text((start + stop) / 2, y + cap_height * 1.5, stage["label"], ha="center", va="bottom",
-                    fontsize=7, fontweight="bold", color=color, transform=ax.get_xaxis_transform())
+        plot_stage_timeline(stages, ax, xlim=self.xlim,
+                            color_index=lambda i, stage: color_map.get((hostname, stage["label"]), i))
+        # plot_stage_timeline sets its own y label
+        ax.set_ylabel(hostname, rotation="vertical", va="center")
 
 
     @staticmethod
