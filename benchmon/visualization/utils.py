@@ -175,48 +175,85 @@ def add_stage_legend(ax):
     ax.legend(handles=[start_line, stop_marker], loc='upper right', fontsize=9)
 
 
-def plot_stage_timeline(stages, ax, xlim=None):
-    """Draw each stage as a horizontal segment with its label."""
+def plot_stage_timeline(stages, ax, xlim=None, fontsize=8, min_fontsize=6, min_vfontsize=3, color_index=None):
+    """Draw each stage as a horizontal segment with its label (horizontal if it fits, vertical otherwise)."""
     if ax is None:
         ax = plt.gca()
     if not stages:
         return
 
+    # x limits are needed upfront to convert pixels to data units
+    x0, x1 = xlim if xlim else (min(s["start"] for s in stages), max(s["stop"] for s in stages))
+
+    fig = ax.get_figure()
+    pt = fig.dpi / 72  # points -> pixels
+    pos = ax.get_position()
+    ax_w = fig.get_figwidth() * fig.dpi * pos.width
+    ax_h = fig.get_figheight() * fig.dpi * pos.height
+    data_per_px = (x1 - x0) / ax_w
+    char_w = 0.62 * pt  # approximate width of a character in pixels
+    trans = ax.get_xaxis_transform()
+
     # y positions in axes coordinates (0 to 1)
     y_base = 0.2
     y_step = 0.6 / max(len(stages), 1)
     cap_height = 0.03
+    gap = cap_height * 1.5                 # label offset from its segment
+    ceiling, floor = 0.97, 0.03            # labels never go beyond these
+    next_free_x = {"up": x0, "down": x0}   # avoids overlap between neighbour labels
 
     for i, stage in enumerate(stages):
         # Color by stage index
-        color = get_stage_color(i)
+        color = get_stage_color(color_index(i, stage) if color_index else i)
         y = y_base + i * y_step
 
         start = stage["start"]
         stop = stage["stop"]
+        label = stage["label"]
+        xc = (start + stop) / 2
 
         # stage segment
-        ax.hlines(y=y, xmin=start, xmax=stop, linewidth=1.6, color=color,
-                  transform=ax.get_xaxis_transform())
+        ax.hlines(y=y, xmin=start, xmax=stop, linewidth=1., color=color,
+                  transform=ax.get_xaxis_transform(), antialiased=False)
 
         # start cap
         ax.axvline(x=start, ymin=y - cap_height, ymax=y + cap_height,
-                   linewidth=1.6, color=color)
+                   linewidth=1., color=color, antialiased=False)
 
         # stop cap
         ax.axvline(x=stop, ymin=y - cap_height, ymax=y + cap_height,
-                   linewidth=1.6, color=color)
+                   linewidth=1., color=color, antialiased=False)
 
-        # label
-        ax.text(
-            (start + stop) / 2,
-            y + cap_height * 1.5,
-            stage["label"],
-            ha="center", va="bottom",
-            fontsize=8, fontweight="bold",
-            color=color,
-            transform=ax.get_xaxis_transform(),
-        )
+        # Horizontal label if it fits in the segment (font may shrink down to min_fontsize)
+        bar_px = (stop - start) / data_per_px
+        fs_h = min(fontsize, (bar_px - 4) / (len(label) * char_w))
+        half_w = len(label) * char_w * fs_h / 2 * data_per_px
+        # no vertical label coming from a lower row may cross the horizontal one
+        if fs_h >= min_fontsize and next_free_x["up"] <= xc - half_w:
+            ax.text(xc, y + gap, label, ha="center", va="bottom",
+                    fontsize=fs_h, fontweight="bold", color=color, transform=trans)
+            for side in next_free_x:
+                next_free_x[side] = max(next_free_x[side], xc + half_w)
+            continue
+
+        # Vertical label, towards the side with the most room
+        up = (1 - y) >= y
+        room_px = ((ceiling - y - gap) if up else (y - gap - floor)) * ax_h
+
+        # Shrink the font until the whole label fits (never truncated)
+        fs = max(min_vfontsize, min(fontsize, room_px / (len(label) * char_w)))
+
+        side = "up" if up else "down"
+        text_w = 1.3 * fs * pt             # width of the rotated text, in px
+        x_text = min(max(xc, next_free_x[side]), x1 - text_w * data_per_px / 2)
+        next_free_x[side] = x_text + (text_w + 2) * data_per_px
+
+        y_text = y + gap if up else y - gap
+        if abs(x_text - xc) > data_per_px:  # label shifted: draw a leader line
+            ax.plot([xc, x_text], [y, y_text], color=color, linewidth=0.2, transform=trans, antialiased=False)
+        ax.text(x_text, y_text, label, rotation=90, ha="center",
+                va="bottom" if up else "top",
+                fontsize=fs, fontweight="bold", color=color, transform=trans)
 
     ax.set_yticks([])
     ax.set_ylim(0, 1)
@@ -242,12 +279,13 @@ def _draw_boundary(ax, x, color, linewidth, alpha, linestyle,
             s=marker_size,
             color=color,
             alpha=alpha,
-            zorder=20,
+            zorder=0,
             transform=ax.get_xaxis_transform(),
+            antialiased=False,
         )
     else:
         ax.axvline(x=x, color=color, linestyle=linestyle,
-                   linewidth=linewidth, alpha=alpha, zorder=20)
+                   linewidth=linewidth, alpha=alpha, zorder=0, antialiased=False)
 
 
 def plot_stage_markers(
@@ -258,7 +296,7 @@ def plot_stage_markers(
     *,
     label_to_index=None,
     color_map=None,               # color per (hostname, label), multi-node
-    linewidth=1.6,                # line thickness
+    linewidth=1.0,                # line thickness
     alpha=0.9,                    # transparency
     linestyle_start=(0, (4, 3)),  # START line style
     linestyle_stop=(0, (4, 3)),   # STOP line style
@@ -297,6 +335,12 @@ def plot_stage_markers(
                            linestyle_stop, as_markers=stop_as_markers,
                            marker=stop_marker, marker_size=stop_marker_size,
                            n_markers=n_stop_markers)
+
+    # Extend the y axis so the boundaries stay visible above and below the curves
+    for ax in axes_range[1:]:  # the annotation panel keeps its 0-1 range
+        lo, hi = ax.get_ylim()
+        pad = 0.05 * (hi - lo)
+        ax.set_ylim(lo - pad, hi + pad)
 
     #  optional legend
     if show_legend:
