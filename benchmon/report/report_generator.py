@@ -1,7 +1,10 @@
 """Module to generate benchmark reports"""
 
+import csv
+import os
 import re
 import json
+import html
 
 
 def fill_template(template: str, values: dict):
@@ -226,42 +229,44 @@ def read_ps_data(file):
             - "column_labels" (list[str]): List of column labels from the log file.
             - "data" (list[dict]): List of dictionaries, each representing a parsed log entry.
     """
+    reader = csv.DictReader(file)
     log_data = []
-    columns_sizes = {
-        "PPID": 1,
-        "PID": 1,
-        "TID": 1,
-        "CPUID": 1,
-        "ELAPSED": 1,
-        "STARTED": 5,
-        "CMD": -1,
-    }
+    for row in reader:
+        msg = (row.get("message") or "").strip()
+        stage = (row.get("stage") or "").strip()
+        pipeline = (row.get("pipeline") or "").strip()
+        core = (row.get("core") or "").strip()
+        proc_col = (row.get("process") or "").strip()
+        ts = (row.get("timestamp") or "").strip()
 
-    column_labels = []
-    for line in file:
-        # Extract column labels
-        if line.strip().startswith("#"):
-            column_labels = line.strip().split()[1:]  # Remove the leading "#"
-            continue
+        # extract PPID and elapsed from message
+        ppid_match = re.search(r"PPID[:=]\s*(\d+)", msg)
+        elapsed_match = re.search(r"elapsed[:=]\s*([\d\.]+)", msg)
 
-        columns = line.split()
-        log_entry = {}
-        idx = 0
+        ppid = ppid_match.group(1) if ppid_match else ""
+        pid = proc_col
+        elapsed = elapsed_match.group(1) if elapsed_match else "0"
 
-        for label in column_labels:
-            size = columns_sizes.get(label, 1)
-            new_idx = idx + size if size != -1 else len(columns)
+        cmd_field = stage if stage and stage != "THREAD" else pipeline
+        if cmd_field and ("/" in cmd_field or "\\" in cmd_field):
+            # show basename in table
+            cmd_basename = os.path.basename(cmd_field)
+        else:
+            cmd_basename = cmd_field
 
-            if new_idx > len(columns):
-                log_entry = None
-                break
+        entry = {
+            "PID": [str(pid)],
+            "PPID": [str(ppid)],
+            "TID": [],
+            "CPUID": [core] if core != "" else [],
+            "ELAPSED": [elapsed] if elapsed != "" else ["0"],
+            "CMD": [cmd_basename],
+            "STAGE": [cmd_field],
+            "TS": [ts],
+        }
+        log_data.append(entry)
 
-            log_entry[label] = columns[idx:new_idx]
-            idx = new_idx
-
-        if log_entry:
-            log_data.append(log_entry)
-
+    column_labels = ["PID", "PPID", "TID", "CPUID", "ELAPSED", "CMD", "STAGE", "TS"]
     return {"column_labels": column_labels, "data": log_data}
 
 
@@ -276,34 +281,69 @@ def process_data(ps_data):
 
     Returns:
         dict: A dictionary where each key is a process ID (PID) and the value is another dictionary containing:
-            - "CPUID" (set[int], optional): Set of CPU IDs used by the process (if available in column labels).
-            - "TID" (set[int]): Set of thread IDs associated with the process.
-            - "CMD" (list[str]): Command line arguments of the process.
-            - "ELAPSED" (int): Maximum elapsed time (in seconds) for the process.
+            - "PPID" (str): Parent PID.
+            - "CPUID" (set[int] | set[str]): Set of CPU IDs used by the process (if available).
+            - "TID" (set): Set of thread IDs associated with the process.
+            - "CMD" (str): Command/short name of the process.
+            - "ELAPSED_LIST" (list): List of (elapsed: float, core, ts, stage) tuples.
+            - "ELAPSED" (float): Maximum elapsed time (in seconds) for the process.
     """
-    column_labels = ps_data["column_labels"]
+
     log_data = ps_data["data"]
     result = {}
 
     for entry in log_data:
-        pid = entry["PID"][0]  # Process ID
+        pid = (entry.get("PID") or [""])[0]
+        if not pid:
+            continue
+
         if pid not in result:
-            # Initialize the process entry in the result dictionary
-            result[pid] = {"TID": set(), "CMD": entry["CMD"], "ELAPSED": 0}
-            if "CPUID" in column_labels:
-                result[pid]["CPUID"] = set()
+            result[pid] = {
+                "PPID": (entry.get("PPID") or [""])[0],
+                "CMD": (entry.get("CMD") or [""])[0],
+                "TID": set(),
+                "CPUID": set(),
+                "ELAPSED_LIST": [],  # list of (elapsed:float, core, ts, stage)
+                "ELAPSED": 0.0,  # max
+            }
 
-        # Update the maximum elapsed time for the process
-        result[pid]["ELAPSED"] = max(result[pid]["ELAPSED"], int(entry["ELAPSED"][0]))
+        # parse ELAPSED for this row
+        try:
+            elapsed_val = float((entry.get("ELAPSED") or ["0"])[0])
+        except (ValueError, TypeError):
+            elapsed_val = 0.0
+        core_vals = entry.get("CPUID", []) or []
+        core = core_vals[0] if core_vals else ""
+        ts = (entry.get("TS") or [""])[0] if (entry.get("TS") or []) else ""
+        stage = (entry.get("STAGE") or [""])[0]
 
-        # Add the thread ID to the set of thread IDs
-        result[pid]["TID"].add(int(entry["TID"][0]))
+        result[pid]["ELAPSED_LIST"].append((elapsed_val, core, ts, stage))
+        result[pid]["ELAPSED"] = max(result[pid]["ELAPSED"], elapsed_val)
 
-        # Add the CPU ID to the set of CPU IDs (if available)
-        if "CPUID" in column_labels:
-            result[pid]["CPUID"].add(int(entry["CPUID"][0]))
+        # Add CPUID(s)
+        for c in core_vals:
+            if c == "":
+                continue
+            try:
+                result[pid]["CPUID"].add(int(c))
+            except Exception:
+                result[pid]["CPUID"].add(c)
 
     return result
+
+
+def _escape_table_cell(s: str) -> str:
+    """Escape a value for safe use inside a Markdown table cell.
+
+    Args:
+        s (str | Any): Value to escape. If None, an empty string is returned.
+
+    Returns:
+        str: Escaped, newline-free string safe for inclusion in a Markdown cell.
+    """
+    if s is None:
+        return ""
+    return str(s).replace("|", "\\|").replace("\n", " ").replace("\r", "")
 
 
 def ps_entry_to_line(pid, process_info):
@@ -313,55 +353,85 @@ def ps_entry_to_line(pid, process_info):
     Args:
         pid (str): Process ID.
         process_info (dict): Dictionary containing process information with keys:
-            - "CMD" (list[str]): Command line arguments of the process.
-            - "TID" (set[int]): Set of thread IDs associated with the process.
-            - "CPUID" (set[int], optional): Set of CPU IDs used by the process (if available).
-            - "ELAPSED" (int): Maximum elapsed time (in seconds) for the process.
+            - "CMD" (str or list[str]): Command or command components for the process.
+            - "TID" (set[int] or list[int]): Set/list of thread IDs associated with the process.
+            - "CPUID" (set[int] or list[int], optional): Set/list of CPU IDs used by the process (if available).
+            - "ELAPSED_LIST" (list): List of (elapsed: float, core, ts, stage) occurrences.
+            - "ELAPSED" (float): Maximum elapsed time (seconds) for the process.
 
     Returns:
         str: A string representing a Markdown table row for the process entry.
     """
-    row = f"| {process_info['CMD'][0]} | {pid} | "
-    row += ", ".join(map(str, process_info["TID"])) + " | "
-    row += " ".join(process_info["CMD"]) + " | "
-
-    if "CPUID" in process_info:
-        row += ", ".join(map(str, process_info["CPUID"])) + " | "
-    else:
-        row += " | "
-
-    row += f"{process_info['ELAPSED']} |\n"
-
-    return row
+    cmd = process_info.get("CMD", "") or ""
+    ppid = process_info.get("PPID", "")
+    cpuid_vals = list(process_info.get("CPUID", []) or [])
+    try:
+        cpus = ", ".join(map(str, sorted(cpuid_vals)))
+    except Exception:
+        cpus = ", ".join(map(str, cpuid_vals)) if cpuid_vals else ""
+    elapsed_list = process_info.get("ELAPSED_LIST", []) or []
+    finished = [e for e, _, _, _ in elapsed_list if (e or 0) > 0.0]
+    count_finished = len(finished)
+    total = sum(finished) if count_finished else 0.0
+    maximum = max(finished) if finished else 0.0
+    avg = (total / count_finished) if count_finished else 0.0
+    summary = f"max={maximum:.2f}s sum={total:.2f}s avg={avg:.2f}s ({count_finished})"
+    return f"| {_escape_table_cell(cmd)} | {pid} | {ppid} | {summary} | {cpus} |\n"
 
 
 def ps_description(ps_data):
-    """
-    Génère une table Markdown des processus, triés par durée totale,
-    en prenant le temps maximal par PID.
+    """Generate process summary and detailed sections in Markdown.
+
+    Produces:
+      - a summary table sorted by ELAPSED (the maximum observed elapsed time per PID, descending)
+        containing for each PID: short command, PID, PPID, statistics (max/sum/avg/(occ)) and CPUs;
+      - detailed sections per PID listing finished occurrences (elapsed > 0) with elapsed, core, timestamp and stage.
 
     Args:
-        ps_data (dict): Contient "column_labels" et "data".
+        ps_data (dict): Dictionary with keys "column_labels" and "data" as returned by read_ps_data().
 
     Returns:
-        str: Table Markdown avec nom et durée totale.
+        str: Markdown content (summary table + per-PID detail sections) ready to be inserted into the template.
     """
-    total_elapsed = {}
-    processed_data = process_data(ps_data)
+    processed = process_data(ps_data)
 
-    for _, data in processed_data.items():
-        name = " ".join(data["CMD"])
-        total_elapsed[name] = total_elapsed.get(name, 0) + data["ELAPSED"]
+    # summary Markdown table header
+    header = (
+        "| Command | PID | PPID | Stats (max/sum/avg/(occ)) | CPUs |\n"
+        "| ------- | --- | ---- | ------------------------ | ---- |\n"
+    )
+    rows = []
+    for pid, info in sorted(
+        processed.items(), key=lambda item: item[1].get("ELAPSED", 0.0), reverse=True
+    ):
+        rows.append(ps_entry_to_line(pid, info))
 
-    sorted_items = sorted(total_elapsed.items(), key=lambda x: x[1], reverse=True)
-    lines = [
-        "| Process name | Elapsed time (s) |",
-        "| ------------ | ---------------- |"
-    ]
-    for name, elapsed in sorted_items:
-        lines.append(f"| {name} | {elapsed:.2f} |")
+    parts = [header + "".join(rows)]
 
-    return "\n".join(lines)
+    # details per PID as Markdown titled blocks with Markdown tables (only finished events)
+    for pid, info in sorted(
+        processed.items(), key=lambda item: item[1].get("ELAPSED", 0.0), reverse=True
+    ):
+        el_list = info.get("ELAPSED_LIST", []) or []
+        finished_events = [t for t in el_list if (t[0] or 0) > 0.0]
+        if not finished_events:
+            continue
+        detail = []
+        detail.append("**Details for PID {} (PPID {}):**\n\n".format(pid, info.get("PPID", "")))
+        detail.append("| elapsed (s) | core | timestamp | stage |\n")
+        detail.append("| ----------- | ---- | --------- | ----- |\n")
+        for elapsed_val, core, ts, stage in finished_events:
+            detail.append(
+                "| {:.2f} | {} | {} | {} |\n".format(
+                    elapsed_val,
+                    _escape_table_cell(core or "-"),
+                    _escape_table_cell(ts or "-"),
+                    _escape_table_cell(stage or "-"),
+                )
+            )
+        parts.append("".join(detail))
+
+    return "\n\n".join(parts)
 
 
 class ReportGenerator:
@@ -395,6 +465,15 @@ class ReportGenerator:
         if hw_report_path:
             with open(hw_report_path, "r") as file:
                 hw_data = json.load(file)
+            # Normalize single-node dicts to {hostname: node_data} so both formats
+            # are processed identically.
+            if "cpu" in hw_data or "system" in hw_data:
+                node_name = (
+                    hw_data.get("system", {}).get("hostname")
+                    or os.path.splitext(os.path.basename(hw_report_path))[0]
+                )
+                hw_data = {node_name: hw_data}
+
             hw_str = "\n".join(
                 generate_hidden(node, hardware_description(node_data))
                 for node, node_data in hw_data.items()
@@ -405,6 +484,10 @@ class ReportGenerator:
         if sw_report_path:
             with open(sw_report_path, "r") as file:
                 sw_data = json.load(file)
+
+            if "spack_dependencies" in sw_data or "pyenv" in sw_data or "env" in sw_data:
+                node_name = os.path.splitext(os.path.basename(sw_report_path))[0]
+                sw_data = {node_name: sw_data}
 
             spack_env_str = ""
             python_env_str = ""
@@ -434,9 +517,18 @@ class ReportGenerator:
 
         # Figure section
         if figure_path:
-            full_data["benchmon_plot"] = (
-                f"![Benchmon plot of resource usage]({figure_path})"
-            )
+            # Use an HTML <img> so the output HTML displays the image directly.
+            try:
+                out_dir = os.path.dirname(output_file_path) or "."
+                img_path = os.path.relpath(figure_path, out_dir)
+            except Exception:
+                img_path = figure_path
+            full_data["benchmon_plot"] = f'<img src="{html.escape(img_path)}" alt="Benchmon plot of resource usage" />'
+
+        # Trim leading blank lines from inserted HTML blocks to avoid extra gaps
+        for k, v in list(full_data.items()):
+            if isinstance(v, str):
+                full_data[k] = v.lstrip("\n")
 
         # Final report rendering
         fill_template_from_file(self.template_file_path, output_file_path, full_data)
