@@ -633,6 +633,7 @@ class BenchmonVisualizer:
 
             plt.xticks(*self.xticks)
             plt.xlim(self.xlim)
+            plt.yticks(np.floor(np.linspace(0, max(powmax) * 1.05 / 10, 11)) * 10)
             plt.ylabel("Power (W)")
             plt.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
             plt.grid()
