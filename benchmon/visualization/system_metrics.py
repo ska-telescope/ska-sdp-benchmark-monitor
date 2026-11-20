@@ -965,19 +965,19 @@ class SystemData:
                 # - disk_ts_raw[blk][field_key][stamp])
 
             # Sectors and data n bytes
-            BYTES_UNIT = 1000**2  # noqa: N806
+            BYTES_UNIT = 1000**2
+            BYTES_BY_SECTOR = 512
             fields = ["sect-rd", "sect-wr", "sect-disc"]
             for blk in self.disk_blks:
-                bytes_by_sector = self.maj_blks_sects[[item for item in self.maj_blks_sects if item in blk][0]]
                 for field in fields:
                     for stamp in range(nstamps):
                         self.disk_prof[blk][field][stamp] = (
                             (disk_ts_raw[blk][field][stamp + 1] - disk_ts_raw[blk][field][stamp])
-                            / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) * bytes_by_sector / BYTES_UNIT
+                            / (timestamps_raw[stamp + 1] - timestamps_raw[stamp]) * BYTES_BY_SECTOR / BYTES_UNIT
                         )
 
                     self.disk_data[blk][field] = int(
-                        (disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]) * bytes_by_sector / BYTES_UNIT
+                        (disk_ts_raw[blk][field][-1] - disk_ts_raw[blk][field][0]) * BYTES_BY_SECTOR / BYTES_UNIT
                     )
 
             # Number of operations
