@@ -1,4 +1,6 @@
-#!/bin/bash -e
+#!/bin/bash
+
+set -e
 
 # Input argument: installation directory
 INSTALL_DIR="${HOME}/benchmon-stack"
@@ -13,10 +15,6 @@ while [[ $# -gt 0 ]]; do
                 echo "Error: --install-dir requires a path argument"
                 exit 1
             fi
-            ;;
-        "-h"|"--help")
-            echo "Usage: benchmon-install-grafana [--install-dir <path>]"
-            exit 0
             ;;
         *)
             if [[ "$1" == -* ]]; then
@@ -37,8 +35,8 @@ GRAFANA_URL="https://dl.grafana.com/grafana/release/${GRAFANA_VERSION}/${GRAFANA
 INFLUXDB3_VERSION="3.4.2"
 INFLUXDB3_TAR="influxdb3-core-${INFLUXDB3_VERSION}_linux_amd64.tar.gz"
 INFLUXDB3_URL="https://dl.influxdata.com/influxdb/releases/${INFLUXDB3_TAR}"
+INFLUXDB3_PORT=8081
 
-INSTALL_DIR=$(realpath "${INSTALL_DIR}")
 echo "Creating install directory: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
@@ -49,7 +47,7 @@ if [ ! -d "grafana" ]; then
     echo "URL:" $GRAFANA_URL
     wget -c "$GRAFANA_URL"
     echo "Extracting Grafana..."
-    tar -zxf "$GRAFANA_TAR"
+    tar -zxvf "$GRAFANA_TAR"
     GRAFANA_DIR=$(tar -tf "$GRAFANA_TAR" | head -1 | cut -f1 -d"/")
     mv "$GRAFANA_DIR" grafana
     rm -f "$GRAFANA_TAR"
@@ -62,7 +60,7 @@ if [ ! -d "influxdb3" ]; then
     echo "Downloading InfluxDB3..."
     wget -c "$INFLUXDB3_URL"
     echo "Extracting InfluxDB3..."
-    tar -zxf "$INFLUXDB3_TAR"
+    tar -zxvf "$INFLUXDB3_TAR"
     INFLUXDB3_DIR=$(tar -tf "$INFLUXDB3_TAR" | head -1 | cut -f1 -d"/")
     mv "$INFLUXDB3_DIR" influxdb3
     rm -f "$INFLUXDB3_TAR"

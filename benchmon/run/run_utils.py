@@ -5,7 +5,7 @@ import logging
 import os
 import time
 
-HOSTNAME = os.uname()[1].split(".")[0]
+HOSTNAME = os.uname()[1]
 JOBID = os.getenv("SLURM_JOB_ID") or os.getenv("OAR_JOB_ID") or ""
 
 
@@ -190,20 +190,18 @@ class RunUtils:
 
 
     @staticmethod
-    def create_logger(save_dir: str, verbose: bool, logfilename: str = None) -> logging.Logger:
+    def create_logger(save_dir: str, verbose: bool) -> logging.Logger:
         """
         Create logging manager
         """
         logger = logging.getLogger("benchmon_logger")
         logger.setLevel(logging.DEBUG)
 
-        fmt_info = "[%(asctime)s] [%(levelname)s] %(message)s"
-        fmt_dbg = f"[%(asctime)s] [{HOSTNAME}] [%(filename)s:%(lineno)d] [%(levelname)s] %(message)s"
+        fmt = f"<%(filename)s> [{HOSTNAME}] [%(asctime)s] [%(levelname)s] %(message)s"
         datefmt = "%Y-%m-%d %H:%M:%S"
-        fmtter = logging.Formatter(fmt=fmt_dbg if verbose else fmt_info, datefmt=datefmt)
+        fmtter = logging.Formatter(fmt=fmt, datefmt=datefmt)
 
-        logfile = f"{save_dir}/" + (logfilename or f"benchmon_{HOSTNAME}.log")
-        file_handler = logging.FileHandler(logfile)
+        file_handler = logging.FileHandler(f"{save_dir}/benchmon_{HOSTNAME}.log")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(fmtter)
 
