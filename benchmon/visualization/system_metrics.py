@@ -9,7 +9,6 @@ import logging
 import math
 import os
 import pickle
-import sys
 import time
 
 import matplotlib.pyplot as plt
@@ -1290,22 +1289,16 @@ class SystemData:
         if os.path.isfile(csv_report):
             # Check if file is empty
             if os.path.getsize(csv_report) == 0:
-                self.logger.warning(
-                    f"Report {csv_report} is empty! -> Returning empty list"
-                )
+                self.logger.warning(f"Report {csv_report} is empty! -> Returning empty list")
                 return []
 
             with open(csv_report, newline="") as csvfile:
                 csv_lines = list(csv.reader(csvfile))
                 if not csv_lines:
-                    self.logger.warning(
-                        f"Report {csv_report} contains no valid CSV data! -> Returning empty list"
-                    )
+                    self.logger.warning(f"Report {csv_report} contains no valid CSV data! -> Returning empty list")
                     return []
                 return csv_lines
 
         else:
-            self.logger.error(
-                f"Report {csv_report} does not exist! -> Remove the associated flag to this report"
-            )
-            sys.exit(1)
+            self.logger.warning(f"Report {csv_report} does not exist! -> Remove the associated flag to this report")
+            return []
