@@ -28,7 +28,7 @@ COMMAND_ADVICE = {
           "  - For Fedora: `sudo dnf install bc`",
     "perf": "The 'perf' command is not available. 'perf' is a performance analysis tool that is part of the Linux "
             "kernel tools. To install it, use the following command based on your Linux distribution:\n"
-            "  - For Ubuntu/Debian: `sudo apt-get install linux-tools-common linux-tools-generic`\n"
+            "  - For Ubuntu/Debian: `sudo apt-get install linux-perf linux-tools-common linux-tools-generic`\n"
             "  - For CentOS/RHEL: `sudo yum install perf`\n  - For Fedora: `sudo dnf install perf`",
     "hpcrun": "'hpcrun' (hpctoolkit) is not available. hpctoolkit is an execution trace collection tool with low "
               "overhead without it, more expensive trace collection is still possible via perf). Install via Spack: "
