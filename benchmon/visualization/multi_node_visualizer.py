@@ -79,7 +79,7 @@ class BenchmonMNSyncVisualizer:
 
         n_annotation_subplots = len(nodes_annotations) if has_annotations else 0
         nsbp = self.args.cpu + self.args.cpu_freq + self.args.mem + self.args.net \
-            + self.args.ib + self.args.disk + n_annotation_subplots  # + (self.args.pow or self.args.pow_g5k)
+            + self.args.ib + self.args.disk + n_annotation_subplots + (self.args.pow or self.args.pow_g5k)
 
         fig, _ = plt.subplots(nsbp, sharex=True)
         fig.set_size_inches(self.args.fig_width, nsbp * self.args.fig_height_unit)
@@ -128,10 +128,10 @@ class BenchmonMNSyncVisualizer:
             sbp += 1
             self.plot_sync_disk(nodes_data=nodes_data)
 
-        # if self.args.pow or self.args.pow_g5k:
-        #     plt.subplot(nsbp, 1, sbp)
-        #     sbp += 1
-        #     self.plot_sync_pow(nodes_data=nodes_data)
+        if self.args.pow or self.args.pow_g5k:
+            plt.subplot(nsbp, 1, sbp)
+            sbp += 1
+            self.plot_sync_pow(nodes_data=nodes_data)
 
         # Draw stage boundaries on all subplots
         if has_annotations and ax_pipeline is not None:
@@ -787,23 +787,24 @@ class BenchmonMNSyncVisualizer:
         Args:
             nodes_data (list): list of nodes data
         """
-        if self.args.pow:
-            for data in nodes_data:
-                # Check if power performance metrics are available
+        for nodei, data in enumerate(nodes_data):
+            # Check if power performance metrics are available
+            if self.args.pow:
                 if not hasattr(data, 'power_perf_metrics'):
                     self.logger.warning(f"No power performance metrics available for node {data.hostname}")
                     continue
 
-                data.power_perf_metrics.plot_events(pre_label=f"{data.hostname}:")
+                data.power_perf_metrics.plot_events(pre_label=f"{self.sname(data)}:",
+                                                    domain=self.args.pow_domain,
+                                                    nodei=nodei)
 
-        if self.args.pow_g5k:
-            for data in nodes_data:
-                # Check if G5K power metrics are available
+            # Check if G5K power metrics are available
+            if self.args.pow_g5k:
                 if not hasattr(data, 'power_g5k_metrics'):
                     self.logger.warning(f"No G5K power metrics available for node {data.hostname}")
                     continue
 
-                data.power_g5k_metrics.plot_g5k_pow_profiles(pre_label=f"{data.hostname}:")
+                data.power_g5k_metrics.plot_g5k_pow_profiles(pre_label=f"{self.sname(data)}:", nodei=nodei)
 
         self.set_frame(label="Power (W)")
 
