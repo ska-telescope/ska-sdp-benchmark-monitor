@@ -57,7 +57,7 @@ lint:
   needs: ["install"]
   script:
     - source $VENV_DIR/bin/activate
-    - pip install flake8
+    - pip install flake8 flake8-formatter-junit-xml
     - mkdir -p ./build/reports
     - flake8 . --format junit-xml --output-file ./build/reports/linting.xml
   artifacts:
