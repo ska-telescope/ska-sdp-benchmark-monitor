@@ -27,10 +27,10 @@ fi
 # Stop benchmon on hosts
 if [[ $backend == "mpi" ]]; then
     mpi_hosts=$(echo $hosts | tr -s " " ",")
-    mpirun -host $mpi_hosts -x PATH $(dirname $0)/benchmon-stop $args
+    mpirun -host $mpi_hosts -x PATH $(realpath $(dirname $0)/benchmon-stop) $args
 elif [[ $backend == "ssh" ]]; then
     for host in $hosts; do
-        ssh $host "export PATH=$PATH; $(dirname $0)/benchmon-stop $args" &
+        ssh $host "export PATH=$PATH; $(realpath $(dirname $0)/benchmon-stop) $args" &
     done
     wait
 fi

@@ -233,13 +233,14 @@ class PerfPowerData:
         return ymax
 
 
-    def plot_events(self, pre_label: str = "", domain: str = "") -> float:
+    def plot_events(self, pre_label: str = "", domain: str = "", nodei: int = -1) -> float:
         """
         Plot total power events
 
         Args:
-            xticks (list): x-axis ticks of current plot
-            xlim (list): x-axis limit of current plot
+            pre_label (str): prefix label for the plot
+            domain (str): domain filter for events
+            nodei (int): node index for multi-node plots
         """
         # Check if data is available
         if not self.events or not self.cpus:
@@ -252,12 +253,13 @@ class PerfPowerData:
                 pow_total[event] += self.pow_prof[cpu][event]
 
         events_style = {}
+
         for event in self.events:
-            if "cores" in event: events_style[event] = {"color": "C4", "ls": "--"}  # noqa: E701
-            elif "ram" in event: events_style[event] = {"color": "C1", "ls": "-."}  # noqa: E701
-            elif "pkg" in event: events_style[event] = {"color": "k", "ls": "-"}    # noqa: E701
-            elif "gpu" in event: events_style[event] = {"color": "g", "ls": ":"}    # noqa: E701
-            elif "psys" in event: events_style[event] = {"color": "b", "ls": "-"}   # noqa: E701
+            if "cores" in event: events_style[event] = {"color": "C4" if nodei == -1 else f"C{nodei}", "ls": "--"}  # noqa: E701, E501
+            elif "pkg" in event: events_style[event] = {"color": "k" if nodei == -1 else f"C{nodei}", "ls": "-"}    # noqa: E701, E501
+            elif "ram" in event: events_style[event] = {"color": "C1" if nodei == -1 else f"C{nodei}", "ls": ":"}  # noqa: E701, E501
+            elif "gpu" in event: events_style[event] = {"color": "g" if nodei == -1 else f"C{nodei}", "ls": "."}    # noqa: E701, E501
+            elif "psys" in event: events_style[event] = {"color": "b" if nodei == -1 else f"C{nodei}", "ls": "-"}   # noqa: E701, E501
 
         ymax = 0
         for event in self.events:
@@ -342,7 +344,7 @@ class G5KPowerData:
                 self.g5k_pow_prof[metric]["value"][idx] = item["value"]
 
 
-    def plot_g5k_pow_profiles(self, pre_label: str = "") -> float:
+    def plot_g5k_pow_profiles(self, pre_label: str = "", nodei: int = -1) -> float:
         """
         Plot total power events
 
@@ -356,14 +358,14 @@ class G5KPowerData:
         metrics_style = {}
         metrics_style["wattmetre_power_watt"] = {
             "ls": "-",
-            "color": "C2",
-            "marker": ".",
+            "color": "C2" if nodei == -1 else f"C{nodei}",
+            "marker": "." if nodei == -1 else "x",
             "label": "g5k:wm"
         }
         metrics_style["bmc_node_power_watt"] = {
             "ls": "-",
-            "marker": ".",
-            "color": "C9",
+            "marker": "." if nodei == -1 else "+",
+            "color": "C9" if nodei == -1 else f"C{nodei}",
             "label": "g5k:bmc"
         }
 
@@ -376,7 +378,7 @@ class G5KPowerData:
                 continue
 
             energy = compute_total_energy(time_stamps=ts, power_stamps=vals)
-            plt.plot(ts, vals,
+            plt.plot(ts, vals,  # @use plt.step() here
                      color=metrics_style[metric]["color"],
                      ls=metrics_style[metric]["ls"],
                      marker=metrics_style[metric]["marker"],
