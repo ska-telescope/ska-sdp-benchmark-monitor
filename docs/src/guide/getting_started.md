@@ -28,7 +28,7 @@ to generate software performance metrics or collect execution traces, HPCToolkit
 ---
 
 # Check System availability
-`benchmon-check` can be used to check the system availability and check if the environment is compatible for `benchmon`. We recommended that the users should run this command before running `benchmon` for the first time.
+`benchmon-check` can be used to check the system availability and check if the environment is compatible for `benchmon`. We recommended that the users should run this command before running `benchmon` for the first time. `--advice` and `--verbose` flags can be used to get additional guidance and detailed output.
 
 ```bash
 benchmon-check
@@ -78,6 +78,7 @@ benchmon offers a set of options for customizing monitoring. Specific types of m
 ##### Energy Consumption
 - `--pow`, `--power`: Enable power monitoring.
 - `--pow-sampl-intv`, `--power-sampling-interval`: Power sampling interval in ms (default: 250).
+- `--pow-hg`, `--power-hg`: Disable host/guest filtering for power measurements.
 - `--pow-g5k`, `--power-g5k`: Enable Grid5000 power monitoring.
 
 ##### Callgraph Tracing using `perf`
@@ -105,6 +106,8 @@ For multi-node runs, `benchmon-visu` can generate synchronized graphs across nod
 benchmon-visu <traces-directory> [options]
 ```
 If no directory is specified, the current directory (`./`) is used.
+
+`benchmon-visu` can store pickled results for faster subsequent visualizations. This is controlled by the `--enable-pkl-cache` flag. When enabled, `benchmon-visu` will write intermediate results to pickle files and read from them if available, reducing the need to reprocess raw trace data.
 
 `benchmon-visu` also supports reading system metrics directly from InfluxDB v3 instead of local CSV/BIN traces. In this mode, the positional argument is still required, but it is used as the output directory for figures and logs rather than as an input trace directory.
 
@@ -177,6 +180,8 @@ Available options:
 
 ##### Energy Consumption
 - `--pow`: Visualize perf power profiles.
+- `--pow-per-cpu`: Visualize power profiles per CPU socket.
+- `--pow-domain`: Comma-separated list of power domains to visualize (e.g., `pkg,ram,cores,psys`).
 - `--pow-g5k`: Visualize G5K power profiles.
 
 ##### Callgraph Tracing using `perf`
@@ -193,6 +198,7 @@ Available options:
 ##### Global visualization
 - `--recursive`: Generate synchronized plots for multi-node runs.
 - `--interactive`: Enable interactive mode (matplotlib).
+- `--enable-pkl-cache`: Enable (write and read) caching of results using pickle files.
 - `--start-time`: Set start time (`YYYY-MM-DDTHH:MM:SS`).
 - `--end-time`: Set end time (`YYYY-MM-DDTHH:MM:SS`).
 - `--fig-path`: Directory to save figures (default: traces directory).

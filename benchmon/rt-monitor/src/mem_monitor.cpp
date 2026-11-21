@@ -12,6 +12,7 @@
 #include <charconv>
 #include <cstring>
 #include <cctype>
+#include <algorithm>
 
 namespace rt_monitor::mem
 {
@@ -29,7 +30,7 @@ template <> db_stream &db_stream::operator<< <mem::data_sample>(mem::data_sample
     static const std::string hostname = rt_monitor::io::get_hostname();
     std::stringstream ss;
     ss << "memory,hostname=" << hostname << " ";
-    
+
     bool first = true;
     for (const auto [label, value] : sample.values_map)
     {
@@ -41,9 +42,9 @@ template <> db_stream &db_stream::operator<< <mem::data_sample>(mem::data_sample
         first = false;
     }
     ss << " " << std::chrono::duration_cast<std::chrono::nanoseconds>(sample.timestamp.time_since_epoch()).count();
-    
+
     this->write_line(ss.str());
-    
+
     spdlog::debug("Sending memory sample to InfluxDB");
 
     return *this;
@@ -114,7 +115,7 @@ data_sample read_mem_sample(int fd)
                 const char* curr = colon + 1;
                 // Skip spaces
                 while (curr < line_end && std::isspace(*curr)) curr++;
-                
+
                 if (curr < line_end && std::isdigit(*curr))
                 {
                     uint64_t value = 0;
@@ -122,15 +123,15 @@ data_sample read_mem_sample(int fd)
                     if (res.ec == std::errc())
                     {
                          sample.values_map[std::string(field_names[i])] = value;
-                    } 
-                    else 
+                    }
+                    else
                     {
                          sample.values_map[std::string(field_names[i])] = 0;
                     }
                 }
             }
         }
-        
+
         ptr = eol ? eol + 1 : end;
         ++i;
     }
@@ -156,7 +157,7 @@ void mem_producer(double time_interval, ThreadSafeQueue<data_sample>& queue)
         spdlog::debug("Collected memory sample");
         queue.push(std::move(sample));
         const auto end = std::chrono::high_resolution_clock::now();
-        
+
         const auto sampling_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
         auto time_to_wait = time_interval - sampling_time;
         if (time_to_wait < 0.)

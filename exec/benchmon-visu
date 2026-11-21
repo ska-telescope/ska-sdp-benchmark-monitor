@@ -26,6 +26,8 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("traces_repo", type=str, nargs="?", default="./", help="Top-level traces repository path")
     parser.add_argument("--recursive", action="store_true", default=False,
                         help="Recursively visualize traces in nodes sub-directories")
+    parser.add_argument("--enable-pkl-cache", "--pkl-cache", action="store_true",
+                        help="Enable profiles caching as pickle files in <traces_repo>/pkl_dir. Disabled by default.")
 
     # Binary backend
     parser.add_argument("--binary", "-b", action="store_true", help="Visualize data from the binary backend")
@@ -68,8 +70,13 @@ def parsing() -> argparse.Namespace:
     parser.add_argument("--sys", action="store_true", help="Visualize all system data")
 
     # Power profiles
-    parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power")
-    parser.add_argument("--pow", action="store_true", help="Visualize power")
+    parser.add_argument("--pow-g5k", action="store_true", help="Visualize g5k power p")
+    parser.add_argument("--pow", "--power", action="store_true", help="Visualize the (rapl) power profile by perf")
+    parser.add_argument("--pow-per-cpu", "--power-per-cpu", "--pow-per-socket", action="store_true",
+                        help="Visualize the (rapl) power profile by perf per CPU (Socket)")
+    parser.add_argument("--pow-domain", "--power-domain", type=str,
+                        help="Visualize specific domains of the (rapl) power profile by perf."
+                             "Comma-separated, possible values: cores, ram, pkg, gpu, psys")
 
     # Callstack
     parser.add_argument("--inline-call", action="store_true", help="Visualize callstack inline within monitoring")

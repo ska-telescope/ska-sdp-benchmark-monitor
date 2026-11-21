@@ -11,6 +11,8 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
+UNUSUAL_THRESHOLD = 10000  # Example threshold for unusual power values (W)
+
 
 def compute_total_energy(time_stamps: list, power_stamps: list) -> float:
     """
@@ -37,29 +39,23 @@ class PerfPowerData:
     Perf power database
     """
 
-    def __init__(self, logger: logging.Logger, csv_filename: str):
+    def __init__(self, logger: logging.Logger, csv_filename: str, enable_pkl_cache: bool = False):
         """
         Construct PerfPowData object
 
         Args:
             csv_filename    (str)               csv filename
             logger          (logging.Logger)    logging object
+            enable_pkl_cache (bool)           Enable pickle cache (default: False)
         """
         self.logger = logger
         self.csv_filename = csv_filename
         self.csv_list = []
+        self.enable_pkl_cache = enable_pkl_cache
 
         self.cpus = []
         self.pow_prof = {}
         self.time_stamps = np.array([])
-
-        self.events_table = {
-            "power/energy-cores/": "cores",
-            "power/energy-ram/": "dram",
-            "power/energy-pkg/": "cpu-pkg",
-            "power/energy-psys/": "psys",
-            "power/energy-gpu/": "gpu"
-        }
 
         self.create_profile()
 
@@ -96,12 +92,13 @@ class PerfPowerData:
         """
         Create power profiles
         """
-        pow_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_prof.pkl"
-        ts_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_stamps.pkl"
+        if self.enable_pkl_cache:
+            pow_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_prof.pkl"
+            ts_pkl = f"{os.path.dirname(self.csv_filename)}/pkl_dir/pow_stamps.pkl"
 
         pickle_loaded = False
 
-        if os.access(pow_pkl, os.R_OK):
+        if self.enable_pkl_cache and os.access(pow_pkl, os.R_OK):
             try:
                 self.logger.debug("Load Power profile..."); t0 = time.time()  # noqa: E702
 
@@ -167,6 +164,12 @@ class PerfPowerData:
                 cpu = _list[1]
                 event = _list[4]
                 value = float(_list[2]) / (float(_list[5]) * 1e-9)  # J = W/S
+
+                if value > UNUSUAL_THRESHOLD:
+                    self.logger.warning(f"Unusually high power value detected: "
+                                        f"CPU={cpu}, Event={event}, Value={value} set to 0")
+                    value = 0
+
                 self.pow_prof[cpu][event] += [value]
 
             for cpu in self.cpus:
@@ -187,10 +190,11 @@ class PerfPowerData:
             for i in range(0, self.nstamps):
                 self.time_stamps[i + 1] = epoch0 + self.pow_prof["time"][i]
 
-            with open(pow_pkl, "wb") as _pf:
-                pickle.dump(self.pow_prof, _pf)
-            with open(ts_pkl, "wb") as _pf:
-                pickle.dump(self.time_stamps, _pf)
+            if self.enable_pkl_cache:
+                with open(pow_pkl, "wb") as _pf:
+                    pickle.dump(self.pow_prof, _pf)
+                with open(ts_pkl, "wb") as _pf:
+                    pickle.dump(self.time_stamps, _pf)
 
             self.logger.debug(f"...Done ({round(time.time() - t0, 3)} s)")
 
@@ -206,7 +210,7 @@ class PerfPowerData:
         self.time_stamps = np.array([])
         self.nstamps = 0
 
-    def plot_events_per_cpu(self) -> int:
+    def plot_events_per_cpu(self, domain: str = "") -> float:
         """
         Plot power events per cpu
         """
@@ -215,24 +219,28 @@ class PerfPowerData:
             self.logger.warning("No power data available for plotting")
             return 0
 
+        ymax = 0
         for event in self.events:
+            if domain and all(d not in event for d in domain.split(",")):
+                continue
             for cpu in self.cpus:
-                plt.plot(self.time_stamps, self.pow_prof[cpu][event], label=f"{cpu}/{self.events_table[event]}")
-        plt.xticks(self._xticks[0], self._xticks[1])
-        plt.ylabel("Power (W)")
-        plt.legend(loc=1)
-        plt.grid()
+                power_array = np.append(self.pow_prof[cpu][event], self.pow_prof[cpu][event][-1])
+                energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
+                plt.step(self.time_stamps, power_array, where="post",
+                         label=f"{cpu}/{event.split('/')[1].split('-')[1]} ({round(energy, 1)} Wh)")
+                ymax = max(ymax, max(power_array))
 
-        return 0
+        return ymax
 
 
-    def plot_events(self, pre_label: str = "") -> float:
+    def plot_events(self, pre_label: str = "", domain: str = "", nodei: int = -1) -> float:
         """
         Plot total power events
 
         Args:
-            xticks (list): x-axis ticks of current plot
-            xlim (list): x-axis limit of current plot
+            pre_label (str): prefix label for the plot
+            domain (str): domain filter for events
+            nodei (int): node index for multi-node plots
         """
         # Check if data is available
         if not self.events or not self.cpus:
@@ -245,19 +253,23 @@ class PerfPowerData:
                 pow_total[event] += self.pow_prof[cpu][event]
 
         events_style = {}
-        events_style["power/energy-cores/"] = {"color": "C4", "ls": "--"}
-        events_style["power/energy-ram/"] = {"color": "C1", "ls": "-."}
-        events_style["power/energy-pkg/"] = {"color": "k", "ls": "-"}
-        events_style["power/energy-psys/"] = {"color": "b", "ls": "-"}
-        events_style["power/energy-gpu/"] = {"color": "g", "ls": ":"}
-        ymax = 0
 
         for event in self.events:
+            if "cores" in event: events_style[event] = {"color": "C4" if nodei == -1 else f"C{nodei}", "ls": "--"}  # noqa: E701, E501
+            elif "pkg" in event: events_style[event] = {"color": "k" if nodei == -1 else f"C{nodei}", "ls": "-"}    # noqa: E701, E501
+            elif "ram" in event: events_style[event] = {"color": "C1" if nodei == -1 else f"C{nodei}", "ls": ":"}  # noqa: E701, E501
+            elif "gpu" in event: events_style[event] = {"color": "g" if nodei == -1 else f"C{nodei}", "ls": "."}    # noqa: E701, E501
+            elif "psys" in event: events_style[event] = {"color": "b" if nodei == -1 else f"C{nodei}", "ls": "-"}   # noqa: E701, E501
+
+        ymax = 0
+        for event in self.events:
+            if domain and all(d not in event for d in domain.split(",")):
+                continue
             if len(pow_total[event]) > 0:
                 power_array = np.append(pow_total[event], pow_total[event][-1])
                 energy = compute_total_energy(time_stamps=self.time_stamps, power_stamps=power_array)
                 plt.step(self.time_stamps, power_array, where="post",
-                         label=f"{pre_label}{self.events_table[event]} ({round(energy, 1)} Wh)",
+                         label=f"{pre_label}{event.split('/')[1].split('-')[1]} ({round(energy, 1)} Wh)",
                          color=events_style[event]["color"],
                          ls=events_style[event]["ls"])
                 ymax = max(ymax, max(power_array))
@@ -332,7 +344,7 @@ class G5KPowerData:
                 self.g5k_pow_prof[metric]["value"][idx] = item["value"]
 
 
-    def plot_g5k_pow_profiles(self, pre_label: str = "") -> float:
+    def plot_g5k_pow_profiles(self, pre_label: str = "", nodei: int = -1) -> float:
         """
         Plot total power events
 
@@ -346,14 +358,14 @@ class G5KPowerData:
         metrics_style = {}
         metrics_style["wattmetre_power_watt"] = {
             "ls": "-",
-            "color": "C2",
-            "marker": ".",
+            "color": "C2" if nodei == -1 else f"C{nodei}",
+            "marker": "." if nodei == -1 else "x",
             "label": "g5k:wm"
         }
         metrics_style["bmc_node_power_watt"] = {
             "ls": "-",
-            "marker": ".",
-            "color": "C9",
+            "marker": "." if nodei == -1 else "+",
+            "color": "C9" if nodei == -1 else f"C{nodei}",
             "label": "g5k:bmc"
         }
 
@@ -366,7 +378,7 @@ class G5KPowerData:
                 continue
 
             energy = compute_total_energy(time_stamps=ts, power_stamps=vals)
-            plt.plot(ts, vals,
+            plt.plot(ts, vals,  # @use plt.step() here
                      color=metrics_style[metric]["color"],
                      ls=metrics_style[metric]["ls"],
                      marker=metrics_style[metric]["marker"],
