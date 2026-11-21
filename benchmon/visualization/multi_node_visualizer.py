@@ -266,7 +266,7 @@ class BenchmonMNSyncVisualizer:
         # Only sync if we have data
         if ts_sync and cpufreq_sync:
             self.sync_metrics(ts_list=ts_sync, dev_list=cpufreq_sync, opt="avg", label="average", color="k")
-        self.set_frame(label="Mean CPU frequency (GHz)", ncol=len(cpufreq_sync) / self.nelm_per_col)
+            self.set_frame(label="Mean CPU frequency (GHz)", ncol=len(cpufreq_sync) / self.nelm_per_col)
 
 
     def plot_sync_cpufreq_binary(self, nodes_data: list) -> None:
